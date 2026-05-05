@@ -35,9 +35,7 @@ _ST = "\x1b\\"
 # Environment tokens that identify known OSC 8-capable terminal emulators.
 # Apple_Terminal on Big Sur+ supports OSC 8; trust it without probing.
 # vscode here is the VS Code integrated terminal (TERM_PROGRAM=vscode).
-_TERM_PROGRAM_ALLOWLIST = frozenset(
-    {"iTerm.app", "WezTerm", "vscode", "ghostty", "Apple_Terminal"}
-)
+_TERM_PROGRAM_ALLOWLIST = frozenset({"iTerm.app", "WezTerm", "vscode", "ghostty", "Apple_Terminal"})
 
 # TERM values emitted by emulators that document OSC 8 support.
 _TERM_ALLOWLIST = frozenset({"xterm-kitty", "xterm-ghostty", "wezterm", "alacritty"})

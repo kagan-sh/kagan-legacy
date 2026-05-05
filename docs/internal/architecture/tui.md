@@ -155,7 +155,7 @@ WorkspaceScreen
 │   └── OptionList           # Orchestrator sessions
 ├── Vertical (workspace-main)
 │   ├── Workspace header     # Active conversation title + compact guidance
-│   └── ChatPanel            # Main conversation surface (always visible; explicit focus via Ctrl+I or session open)
+│   └── ChatPanel            # Main conversation surface (always visible; explicit focus via F4/Ctrl+I or session open)
 └── Footer hint row          # Workspace-specific navigation hints
 ```
 
@@ -178,7 +178,7 @@ ______________________________________________________________________
 WorkspaceScreen keeps navigation state intentionally simple:
 
 - Sidebar focus is the entry point and safe default after screen switches
-- `Ctrl+I` is the explicit handoff into chat input
+- `F4` (or `Ctrl+I`) is the explicit handoff into chat input
 - `Esc` unwinds focus in layers instead of jumping straight out of the screen
 
 ### Data Flow Direction
@@ -228,6 +228,8 @@ ______________________________________________________________________
 ### TUI Chat Binding
 
 `ChatPanel` holds a `ChatSession` as a reactive `var`. An exclusive worker iterates over the session's stream and posts `NewChatMessage` Textual messages for each event.
+
+`StreamingOutput` and `OutputChunk` render task/session output progressively. Incoming fragments enqueue into the active chunk, a timer drains words with a short animation delay, and the scroll position follows live output unless the user is browsing older entries.
 
 Slash commands and plan/permission flows are behavioral — see `docs/internal/features/tui.md`.
 

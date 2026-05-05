@@ -19,13 +19,13 @@ Match symptom text below.
 
 ## First-run failures
 
-| Symptom                            | Fix                                                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| No agent installed                 | Install Claude Code, Gemini CLI, or another supported backend; re-run `kagan doctor`                   |
-| `git` not found                    | `brew install git` / `apt install git` / `dnf install git`; ensure `git` is on PATH                   |
-| Git identity not configured        | `git config --global user.name "…"` and `user.email "…"`                                              |
-| `uv` not found / PATH issue        | `curl -LsSf https://astral.sh/uv/install.sh \| sh`; restart shell                                     |
-| `kagan` not found after install    | Run `uv tool install kagan`; ensure `~/.local/bin` is on PATH                                         |
+| Symptom                         | Fix                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| No agent installed              | Install Claude Code, Gemini CLI, or another supported backend; re-run `kagan doctor` |
+| `git` not found                 | `brew install git` / `apt install git` / `dnf install git`; ensure `git` is on PATH  |
+| Git identity not configured     | `git config --global user.name "…"` and `user.email "…"`                             |
+| `uv` not found / PATH issue     | `curl -LsSf https://astral.sh/uv/install.sh \| sh`; restart shell                    |
+| `kagan` not found after install | Run `uv tool install kagan`; ensure `~/.local/bin` is on PATH                        |
 
 ## Interactive launch / terminal
 

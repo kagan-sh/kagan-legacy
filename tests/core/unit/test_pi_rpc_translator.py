@@ -293,7 +293,15 @@ def test_compaction_start_maps_to_CompactionOccurred() -> None:
 
 
 def test_compaction_end_returns_none() -> None:
-    result = _translate({"type": "compaction_end", "reason": "threshold", "result": None, "aborted": False, "willRetry": False})
+    result = _translate(
+        {
+            "type": "compaction_end",
+            "reason": "threshold",
+            "result": None,
+            "aborted": False,
+            "willRetry": False,
+        }
+    )
     assert result is None
 
 

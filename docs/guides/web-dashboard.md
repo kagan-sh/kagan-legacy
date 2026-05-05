@@ -30,6 +30,10 @@ Toggle between Board and Workspace with `Cmd/Ctrl+Shift+W`.
 
 Four-lane kanban: BACKLOG, IN_PROGRESS, REVIEW, DONE. This is the main operator view in the browser. Drag cards between lanes, click to inspect, double-click to open the full task detail page. The right rail hosts an AI panel (toggle with `Cmd/Ctrl+I`) for orchestrator or task-scoped chat.
 
+The header repository selector never stays empty when repositories are available. If the active project has repos, Kagan selects the active repo or the first available repo; if the project has no repos yet, the Add Repository dialog opens as the next required setup step.
+
+**Import from GitHub** auto-fills the repository field from the active git remote when possible. The repo detection is independent from the GitHub CLI readiness check, so the field can still prefill while Kagan prompts you to install or authenticate `gh`.
+
 ## Workspace view
 
 A conversation-first companion to the board, modeled after ChatGPT / Codex Desktop.

@@ -1,5 +1,6 @@
 import { FilePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StreamingStatus } from '@/components/chat/streaming-status';
 import type { ToolRendererProps } from './index';
 
 export function EditRenderer({ args, status }: ToolRendererProps) {
@@ -22,7 +23,7 @@ export function EditRenderer({ args, status }: ToolRendererProps) {
         {path ?? 'Editing file'}
       </span>
       {status === 'running' && (
-        <span className="shrink-0 text-[var(--kagan-thinking)]">editing</span>
+        <StreamingStatus label="editing" />
       )}
       {status === 'failed' && (
         <span className="shrink-0 text-[var(--destructive)]">failed</span>

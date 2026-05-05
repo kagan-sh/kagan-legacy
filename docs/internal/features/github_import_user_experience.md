@@ -56,7 +56,7 @@ Concrete rollout plan for exposing GitHub issue import to non-technical users wi
 1. Kagan checks prerequisites:
    - `gh` installed
    - `gh` authenticated
-1. If checks pass, ask for repository (`owner/repo`).
+1. Ask for repository (`owner/repo`), prefilled from the active git remote when available.
 1. Show preview of first 10 open issues.
 1. User confirms import.
 1. Show success summary (`created`, `skipped`, `errors`) with "Open board" action.
@@ -116,6 +116,7 @@ Concrete rollout plan for exposing GitHub issue import to non-technical users wi
 
 - Label: "Repository"
 - Helper: "Use owner/repo, for example: octocat/hello-world"
+- Default value: active repository slug detected from the selected project repo's `origin` remote when available
 
 ### Preview step
 

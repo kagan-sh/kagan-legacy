@@ -74,7 +74,7 @@ async def apply_edits(file_path: Path, edits: list[Edit]) -> WriteResult:
     raw_bytes: bytes = await asyncio.to_thread(file_path.read_bytes)
 
     bom_bytes, encoding = detect_bom(raw_bytes)
-    content_bytes = raw_bytes[len(bom_bytes):] if bom_bytes else raw_bytes
+    content_bytes = raw_bytes[len(bom_bytes) :] if bom_bytes else raw_bytes
 
     # Decode; errors='replace' avoids crash on rare corrupt files — the
     # replacement char will cause the edit to fail as "not found" which is
@@ -153,7 +153,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             file_path = Path(path)
             raw_bytes: bytes = await asyncio.to_thread(file_path.read_bytes)
             bom_bytes, encoding = detect_bom(raw_bytes)
-            content_bytes = raw_bytes[len(bom_bytes):] if bom_bytes else raw_bytes
+            content_bytes = raw_bytes[len(bom_bytes) :] if bom_bytes else raw_bytes
             text = content_bytes.decode(encoding, errors="replace")
             _, eol_style = normalize_line_endings(text)
             return {

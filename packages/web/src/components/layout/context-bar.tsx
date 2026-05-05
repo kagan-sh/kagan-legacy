@@ -77,31 +77,38 @@ export function ContextBar() {
    */
   const ensureRepoSelected = useCallback(
     async (projectId: string, repoList: WireRepository[]) => {
-      const hasSelected = repoList.some((r) => r.selected);
+      const selectedRepo = repoList.find((r) => r.selected);
       const firstRepo = repoList[0];
-      if (!hasSelected && firstRepo) {
+      if (selectedRepo) {
+        setRepoFilter(selectedRepo.id);
+      } else if (firstRepo) {
         try {
           await apiClient.selectProjectRepo(projectId, firstRepo.id);
+          setRepoFilter(firstRepo.id);
           await loadRepos(projectId);
         } catch {
-          // best-effort
+          setRepoFilter(null);
         }
-      } else if (!hasSelected && repoList.length === 0) {
+      } else {
+        setRepoFilter(null);
         setAddRepoOpen(true);
       }
     },
-    [loadRepos],
+    [loadRepos, setRepoFilter, setAddRepoOpen],
   );
 
   useEffect(() => {
     const init = async () => {
       const data = await loadProjects();
       const active = data.find((p) => p.active);
-      if (active) await loadRepos(active.id);
+      if (active) {
+        const repoList = await loadRepos(active.id);
+        await ensureRepoSelected(active.id, repoList);
+      }
       setLoading(false);
     };
     init();
-  }, [loadProjects, loadRepos]);
+  }, [loadProjects, loadRepos, ensureRepoSelected]);
 
   // -- Handlers --------------------------------------------------------------
 
@@ -158,9 +165,11 @@ export function ContextBar() {
 
   const handleRepoAdded = useCallback(async () => {
     if (activeProject) {
-      await loadRepos(activeProject.id);
+      const repoList = await loadRepos(activeProject.id);
+      await ensureRepoSelected(activeProject.id, repoList);
+      bumpProjectVersion((v) => v + 1);
     }
-  }, [activeProject, loadRepos]);
+  }, [activeProject, loadRepos, ensureRepoSelected, bumpProjectVersion]);
 
   const handleDeleteProject = useCallback(async () => {
     if (!activeProject) return;
@@ -169,9 +178,11 @@ export function ContextBar() {
       const data = await loadProjects();
       const nextActive = data.find((p) => p.active);
       if (nextActive) {
-        await loadRepos(nextActive.id);
+        const repoList = await loadRepos(nextActive.id);
+        await ensureRepoSelected(nextActive.id, repoList);
       } else {
         setRepos([]);
+        setRepoFilter(null);
       }
       bumpProjectVersion((v) => v + 1);
       toast.success(`Deleted project "${activeProject.name}"`);
@@ -180,20 +191,29 @@ export function ContextBar() {
     } finally {
       setDeleteProjectOpen(false);
     }
-  }, [activeProject, loadProjects, loadRepos, bumpProjectVersion]);
+  }, [
+    activeProject,
+    loadProjects,
+    loadRepos,
+    ensureRepoSelected,
+    setRepoFilter,
+    bumpProjectVersion,
+  ]);
 
   const handleDeleteRepo = useCallback(async () => {
     if (!activeProject || !activeRepo) return;
     try {
       await apiClient.deleteProjectRepo(activeProject.id, activeRepo.id);
-      await loadRepos(activeProject.id);
+      const repoList = await loadRepos(activeProject.id);
+      await ensureRepoSelected(activeProject.id, repoList);
+      bumpProjectVersion((v) => v + 1);
       toast.success(`Removed repository "${activeRepo.name}"`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to remove repository');
     } finally {
       setDeleteRepoOpen(false);
     }
-  }, [activeProject, activeRepo, loadRepos]);
+  }, [activeProject, activeRepo, loadRepos, ensureRepoSelected, bumpProjectVersion]);
 
   // -- Render ----------------------------------------------------------------
 

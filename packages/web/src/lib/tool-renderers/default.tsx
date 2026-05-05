@@ -1,5 +1,6 @@
 import { Code } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StreamingStatus } from '@/components/chat/streaming-status';
 import type { ToolRendererProps } from './index';
 
 export function DefaultRenderer({ name, args, status, result, partialResult }: ToolRendererProps) {
@@ -17,7 +18,7 @@ export function DefaultRenderer({ name, args, status, result, partialResult }: T
         <Code className="size-3 shrink-0" />
         <span className="font-medium">{name}</span>
         {status === 'running' && (
-          <span className="text-[var(--kagan-thinking)]">running</span>
+          <StreamingStatus label="running" />
         )}
         {status === 'failed' && (
           <span className="text-[var(--destructive)]">failed</span>

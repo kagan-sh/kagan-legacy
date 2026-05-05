@@ -199,9 +199,7 @@ def test_response_ack_returns_PiResponseAck() -> None:
 
 
 def test_extension_ui_request_returns_PiExtensionUiRequest() -> None:
-    result = parse_pi_rpc_message(
-        {"type": "extension_ui_request", "id": "x1", "method": "notify"}
-    )
+    result = parse_pi_rpc_message({"type": "extension_ui_request", "id": "x1", "method": "notify"})
     assert isinstance(result, PiExtensionUiRequest)
 
 
@@ -281,9 +279,7 @@ def test_extra_fields_are_accepted_on_PiToolCallStart() -> None:
 
 
 def test_PiMessage_content_defaults_to_empty_list() -> None:
-    result = parse_pi_rpc_message(
-        {"type": "message_start", "message": {"role": "user"}}
-    )
+    result = parse_pi_rpc_message({"type": "message_start", "message": {"role": "user"}})
     assert isinstance(result, PiMessageStart)
     assert result.message.content == []
     assert result.message.id is None

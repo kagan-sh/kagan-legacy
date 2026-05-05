@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import json
 import re
@@ -5,6 +6,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal, cast
 
+from loguru import logger
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -30,6 +32,8 @@ ConfidenceLevel = Literal["certain", "assumption", "needs-validation"]
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_STREAM_WORD_RE = re.compile(r"\S+\s*|\s+")
+_DEFAULT_WORD_DELAY_SECONDS = 0.012
 
 
 def _sanitize_stream_text(text: str) -> str:
@@ -83,6 +87,9 @@ class OutputChunk(Markdown):
         self.kind: AgentChunkKind = kind
         self._accumulated_text = text or ""
         self._stream: MarkdownStream | None = None
+        self._pending_fragments: asyncio.Queue[str] = asyncio.Queue()
+        self._drain_task: asyncio.Task[None] | None = None
+        self.word_delay_seconds = _DEFAULT_WORD_DELAY_SECONDS
 
     @property
     def stream(self) -> MarkdownStream:
@@ -94,12 +101,62 @@ class OutputChunk(Markdown):
         if not fragment:
             return
         self._accumulated_text = f"{self._accumulated_text}{fragment}"
-        await self.stream.write(fragment)
+        await self._write_animated(fragment)
 
     async def write_fragment(self, fragment: str) -> None:
         if not fragment:
             return
-        await self.stream.write(fragment)
+        await self._write_animated(fragment)
+
+    def stream_fragment(self, fragment: str, *, delay: float | None = None) -> None:
+        if not fragment:
+            return
+        self._accumulated_text = f"{self._accumulated_text}{fragment}"
+        if delay is not None:
+            self.word_delay_seconds = max(0.0, delay)
+        self._pending_fragments.put_nowait(fragment)
+        if self.is_mounted or self.parent is not None:
+            self._ensure_drain_task()
+
+    def on_mount(self) -> None:
+        if not self._pending_fragments.empty():
+            self._ensure_drain_task()
+        elif self._accumulated_text:
+            self.update(self._accumulated_text)
+
+    def _ensure_drain_task(self) -> None:
+        if self._drain_task is None or self._drain_task.done():
+            self._drain_task = asyncio.create_task(self._drain_fragments())
+
+    async def _drain_fragments(self) -> None:
+        while True:
+            try:
+                fragment = self._pending_fragments.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            try:
+                await self._write_animated(fragment)
+            except Exception:
+                logger.debug("Streaming output drain stopped", exc_info=True)
+                self._clear_pending_fragments()
+                with contextlib.suppress(Exception):
+                    self.update(self._accumulated_text)
+                return
+
+    def _clear_pending_fragments(self) -> None:
+        while True:
+            try:
+                self._pending_fragments.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+
+    async def _write_animated(self, fragment: str) -> None:
+        for token in _STREAM_WORD_RE.findall(fragment):
+            if not token:
+                continue
+            await self.stream.write(token)
+            if self.word_delay_seconds > 0:
+                await asyncio.sleep(self.word_delay_seconds)
 
     def rendered_text(self) -> str:
         prefix = {
@@ -371,6 +428,7 @@ class StreamingOutput(Vertical):
         self._last_chunk_kind: AgentChunkKind | None = None
         self._last_chunk_line_key: str | None = None
         self._scroll_scheduled = False
+        self.word_delay_seconds = _DEFAULT_WORD_DELAY_SECONDS
 
     def compose(self) -> ComposeResult:
         yield Static(
@@ -438,10 +496,13 @@ class StreamingOutput(Vertical):
             return self
 
         if merge and self._last_chunk is not None and self._last_chunk_kind == kind:
-            if text:
-                self._last_chunk._accumulated_text = f"{self._last_chunk._accumulated_text}{text}"
+            linked_text = (
+                linkify_mentions(text, github_repo_slug=self._github_repo_slug)
+                if kind != "user"
+                else text
+            )
+            self._last_chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
             if self.is_mounted:
-                self.call_later(self._last_chunk.write_fragment, text)
                 self._schedule_follow_scroll()
             if self._last_chunk_line_key is not None:
                 self._push_line(
@@ -455,10 +516,15 @@ class StreamingOutput(Vertical):
             if kind != "user"
             else text
         )
-        chunk = UserInputWidget(text) if kind == "user" else OutputChunk(linked_text, kind=kind)
+        chunk = UserInputWidget(text) if kind == "user" else OutputChunk("", kind=kind)
         line_key = f"chunk:{self._counter + 1}"
-        self._push_line(chunk.rendered_text(), key=line_key)
-        self._append_widget(chunk, line_key=line_key)
+        if isinstance(chunk, OutputChunk):
+            self._append_widget(chunk, line_key=line_key)
+            chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
+            self._push_line(chunk.rendered_text(), key=line_key)
+        else:
+            self._push_line(chunk.rendered_text(), key=line_key)
+            self._append_widget(chunk, line_key=line_key)
         if isinstance(chunk, OutputChunk):
             self._last_chunk = chunk
             self._last_chunk_kind = cast("AgentChunkKind", kind)

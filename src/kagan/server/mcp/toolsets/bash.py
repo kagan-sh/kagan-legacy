@@ -271,9 +271,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
 
             on_update = _on_update
         else:
-            logger.debug(
-                "bash_exec: no task context — output will not be streamed as events"
-            )
+            logger.debug("bash_exec: no task context — output will not be streamed as events")
 
         result = await run_bash(command, cwd=cwd, timeout=timeout, on_update=on_update)
 

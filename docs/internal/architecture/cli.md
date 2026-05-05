@@ -111,7 +111,7 @@ No shared mutable state. No `ctx.obj` passing. Each command creates its own shor
 - Bare `kagan` launches TUI (most common entry point)
 - `kagan chat --prompt "..."` is single-shot; no `--prompt` → interactive REPL
 - Sessions persist automatically; relaunch resumes last REPL session
-- `kagan doctor` output: `PASS`/`WARN`/`FAIL` with `quick fix` hints
+- `kagan doctor` output: default short mode renders a compact Rich summary panel, required-check table, backend panel, and action table; technical mode keeps full `PASS`/`WARN`/`FAIL` detail with fix hints
 - Update hint: one-line before normal output (not for `--version`)
 - CI opt-out: `KAGAN_SKIP_UPDATE_CHECK=1` or `--skip-update-check`
 

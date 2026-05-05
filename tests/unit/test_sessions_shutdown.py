@@ -94,9 +94,7 @@ async def test_make_acp_callback_emits_output_chunks_without_persistence(
     callback = sessions._make_acp_callback("task-1", "session-1")
     await callback("acp-session-1", object())
 
-    assert events.emitted == [
-        ("task-1", "output_chunk", {"text": "hello"}, "session-1", False)
-    ]
+    assert events.emitted == [("task-1", "output_chunk", {"text": "hello"}, "session-1", False)]
 
 
 async def test_handle_acp_done_reraises_unrelated_runtime_error(

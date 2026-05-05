@@ -120,9 +120,7 @@ def test_probe_known_term_programs_are_capable(
     "term",
     ["xterm-kitty", "xterm-ghostty", "wezterm", "alacritty"],
 )
-def test_probe_known_term_values_are_capable(
-    monkeypatch: pytest.MonkeyPatch, term: str
-) -> None:
+def test_probe_known_term_values_are_capable(monkeypatch: pytest.MonkeyPatch, term: str) -> None:
     from kagan.tui._osc8 import is_osc8_supported
 
     monkeypatch.delenv("KAGAN_OSC8", raising=False)
@@ -242,9 +240,7 @@ def test_file_link_returns_osc8_uri_when_supported(
     assert "foo.py" in result
 
 
-def test_file_link_uses_custom_text(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_file_link_uses_custom_text(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from kagan.tui._osc8 import file_link
 
     monkeypatch.setenv("KAGAN_OSC8", "1")

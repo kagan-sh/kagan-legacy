@@ -79,9 +79,7 @@ async def _add_pass_verdicts(core: KaganCore, task_id: str) -> None:
 
     def _op(s) -> None:
         criteria = list(
-            s.exec(
-                select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
-            ).all()
+            s.exec(select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)).all()
         )
         for criterion in criteria:
             s.add(ReviewVerdict(criterion_id=criterion.id, verdict="pass", reason="test"))
@@ -122,9 +120,7 @@ _TASK_ILLEGAL: list[tuple[TaskStatus, TaskStatus]] = [
 
 @pytest.mark.parametrize("frm,to", _TASK_LEGAL)
 @pytest.mark.asyncio
-async def test_transition_task_legal(
-    frm: TaskStatus, to: TaskStatus, core: KaganCore
-) -> None:
+async def test_transition_task_legal(frm: TaskStatus, to: TaskStatus, core: KaganCore) -> None:
     """Legal task transitions complete without raising against a real DB."""
     task_id = await _seed_task(core, status=frm)
     result = await transition_task(core, task_id, to)
@@ -133,9 +129,7 @@ async def test_transition_task_legal(
 
 @pytest.mark.parametrize("frm,to", _TASK_ILLEGAL)
 @pytest.mark.asyncio
-async def test_transition_task_illegal(
-    frm: TaskStatus, to: TaskStatus, core: KaganCore
-) -> None:
+async def test_transition_task_illegal(frm: TaskStatus, to: TaskStatus, core: KaganCore) -> None:
     """Illegal task transitions raise IllegalTransition without touching the DB."""
     task_id = await _seed_task(core, status=frm)
     with pytest.raises(IllegalTransition):
@@ -154,9 +148,7 @@ async def test_transition_task_review_to_done_blocked_when_no_passing_review(
     We use a task with one acceptance criterion and no verdicts so that
     is_review_approved() returns False via the real DB path.
     """
-    task_id = await _seed_task(
-        core, status=TaskStatus.REVIEW, criteria_texts=["Criterion A"]
-    )
+    task_id = await _seed_task(core, status=TaskStatus.REVIEW, criteria_texts=["Criterion A"])
     with pytest.raises(IllegalTransition):
         await transition_task(core, task_id, TaskStatus.DONE)
     task = await core.tasks.get(task_id)
@@ -172,9 +164,7 @@ async def test_transition_task_review_to_done_allowed_when_passing_review(
     This test exercises the P1 fix: the write path now bypasses validate_move(),
     which previously blocked REVIEW→DONE unconditionally.
     """
-    task_id = await _seed_task(
-        core, status=TaskStatus.REVIEW, criteria_texts=["Criterion A"]
-    )
+    task_id = await _seed_task(core, status=TaskStatus.REVIEW, criteria_texts=["Criterion A"])
     await _add_pass_verdicts(core, task_id)
     result = await transition_task(core, task_id, TaskStatus.DONE)
     assert result.status == TaskStatus.DONE
@@ -187,9 +177,7 @@ async def test_transition_task_review_to_done_allowed_when_passing_review(
 async def test_transition_task_propagates_actor_label(core: KaganCore) -> None:
     """The *by* keyword is accepted and does not change observable state."""
     task_id = await _seed_task(core, status=TaskStatus.BACKLOG)
-    result = await transition_task(
-        core, task_id, TaskStatus.IN_PROGRESS, by="orchestrator"
-    )
+    result = await transition_task(core, task_id, TaskStatus.IN_PROGRESS, by="orchestrator")
     assert result.status == TaskStatus.IN_PROGRESS
 
 
@@ -217,9 +205,7 @@ async def test_transition_task_toctou_guard(core: KaganCore) -> None:
             intercepted = True
             # Flip the task to IN_PROGRESS in the DB before the write runs.
             # This simulates a concurrent caller winning the race.
-            await asyncio.to_thread(
-                core.tasks._set_status, task_id, TaskStatus.IN_PROGRESS
-            )
+            await asyncio.to_thread(core.tasks._set_status, task_id, TaskStatus.IN_PROGRESS)
         return await _real_db_async(engine, fn, **kwargs)
 
     with patch("kagan.core.transitions._db_async", side_effect=_patched_db_async):

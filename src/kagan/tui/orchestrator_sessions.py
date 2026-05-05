@@ -82,9 +82,7 @@ class TuiOrchestratorSessionStore:
                 sessions.append(selected)
 
             self._sessions_by_key = {
-                self._session_key(session.id): session
-                for session in sessions
-                if session.id.strip()
+                self._session_key(session.id): session for session in sessions if session.id.strip()
             }
             self._active_key = self._session_key(selected.id)
             await self._client.chat_sessions.set_last_session_id(  # type: ignore[attr-defined]

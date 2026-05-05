@@ -168,9 +168,7 @@ class TaskInspector(Widget):
             self.set_message(
                 "Review blocked: add acceptance criteria before merge.", level="warning"
             )
-        elif task.status is TaskStatus.REVIEW and not bool(
-            getattr(task, "review_approved", False)
-        ):
+        elif task.status is TaskStatus.REVIEW and not bool(getattr(task, "review_approved", False)):
             self.set_message("Ready to approve.", level="info")
         else:
             self.clear_message()

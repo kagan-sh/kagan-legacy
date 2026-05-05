@@ -307,6 +307,76 @@ def test_doctor_short_warns_exit_zero(monkeypatch, tmp_path: Path) -> None:
     assert "WARN" in result.output
 
 
+def test_doctor_short_collapses_optional_backend_warnings(monkeypatch, tmp_path: Path) -> None:
+    checks = [
+        DoctorCheck("git", "pass", "git found", "", "git --version"),
+        DoctorCheck(
+            "agent backends",
+            "pass",
+            "Default backend 'claude-code' ready - 1/3 backends installed",
+            "",
+            "claude --version",
+            category="backend",
+        ),
+        DoctorCheck(
+            "backend: claude-code (default)",
+            "pass",
+            "found",
+            "",
+            "claude --version",
+            category="backend",
+        ),
+        DoctorCheck(
+            "backend: codex",
+            "warn",
+            "missing",
+            "Install 'codex' to enable the 'codex' backend",
+            "codex --version",
+            category="backend",
+        ),
+        DoctorCheck(
+            "backend: gemini-cli",
+            "warn",
+            "missing",
+            "Install 'gemini' to enable the 'gemini-cli' backend",
+            "gemini --version",
+            category="backend",
+        ),
+    ]
+    monkeypatch.setattr("kagan.cli.doctor._collect_doctor_checks", lambda: checks)
+
+    result = CliRunner().invoke(cli, ["doctor"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Agent backends" in result.output
+    assert "Optional missing:" in result.output
+    assert "codex, gemini-cli" in result.output
+    assert "Install 'codex'" not in result.output
+    assert "Install 'gemini'" not in result.output
+
+
+def test_doctor_short_keeps_required_quick_fixes(monkeypatch, tmp_path: Path) -> None:
+    checks = [
+        DoctorCheck("git", "pass", "git found", "", "git --version"),
+        DoctorCheck("tmux", "warn", "tmux missing", "Use an IDE launcher", "tmux -V"),
+        DoctorCheck(
+            "project config",
+            "warn",
+            "pyproject.toml not found",
+            "Run this command from your project root",
+            "test -f pyproject.toml",
+        ),
+    ]
+    monkeypatch.setattr("kagan.cli.doctor._collect_doctor_checks", lambda: checks)
+
+    result = CliRunner().invoke(cli, ["doctor"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Required environment" in result.output
+    assert "Use an IDE launcher" in result.output
+    assert "Run this command from your project root" in result.output
+
+
 def test_doctor_fail_exits_one(monkeypatch, tmp_path: Path) -> None:
     checks = [
         DoctorCheck("db", "fail", "broken", "fix", "kagan list"),
@@ -678,6 +748,7 @@ def test_chat_interactive_banner_contains_help_hint(monkeypatch, tmp_path: Path)
     async def _fake_run_chat_async(*, prompt=None, session_id=None, agent=None, yolo=False):
         # Simulate interactive call: no prompt
         from kagan.cli.chat.repl import _write_boot_banner
+
         _write_boot_banner(interactive=prompt is None)
 
     monkeypatch.setattr("kagan.cli.chat.run_chat_async", _fake_run_chat_async)

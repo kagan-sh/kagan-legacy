@@ -45,3 +45,12 @@ def test_tui_modules_declare_bindings_only_in_keybindings_module() -> None:
         "Binding declarations must be centralized in src/kagan/tui/keybindings.py."
         f"\nFound declarations in:\n{details}"
     )
+
+
+def test_kanban_global_hints_do_not_duplicate_fixed_quick_actions_strip() -> None:
+    from kagan.tui.screens.kanban import KanbanScreen
+
+    labels = {description.lower() for _, description in KanbanScreen._global_hints()}
+
+    assert "quick actions" not in labels
+    assert "help" not in labels

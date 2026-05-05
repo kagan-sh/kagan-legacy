@@ -3,11 +3,10 @@ from typing import Any, cast
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.containers import Vertical
 
 from kagan.core._events import Events, _BoundedEventQueue
 from kagan.core.models import SessionEvent
-from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput, _sanitize_stream_text
+from kagan.tui.widgets.streaming import StreamingOutput, _sanitize_stream_text
 
 pytestmark = [pytest.mark.unit]
 
@@ -58,11 +57,7 @@ async def test_streaming_output_append_chunk_sanitizes_before_merge() -> None:
         stream.append_chunk("wor\x07ld", kind="assistant", merge=True)
         await pilot.pause()
 
-        content = stream.query_one("#streaming-body-content", Vertical)
-        chunks = [child for child in content.children if isinstance(child, OutputChunk)]
-
-        assert len(chunks) == 1
-        assert chunks[0]._accumulated_text == "hello\nworld"
+        assert stream.get_text_content() == "hello\nworld"
 
 
 @pytest.mark.asyncio

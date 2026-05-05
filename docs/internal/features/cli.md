@@ -39,7 +39,7 @@ ______________________________________________________________________
 
 - Checks: git, agent backend, tmux, IDE, DB, project config
 - Each check: pass, warn, or fail with fix hints
-- `--verbosity`: `tldr` (one-line summary), `short` (default, per-check), `technical` (full detail)
+- `--verbosity`: `tldr` (one-line summary), `short` (default, Rich summary/actions view), `technical` (full per-check detail)
 - Exit 0 if all pass/warn, exit 1 if any fail
 
 ### `kagan projects`

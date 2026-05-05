@@ -25,7 +25,6 @@ class Priority(IntEnum):
     CRITICAL = 3
 
 
-
 class AgentRole(StrEnum):
     WORKER = "WORKER"
     REVIEWER = "REVIEWER"

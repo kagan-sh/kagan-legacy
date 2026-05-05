@@ -30,6 +30,7 @@ ______________________________________________________________________
 - richer task cards with review state, acceptance-criteria count, last activity, workspace state, and live session telemetry
 - task cards can show lightweight watcher counts from live client presence when another web or editor client is actively focused on that task
 - desktop right rail supports task inspection and related chat preview
+- the header repo selector auto-selects an available repo and opens Add Repository when an active project has none
 - `Cmd/Ctrl+Shift+W` toggles to the conversation-first workspace view
 
 ______________________________________________________________________
@@ -65,7 +66,7 @@ ______________________________________________________________________
 - live execution streaming surfaces in the **ChatSidePanel**, a right-rail overlay on the task detail page
 - the overlay auto-opens when a task has an active session or when navigating with `?lane=worker|reviewer`
 - Worker/Reviewer lane toggle in the overlay header switches streaming context
-- LIVE indicator when events are actively streaming
+- LIVE indicator and streaming status use the shared animated wave glyph
 - the overlay filters events by the active session ID
 - `/session/:taskId` redirects to `/task/:taskId?lane=worker` which auto-opens the overlay
 - session picker navigates to `/task/:id?lane=...` instead of the old `/session/:taskId` route
@@ -79,7 +80,7 @@ ______________________________________________________________________
 - Session Switcher (`Cmd/Ctrl+Shift+K`) provides a global session index across orchestrator and task-linked sessions
 - `/chat/:id` shows orchestrator conversation history, streaming output, slash commands, and backend metadata
 - task-specific quick-jump entry points link the ChatSidePanel overlay and chat surfaces together
-- during streaming, a rotating half-disc indicator and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift (shape language matches the chat REPL and TUI)
+- during streaming, the shared animated wave glyph and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift (shape language matches the chat REPL and TUI)
 - session titles are auto-generated after the first exchange via a lightweight ACP call and pushed to the client via `CHAT_SESSION_UPDATED` SSE event
 
 ______________________________________________________________________

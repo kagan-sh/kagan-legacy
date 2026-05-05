@@ -265,12 +265,12 @@ A task can be executed across multiple sessions with different personas in seque
 
 ### Three Streaming Paths
 
-|                   | ACP (managed)                     | MCP (interactive / external)         | Pi RPC (pi-coding-agent)             |
-| ----------------- | --------------------------------- | ------------------------------------ | ------------------------------------ |
-| **When**          | ACP-capable backends              | Interactive launches, IDE hosts      | `pi-coding-agent` backend            |
-| **Transport**     | Direct STDIO JSON-RPC (ACP)       | Agent spawns kagan MCP as subprocess | JSONL over subprocess stdin/stdout   |
-| **Bidirectional** | Yes — kagan sends prompts, cancel | No — caller invokes tools            | Yes — kagan sends commands, abort    |
-| **Process**       | Kagan owns (can terminate)        | Agent runs in external environment   | Kagan owns (long-lived per session)  |
+|                   | ACP (managed)                     | MCP (interactive / external)         | Pi RPC (pi-coding-agent)            |
+| ----------------- | --------------------------------- | ------------------------------------ | ----------------------------------- |
+| **When**          | ACP-capable backends              | Interactive launches, IDE hosts      | `pi-coding-agent` backend           |
+| **Transport**     | Direct STDIO JSON-RPC (ACP)       | Agent spawns kagan MCP as subprocess | JSONL over subprocess stdin/stdout  |
+| **Bidirectional** | Yes — kagan sends prompts, cancel | No — caller invokes tools            | Yes — kagan sends commands, abort   |
+| **Process**       | Kagan owns (can terminate)        | Agent runs in external environment   | Kagan owns (long-lived per session) |
 
 **Path A — ACP:** Backends with `ACP_STREAMING` capability use piped stdin/stdout. Events flow through `KaganACPClient.session_update()` → `map_acp_update_to_event()` → `Events.emit()`. A repetition guard hashes tool calls and cancels stuck agents (≥4 identical calls in last 10).
 
@@ -341,23 +341,23 @@ Created per-repo via `client._git_for_task()`. Operations: `worktree_add`, `work
 
 Kagan supports any CLI-based coding agent through a backend registry.
 
-| Backend          | CLI Executable | Notes          |
-| ---------------- | -------------- | -------------- |
-| `claude-code`    | `claude`       | Anthropic      |
-| `codex`          | `codex`        | OpenAI         |
-| `gemini-cli`     | `gemini`       | Google         |
-| `kimi-cli`       | `kimi`         | Moonshot       |
-| `github-copilot` | `copilot`      | GitHub         |
-| `goose`          | `goose`        | Block          |
-| `openhands`      | `openhands`    | Open-source    |
-| `opencode`       | `opencode`     | Open-source    |
-| `auggie`         | `auggie`       | Augment        |
-| `amp`            | `amp`          | Sourcegraph    |
-| `docker-cagent`  | `cagent`       | Docker         |
-| `stakpak`        | `stakpak`      | Infrastructure |
-| `mistral-vibe`   | `vibe`         | Mistral        |
-| `vt-code`        | `vtcode`       | VT Code        |
-| `pi-coding-agent`| `npx`          | Pi (Mariozechner) — JSONL-RPC, not CLI-launched |
+| Backend           | CLI Executable | Notes                                           |
+| ----------------- | -------------- | ----------------------------------------------- |
+| `claude-code`     | `claude`       | Anthropic                                       |
+| `codex`           | `codex`        | OpenAI                                          |
+| `gemini-cli`      | `gemini`       | Google                                          |
+| `kimi-cli`        | `kimi`         | Moonshot                                        |
+| `github-copilot`  | `copilot`      | GitHub                                          |
+| `goose`           | `goose`        | Block                                           |
+| `openhands`       | `openhands`    | Open-source                                     |
+| `opencode`        | `opencode`     | Open-source                                     |
+| `auggie`          | `auggie`       | Augment                                         |
+| `amp`             | `amp`          | Sourcegraph                                     |
+| `docker-cagent`   | `cagent`       | Docker                                          |
+| `stakpak`         | `stakpak`      | Infrastructure                                  |
+| `mistral-vibe`    | `vibe`         | Mistral                                         |
+| `vt-code`         | `vtcode`       | VT Code                                         |
+| `pi-coding-agent` | `npx`          | Pi (Mariozechner) — JSONL-RPC, not CLI-launched |
 
 **Backend aliases:** `claude` → `claude-code`; `gemini` → `gemini-cli`; `kimi` → `kimi-cli`; `pi` → `pi-coding-agent`.
 
@@ -411,22 +411,22 @@ if the process has not exited.
 **Event translation.** `translate_pi_rpc_message()` converts a single parsed pi frame into an
 `AgentEvent`. The mapping:
 
-| Pi frame type        | `AgentEvent` variant  | Notes                                        |
-| -------------------- | --------------------- | -------------------------------------------- |
-| `agent_start`        | `AgentStart`          |                                              |
-| `agent_end`          | `AgentEnd`            | Also sets `done = True` to end the read loop |
-| `turn_start`         | `TurnStart`           | turn_index supplied by caller counter        |
-| `turn_end`           | `TurnEnd`             |                                              |
-| `message_start`      | `MessageStart`        | Assistant messages only; user messages skipped |
-| `message_update`     | `MessageUpdate`       | `text_delta` and `thinking_delta` only       |
-| `message_end`        | `MessageEnd`          | Assistant messages only                      |
-| `tool_execution_start` | `ToolExecutionStart` |                                              |
-| `tool_execution_update` | `ToolExecutionUpdate` |                                            |
-| `tool_execution_end` | `ToolExecutionEnd`    |                                              |
-| `compaction_start`   | `CompactionOccurred`  | `compaction_end` is ignored (start suffices) |
-| `response`           | `None`                | RPC ack frames                               |
-| `extension_ui_request` | `None`              | UI frames not applicable in headless mode    |
-| anything else        | `None`                | Silently discarded                           |
+| Pi frame type           | `AgentEvent` variant  | Notes                                          |
+| ----------------------- | --------------------- | ---------------------------------------------- |
+| `agent_start`           | `AgentStart`          |                                                |
+| `agent_end`             | `AgentEnd`            | Also sets `done = True` to end the read loop   |
+| `turn_start`            | `TurnStart`           | turn_index supplied by caller counter          |
+| `turn_end`              | `TurnEnd`             |                                                |
+| `message_start`         | `MessageStart`        | Assistant messages only; user messages skipped |
+| `message_update`        | `MessageUpdate`       | `text_delta` and `thinking_delta` only         |
+| `message_end`           | `MessageEnd`          | Assistant messages only                        |
+| `tool_execution_start`  | `ToolExecutionStart`  |                                                |
+| `tool_execution_update` | `ToolExecutionUpdate` |                                                |
+| `tool_execution_end`    | `ToolExecutionEnd`    |                                                |
+| `compaction_start`      | `CompactionOccurred`  | `compaction_end` is ignored (start suffices)   |
+| `response`              | `None`                | RPC ack frames                                 |
+| `extension_ui_request`  | `None`                | UI frames not applicable in headless mode      |
+| anything else           | `None`                | Silently discarded                             |
 
 **Cancellation.** `prompt()` accepts an `asyncio.Event cancel_event`. When set, a background
 task sends `{"type": "abort"}` to stdin. The read loop still drains remaining output until EOF

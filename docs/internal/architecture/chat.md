@@ -40,8 +40,19 @@ ______________________________________________________________________
 ```text
 src/kagan/cli/chat/
 ├── __init__.py        # Public API exports
+├── _approval_batch.py # Batched approval state
+├── _approval_panel.py # Rich approval panel rendering
+├── _chat_ui.py        # Shared chat prompt/status UI helpers
 ├── _completion.py     # Slash command completion
+├── _handshake.py      # Agent handshake/preflight helpers
+├── _permission_ui.py  # Permission prompt interactions
+├── _renderer.py       # ACP event renderer and tool call display
+├── _session_picker.py # Interactive session picker
+├── _signals.py        # Signal handling helpers
+├── _streaming.py      # Immediate Markdown streaming region
+├── _theme.py          # Chat colors and glyphs
 ├── _title.py          # Session title generation
+├── _yolo.py           # Yolo-mode confirmation and display
 ├── controller.py      # ChatController, _OrchestratorACPClient
 ├── acp.py             # run_orchestrator_turn, ACP bridge
 ├── agents.py          # Agent backend selection
@@ -62,7 +73,7 @@ Main orchestrator for REPL interaction:
 
 - Manages orchestrator agent lifecycle via ACP
 - Processes user input (text or slash commands)
-- Streams agent output to Rich console
+- Streams agent output to the Rich console as chunks arrive
 - Maintains conversation state
 
 | Method                                            | Description                      |
@@ -138,10 +149,10 @@ ChatController.process_input()
        ├─ acp.connect_to_agent() ───────► STDIO handshake
        ├─ prompt(session/new) ──────────► send message
        └─ stream loop
-           ├─ AgentMessageChunk ──► Rich console
-           ├─ ToolCallStart ──────► print tool name
-           ├─ ToolCallProgress ───► update status
-           └─ session/end ────────► finalize
+          ├─ AgentMessageChunk ──► ChatEventRenderer ──► StreamingMarkdownRegion
+          ├─ ToolCallStart ──────► grouped tool status line
+          ├─ ToolCallProgress ───► minimal live state label
+          └─ session/end ────────► finalize
 ```
 
 ### ACP Integration
@@ -149,7 +160,9 @@ ChatController.process_input()
 - `_OrchestratorACPClient` — concrete ACP client adapter
 - `_CaptureACPClient` — silent variant for title generation
 - `warm_orchestrator_backend()` — pre-warms agent to reduce latency
-- Tool calls rendered with status indicators (pending ✓/✗)
+- `ChatEventRenderer` — converts ACP session updates into console output, tool records, and toolbar state
+- `StreamingMarkdownRegion` — writes text fragments immediately, flushes after streamed words, and keeps the final accumulated text available for session history
+- Tool calls rendered with compact live indicators for thinking, commands, reads, searches, images, and generic tool activity
 
 **Lightweight mode** (`run_orchestrator_turn(lightweight=True)`): No MCP server, no system prompt, sends prompt as-is for simple completions.
 

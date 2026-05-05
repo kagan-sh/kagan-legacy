@@ -3,8 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import { useSetAtom } from 'jotai';
-import { fetchTasksAtom } from '@/lib/atoms/board';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { boardRepoFilterAtom, fetchTasksAtom } from '@/lib/atoms/board';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -31,6 +31,7 @@ interface CreateTaskDialogProps {
 
 export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) {
   const fetchTasks = useSetAtom(fetchTasksAtom);
+  const activeRepoId = useAtomValue(boardRepoFilterAtom);
   const [submitting, setSubmitting] = useState(false);
   const backends = useBackendOptions(open);
   const criteriaList = useCriteriaList();
@@ -62,6 +63,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         launcher: data.launcher || undefined,
         base_branch: data.base_branch?.trim() || undefined,
         acceptance_criteria: criteriaList.criteria.length > 0 ? criteriaList.criteria : undefined,
+        repo_id: activeRepoId ?? undefined,
         github_issue: resolveGithubIssue(data),
       });
       toast.success('Task created');

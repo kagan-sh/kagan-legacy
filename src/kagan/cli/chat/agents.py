@@ -1,9 +1,12 @@
 """Agent backend listing, selection, and formatting."""
 
+import shutil
 from typing import TypedDict
 
 from kagan.core import (
     AgentError,
+    BackendCapability,
+    BackendSpec,
     get_backend_spec,
     list_available_backends,
     list_backend_specs,
@@ -83,17 +86,48 @@ def format_agent_usage() -> str:
     return "Usage: `/agents`, `/agents name`, or `/agents number`"
 
 
+def _is_chat_backend_available(spec: BackendSpec, *, base_available: bool) -> bool:
+    """Return whether the backend can be launched by chat streaming."""
+    if not base_available:
+        return False
+    if not spec.has_capability(BackendCapability.ACP_STREAMING):
+        return True
+
+    acp_cmd = list(spec.acp_command) or ([spec.executable] if spec.executable else [])
+    return bool(acp_cmd) and shutil.which(acp_cmd[0]) is not None
+
+
 def list_backends_with_availability() -> list[AgentBackendAvailability]:
     availability = list_available_backends()
     specs = list_backend_specs()
     return [
         {
             "name": name,
-            "available": availability.get(name, False),
-            "reference": specs[name].reference,
+            "available": _is_chat_backend_available(
+                spec,
+                base_available=availability.get(name, False),
+            ),
+            "reference": spec.reference,
         }
-        for name in specs
+        for name, spec in specs.items()
     ]
+
+
+def resolve_available_chat_backend(
+    settings: dict[str, str],
+    *,
+    backends: list[AgentBackendAvailability] | None = None,
+) -> str:
+    """Return the configured default, or the first launchable chat backend."""
+    default = resolve_default_agent_backend(settings)
+    resolved_backends = backends if backends is not None else list_backends_with_availability()
+    by_name = {backend["name"]: backend for backend in resolved_backends}
+    if by_name.get(default, {}).get("available") is True:
+        return default
+    for backend in resolved_backends:
+        if backend["available"]:
+            return backend["name"]
+    return default
 
 
 def resolve_default_agent_backend(settings: dict[str, str]) -> str:

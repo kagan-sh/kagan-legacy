@@ -27,6 +27,22 @@ if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
 
 
+_REVIEW_STRICTNESS_VALUES: set[str] = {"strict", "balanced", "relaxed"}
+_PLANNING_DEPTH_VALUES: set[str] = {"always", "multi_task", "never"}
+_ATTACHED_LAUNCHER_VALUES: set[str] = {
+    "tmux",
+    "nvim",
+    "vscode",
+    "cursor",
+    "windsurf",
+    "kiro",
+    "antigravity",
+}
+_STARTUP_SURFACE_VALUES: set[str] = {"tui", "web", "chat", "ask"}
+_BASE_REF_STRATEGY_VALUES: set[str] = {"local_if_ahead", "remote", "local"}
+_GIT_USER_MODE_VALUES: set[str] = {"kagan_agent", "system_default", "custom"}
+
+
 class CategoryList(OptionList):
     def __init__(self, categories: list[SettingCategory]) -> None:
         self._categories = categories
@@ -149,57 +165,46 @@ class SettingsModal(ModalScreen[None]):
         self._update_search_status("")
 
     def _set_values(self, settings: dict[str, str]) -> None:
-        def _sw(wid: str, key: str, *, default: bool) -> None:
-            self.query_one(wid, Switch).value = _is_enabled(settings.get(key), default=default)
-
-        def _sel(wid: str, value: str, allowed: set[str], fallback: str) -> None:
-            self.query_one(wid, Select).value = value if value in allowed else fallback
-
         available_agents = {v for _, v in build_agent_backend_options()}
         default_agent = resolve_default_agent_backend(settings)
         if default_agent not in available_agents:
             default_agent = resolve_default_agent_backend({})
         self.query_one("#settings-default-agent", Select).value = default_agent
 
-        _sel(
-            "#settings-review-strictness",
-            settings.get("review_strictness", "balanced"),
-            {"strict", "balanced", "relaxed"},
-            "balanced",
+        self.query_one("#settings-review-strictness", Select).value = (
+            settings.get("review_strictness", "balanced")
+            if settings.get("review_strictness", "balanced") in _REVIEW_STRICTNESS_VALUES
+            else "balanced"
         )
-        _sel(
-            "#settings-planning-depth",
-            settings.get("planning_depth", "always"),
-            {"always", "multi_task", "never"},
-            "always",
+        self.query_one("#settings-planning-depth", Select).value = (
+            settings.get("planning_depth", "always")
+            if settings.get("planning_depth", "always") in _PLANNING_DEPTH_VALUES
+            else "always"
         )
-        _sel(
-            "#settings-theme",
-            settings.get("theme", ""),
-            valid_theme_names(),
-            "",
+        self.query_one("#settings-theme", Select).value = (
+            settings.get("theme", "")
+            if settings.get("theme", "") in valid_theme_names()
+            else ""
         )
-        _sel(
-            "#settings-attached-launcher",
-            settings.get("attached_launcher", "tmux"),
-            {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"},
-            "tmux",
+        self.query_one("#settings-attached-launcher", Select).value = (
+            settings.get("attached_launcher", "tmux")
+            if settings.get("attached_launcher", "tmux") in _ATTACHED_LAUNCHER_VALUES
+            else "tmux"
         )
         startup_surface = settings.get("startup_default_surface") or settings.get(
             "ui.surface_chooser_last_choice", "tui"
         )
-        _sel("#settings-startup-surface", startup_surface, {"tui", "web", "chat", "ask"}, "tui")
-        _sel(
-            "#settings-base-ref-strategy",
-            settings.get("worktree_base_ref_strategy", "local_if_ahead"),
-            {"local_if_ahead", "remote", "local"},
-            "local_if_ahead",
+        self.query_one("#settings-startup-surface", Select).value = (
+            startup_surface if startup_surface in _STARTUP_SURFACE_VALUES else "tui"
         )
-        _sel(
-            "#settings-git-user-mode",
-            settings.get("git_user_mode", "kagan_agent"),
-            {"kagan_agent", "system_default", "custom"},
-            "kagan_agent",
+        _base_ref = settings.get("worktree_base_ref_strategy", "local_if_ahead")
+        self.query_one("#settings-base-ref-strategy", Select).value = (
+            _base_ref if _base_ref in _BASE_REF_STRATEGY_VALUES else "local_if_ahead"
+        )
+        self.query_one("#settings-git-user-mode", Select).value = (
+            settings.get("git_user_mode", "kagan_agent")
+            if settings.get("git_user_mode", "kagan_agent") in _GIT_USER_MODE_VALUES
+            else "kagan_agent"
         )
 
         self.query_one("#settings-default-base-branch", Input).value = settings.get(
@@ -211,16 +216,26 @@ class SettingsModal(ModalScreen[None]):
             "additional_instructions", ""
         )
 
-        _sw("#settings-auto-confirm-single", "auto_confirm_single_tasks", default=False)
-        _sw("#settings-auto-review", "auto_review", default=True)
-        _sw("#settings-open-last-project", "open_last_project_on_startup", default=False)
-        _sw("#settings-auto-init-repo", "auto_init_git_repo", default=True)
-        _sw("#settings-auto-init-commit", "auto_init_git_initial_commit", default=True)
-        _sw("#settings-require-review-approval", "require_review_approval", default=False)
-        _sw(
-            "#settings-skip-attached-instructions",
-            "skip_attached_instructions_popup",
-            default=False,
+        self.query_one("#settings-auto-confirm-single", Switch).value = _is_enabled(
+            settings.get("auto_confirm_single_tasks"), default=False
+        )
+        self.query_one("#settings-auto-review", Switch).value = _is_enabled(
+            settings.get("auto_review"), default=True
+        )
+        self.query_one("#settings-open-last-project", Switch).value = _is_enabled(
+            settings.get("open_last_project_on_startup"), default=False
+        )
+        self.query_one("#settings-auto-init-repo", Switch).value = _is_enabled(
+            settings.get("auto_init_git_repo"), default=True
+        )
+        self.query_one("#settings-auto-init-commit", Switch).value = _is_enabled(
+            settings.get("auto_init_git_initial_commit"), default=True
+        )
+        self.query_one("#settings-require-review-approval", Switch).value = _is_enabled(
+            settings.get("require_review_approval"), default=False
+        )
+        self.query_one("#settings-skip-attached-instructions", Switch).value = _is_enabled(
+            settings.get("skip_attached_instructions_popup"), default=False
         )
 
         overrides = detect_dotfile_overrides(Path.cwd())
@@ -286,13 +301,6 @@ class SettingsModal(ModalScreen[None]):
         self.run_worker(self._save_all_settings(), exit_on_error=False)
 
     async def _save_all_settings(self) -> None:
-        def _sv(wid: str, allowed: set[str], fallback: str) -> str:
-            val = self.query_one(wid, Select).value
-            return val if isinstance(val, str) and val in allowed else fallback
-
-        def _bool(wid: str) -> str:
-            return "true" if self.query_one(wid, Switch).value else "false"
-
         agent_val = self.query_one("#settings-default-agent", Select).value
         available_agents = {v for _, v in build_agent_backend_options()}
         default_agent = (
@@ -301,32 +309,33 @@ class SettingsModal(ModalScreen[None]):
             else resolve_default_agent_backend({})
         )
 
+        def _select_value(wid: str, allowed: set[str], fallback: str) -> str:
+            val = self.query_one(wid, Select).value
+            return val if isinstance(val, str) and val in allowed else fallback
+
+        def _switch_value(wid: str) -> str:
+            return "true" if self.query_one(wid, Switch).value else "false"
+
         updates: dict[str, str] = {
             "default_agent_backend": default_agent,
-            "theme": _sv("#settings-theme", valid_theme_names(), ""),
-            "review_strictness": _sv(
-                "#settings-review-strictness", {"strict", "balanced", "relaxed"}, "balanced"
+            "theme": _select_value("#settings-theme", valid_theme_names(), ""),
+            "review_strictness": _select_value(
+                "#settings-review-strictness", _REVIEW_STRICTNESS_VALUES, "balanced"
             ),
-            "planning_depth": _sv(
-                "#settings-planning-depth", {"always", "multi_task", "never"}, "always"
+            "planning_depth": _select_value(
+                "#settings-planning-depth", _PLANNING_DEPTH_VALUES, "always"
             ),
-            "attached_launcher": _sv(
-                "#settings-attached-launcher",
-                {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"},
-                "tmux",
+            "attached_launcher": _select_value(
+                "#settings-attached-launcher", _ATTACHED_LAUNCHER_VALUES, "tmux"
             ),
-            "startup_default_surface": _sv(
-                "#settings-startup-surface", {"tui", "web", "chat", "ask"}, "tui"
+            "startup_default_surface": _select_value(
+                "#settings-startup-surface", _STARTUP_SURFACE_VALUES, "tui"
             ),
-            "worktree_base_ref_strategy": _sv(
-                "#settings-base-ref-strategy",
-                {"local_if_ahead", "remote", "local"},
-                "local_if_ahead",
+            "worktree_base_ref_strategy": _select_value(
+                "#settings-base-ref-strategy", _BASE_REF_STRATEGY_VALUES, "local_if_ahead"
             ),
-            "git_user_mode": _sv(
-                "#settings-git-user-mode",
-                {"kagan_agent", "system_default", "custom"},
-                "kagan_agent",
+            "git_user_mode": _select_value(
+                "#settings-git-user-mode", _GIT_USER_MODE_VALUES, "kagan_agent"
             ),
             "default_base_branch": (
                 self.query_one("#settings-default-base-branch", Input).value.strip() or "main"
@@ -334,13 +343,15 @@ class SettingsModal(ModalScreen[None]):
             "additional_instructions": (
                 self.query_one("#settings-additional-instructions", TextArea).text.strip()
             ),
-            "auto_review": _bool("#settings-auto-review"),
-            "open_last_project_on_startup": _bool("#settings-open-last-project"),
-            "auto_init_git_repo": _bool("#settings-auto-init-repo"),
-            "auto_init_git_initial_commit": _bool("#settings-auto-init-commit"),
-            "require_review_approval": _bool("#settings-require-review-approval"),
-            "skip_attached_instructions_popup": _bool("#settings-skip-attached-instructions"),
-            "auto_confirm_single_tasks": _bool("#settings-auto-confirm-single"),
+            "auto_review": _switch_value("#settings-auto-review"),
+            "open_last_project_on_startup": _switch_value("#settings-open-last-project"),
+            "auto_init_git_repo": _switch_value("#settings-auto-init-repo"),
+            "auto_init_git_initial_commit": _switch_value("#settings-auto-init-commit"),
+            "require_review_approval": _switch_value("#settings-require-review-approval"),
+            "skip_attached_instructions_popup": _switch_value(
+                "#settings-skip-attached-instructions"
+            ),
+            "auto_confirm_single_tasks": _switch_value("#settings-auto-confirm-single"),
         }
 
         git_user_name = self.query_one("#settings-git-user-name", Input).value.strip()

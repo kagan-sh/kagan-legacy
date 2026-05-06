@@ -83,36 +83,48 @@ class TaskEditorModal(ModalScreen[None]):
                     classes="modal-action-hint",
                 )
 
-    async def on_task_submitted(self, message: TaskSubmitted) -> None:
+    async def on_task_submitted(self, event: TaskSubmitted) -> None:
+        if self._editing_task:
+            await self._update_task(event)
+        else:
+            await self._create_task(event)
+
+    async def _create_task(self, event: TaskSubmitted) -> None:
         editor = self.query_one(TaskEditor)
         acceptance_criteria = editor.acceptance_criteria()
         try:
-            if self._editing_task is None:
-                await self.kagan_app.core.tasks.create(
-                    message.title,
-                    description=message.description,
-                    priority=message.priority,
-                    base_branch=message.base_branch,
-                    agent_backend=message.agent_backend,
-                    launcher=message.launcher,
-                    acceptance_criteria=acceptance_criteria,
-                    github_issue=message.github_issue,
-                )
-            else:
-                await self.kagan_app.core.tasks.update(
-                    self._editing_task.id,
-                    title=message.title,
-                    description=message.description,
-                    priority=message.priority,
-                    base_branch=message.base_branch,
-                    agent_backend=message.agent_backend,
-                    launcher=message.launcher,
-                    acceptance_criteria=acceptance_criteria,
-                )
+            await self.kagan_app.core.tasks.create(
+                event.title,
+                description=event.description,
+                priority=event.priority,
+                base_branch=event.base_branch,
+                agent_backend=event.agent_backend,
+                launcher=event.launcher,
+                acceptance_criteria=acceptance_criteria,
+                github_issue=event.github_issue,
+            )
         except Exception as exc:  # quality-allow-broad-except
             self.kagan_app.notify(f"Unable to save task: {exc}", severity="error")
             return
+        self.dismiss(None)
 
+    async def _update_task(self, event: TaskSubmitted) -> None:
+        editor = self.query_one(TaskEditor)
+        acceptance_criteria = editor.acceptance_criteria()
+        try:
+            await self.kagan_app.core.tasks.update(
+                self._editing_task.id,
+                title=event.title,
+                description=event.description,
+                priority=event.priority,
+                base_branch=event.base_branch,
+                agent_backend=event.agent_backend,
+                launcher=event.launcher,
+                acceptance_criteria=acceptance_criteria,
+            )
+        except Exception as exc:  # quality-allow-broad-except
+            self.kagan_app.notify(f"Unable to save task: {exc}", severity="error")
+            return
         self.dismiss(None)
 
     def on_task_editor_cancelled(self, _: TaskEditor.Cancelled) -> None:

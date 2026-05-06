@@ -38,6 +38,7 @@ class WorkspaceScreen(Screen[None]):
         self._chat_session_switch_token = 0
         self._session_items: list[ChatSessionListItem] = []
         self._visible_session_items: list[ChatSessionListItem] = []
+        self._footer_keys: dict[str, str] = {}
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -78,6 +79,17 @@ class WorkspaceScreen(Screen[None]):
         yield Static("", id="workspace-footer")
 
     async def on_mount(self) -> None:
+        self._footer_keys = {
+            "focus_search": get_key_for_action(WORKSPACE_BINDINGS, "focus_search", default="/"),
+            "new_session": get_key_for_action(WORKSPACE_BINDINGS, "new_session", default="n"),
+            "delete_session": get_key_for_action(WORKSPACE_BINDINGS, "delete_session", default="x"),
+            "toggle_board": get_key_for_action(WORKSPACE_BINDINGS, "toggle_board", default="w"),
+            "focus_chat": get_key_for_action(WORKSPACE_BINDINGS, "focus_chat", default="Ctrl+."),
+            "switch_session": get_key_for_action(
+                WORKSPACE_BINDINGS, "switch_session", default="Ctrl+K"
+            ),
+            "open_session": get_key_for_action(WORKSPACE_BINDINGS, "open_session", default="Enter"),
+        }
         self._refresh_header()
         await self._refresh_header_context()
         self._update_footer()
@@ -603,13 +615,26 @@ class WorkspaceScreen(Screen[None]):
         subtitle.update(" · ".join(parts))
 
     def _update_footer(self, focused: Widget | None = None) -> None:
-        search_key = get_key_for_action(WORKSPACE_BINDINGS, "focus_search", default="/")
-        new_key = get_key_for_action(WORKSPACE_BINDINGS, "new_session", default="n")
-        delete_key = get_key_for_action(WORKSPACE_BINDINGS, "delete_session", default="x")
-        board_key = get_key_for_action(WORKSPACE_BINDINGS, "toggle_board", default="w")
-        chat_key = get_key_for_action(WORKSPACE_BINDINGS, "focus_chat", default="Ctrl+.")
-        switch_key = get_key_for_action(WORKSPACE_BINDINGS, "switch_session", default="Ctrl+K")
-        open_key = get_key_for_action(WORKSPACE_BINDINGS, "open_session", default="Enter")
+        keys = {
+            "focus_search": get_key_for_action(WORKSPACE_BINDINGS, "focus_search", default="/"),
+            "new_session": get_key_for_action(WORKSPACE_BINDINGS, "new_session", default="n"),
+            "delete_session": get_key_for_action(
+                WORKSPACE_BINDINGS, "delete_session", default="x"
+            ),
+            "toggle_board": get_key_for_action(WORKSPACE_BINDINGS, "toggle_board", default="w"),
+            "focus_chat": get_key_for_action(WORKSPACE_BINDINGS, "focus_chat", default="Ctrl+."),
+            "switch_session": get_key_for_action(
+                WORKSPACE_BINDINGS, "switch_session", default="Ctrl+K"
+            ),
+            "open_session": get_key_for_action(WORKSPACE_BINDINGS, "open_session", default="Enter"),
+        }
+        search_key = keys["focus_search"]
+        new_key = keys["new_session"]
+        delete_key = keys["delete_session"]
+        board_key = keys["toggle_board"]
+        chat_key = keys["focus_chat"]
+        switch_key = keys["switch_session"]
+        open_key = keys["open_session"]
         widget = focused or self.focused
         search = self.query_one("#workspace-search", Input)
         chat = self.query_one("#workspace-chat", ChatPanel)

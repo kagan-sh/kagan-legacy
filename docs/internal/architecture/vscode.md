@@ -37,7 +37,9 @@ packages/vscode/src/
 │   ├── tasks.scm.ts                # Task diffs (SCM / TextDocumentContentProvider)
 │   ├── tasks.scm.helpers.ts        # Diff parsing helpers
 │   ├── tasks.terminal.ts           # Terminal attach (tmux, nvim, IDE launchers)
-│   └── tasks.terminal.helpers.ts   # Launcher normalization, deep links
+│   ├── tasks.terminal.helpers.ts   # Launcher normalization, deep links
+│   ├── mention-link-provider.ts    # @task / @session links in editor docs
+│   └── mention-completion-provider.ts # @ typeahead for tasks/sessions
 ├── commands/
 │   ├── tasks.ts                    # Task CRUD, run, cancel, move, edit
 │   └── review.ts                   # Approve, reject, merge

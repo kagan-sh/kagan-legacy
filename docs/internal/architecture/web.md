@@ -34,6 +34,7 @@ packages/web/src/
 │   ├── task-detail-page.tsx    # unified task workspace (Overview, Changes, Review tabs)
 │   ├── chat-page.tsx
 │   ├── settings-page.tsx
+│   ├── home-page.tsx
 │   ├── welcome-page.tsx        # onboarding/project setup page
 ├── components/
 │   ├── board/

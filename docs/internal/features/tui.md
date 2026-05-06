@@ -77,6 +77,11 @@ ______________________________________________________________________
 - Session Dashboard exists in the codebase for dedicated run monitoring, but is not the default board navigation target today
 - Backend selection and session switching are available from overlays and pickers
 
+## 7a. Diagnostics & Analytics Modals
+
+- DoctorModal (`screens/doctor_modal.py`) — runs the same checks as `kagan doctor` from inside the TUI; supports `tldr`/`short`/`technical` verbosity views
+- AnalyticsModal (`screens/analytics.py`) — surfaces backend success rates and session timeline data (read-only) without leaving the board
+
 ______________________________________________________________________
 
 ## 8. Keybindings Snapshot

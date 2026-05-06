@@ -7,7 +7,6 @@
  */
 import {
   Bot,
-  ChartBar,
   Check,
   CircleQuestionMark,
   Cog,
@@ -121,14 +120,6 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
     keywords: ['workspace', 'sessions', 'agents'],
     icon: MessageSquareText,
     handler: ({ navigate }) => navigate('/workspace'),
-  },
-  {
-    id: 'nav-analytics',
-    title: 'Go to Analytics',
-    section: 'Navigate',
-    keywords: ['analytics', 'metrics', 'stats', 'charts'],
-    icon: ChartBar,
-    handler: ({ navigate }) => navigate('/analytics'),
   },
   {
     id: 'nav-settings',

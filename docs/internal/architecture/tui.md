@@ -82,7 +82,7 @@ KaganApp (Textual App)
 │   ├── Session sidebar      # Searchable orchestrator conversation list
 │   └── ChatPanel            # Full-width main conversation surface
 │
-├── (kanban_chat helpers)     # ACP payload extraction, stream chunk helpers (not a Screen)
+├── (_chat_runner helpers)    # ACP payload extraction, stream chunk helpers (not a Screen)
 │
 ├── TaskScreen               # Primary task detail screen pushed from kanban after inspector-open
 │
@@ -283,10 +283,17 @@ src/kagan/tui/
 │   ├── welcome.py           # WelcomeScreen
 │   ├── setup.py             # OnboardingFlow (modal)
 │   ├── kanban.py            # KanbanScreen
-│   ├── kanban_chat.py       # ACP payload + stream chunk helpers (not a Screen class)
+│   ├── _chat_runner.py      # ACP payload + stream chunk helpers (not a Screen class)
+│   ├── _task_chat.py        # Task chat helpers
+│   ├── _task_review.py      # Task review screen helpers
+│   ├── _task_stream.py      # Task streaming helpers
 │   ├── workspace.py         # WorkspaceScreen
 │   ├── task_screen.py       # TaskScreen
 │   ├── session_dashboard.py # SessionDashboardScreen
+│   ├── analytics.py         # AnalyticsModal
+│   ├── doctor_modal.py      # DoctorModal
+│   ├── session_resume_modal.py
+│   ├── file_picker.py
 │   ├── review_no_criteria.py
 │   ├── repo_picker.py
 │   ├── gateway.py           # PairInstructionsModal

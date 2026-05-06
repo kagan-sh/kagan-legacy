@@ -53,11 +53,6 @@ export const routes: RouteObject[] = [
             errorElement: <RouteError />,
           },
           {
-            path: 'analytics',
-            lazy: () => import('@/pages/analytics-page'),
-            errorElement: <RouteError />,
-          },
-          {
             path: 'settings',
             lazy: () => import('@/pages/settings-page'),
             errorElement: <RouteError />,

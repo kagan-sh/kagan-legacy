@@ -270,6 +270,40 @@ async def test_acp_stream_wrappers_satisfy_client_side_connection_isinstance_gat
         ClientSideConnection(lambda _agent: cast("Any", object()), writer, wrapper)
 
 
+async def test_acp_stream_wrappers_delegate_exception_to_underlying_reader() -> None:
+    """The asyncio transport calls ``set_exception`` on the *wrapped* reader
+    when the process dies. ``wrapper.exception()`` must reflect that, not
+    return ``None`` (its own un-touched ``_exception`` attribute)."""
+    underlying = asyncio.StreamReader()
+
+    class _FakeProcess:
+        returncode: int | None = None
+
+    wrappers: list[asyncio.StreamReader] = [
+        JsonRpcObjectStreamReader(underlying, backend_name="claude-code"),
+        cast("asyncio.StreamReader", _ByteCountingStreamReader(underlying, cast("Any", _FakeProcess()))),
+    ]
+
+    for wrapper in wrappers:
+        assert wrapper.exception() is None
+
+    boom = ConnectionResetError("transport died")
+    underlying.set_exception(boom)
+
+    for wrapper in wrappers:
+        assert wrapper.exception() is boom, (
+            f"{type(wrapper).__name__}.exception() must delegate to the wrapped reader"
+        )
+
+    # ``set_exception`` on the wrapper must also propagate to the underlying
+    # reader so the SDK's own paths see it.
+    fresh_underlying = asyncio.StreamReader()
+    fresh_wrapper = JsonRpcObjectStreamReader(fresh_underlying, backend_name="claude-code")
+    other_boom = OSError("eof")
+    fresh_wrapper.set_exception(other_boom)
+    assert fresh_underlying.exception() is other_boom
+
+
 class _NullTransport(asyncio.Transport):
     def is_closing(self) -> bool:
         return True

@@ -64,6 +64,12 @@ class JsonRpcObjectStreamReader(asyncio.StreamReader):
     def at_eof(self) -> bool:
         return self._reader.at_eof()
 
+    def exception(self) -> BaseException | None:
+        return self._reader.exception()
+
+    def set_exception(self, exc: BaseException) -> None:
+        self._reader.set_exception(exc)
+
     def _record_drop(self, line: bytes, *, reason: str) -> None:
         self._dropped += 1
         if self._dropped > 1:

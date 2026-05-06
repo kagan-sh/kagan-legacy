@@ -931,6 +931,12 @@ class _ByteCountingStreamReader(asyncio.StreamReader):
     def at_eof(self) -> bool:
         return self._reader.at_eof()
 
+    def exception(self) -> BaseException | None:
+        return self._reader.exception()
+
+    def set_exception(self, exc: BaseException) -> None:
+        self._reader.set_exception(exc)
+
 
 async def spawn_agent_via_acp(
     backend_name: str,

@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -56,6 +57,11 @@ from kagan.tui.widgets.task_inspector import TaskInspector
 if TYPE_CHECKING:
     from kagan.core.client import DBWatcher
     from kagan.tui.app import KaganApp
+
+
+class LayoutMode(StrEnum):
+    VERTICAL = "vertical"
+    HORIZONTAL = "horizontal"
 
 
 _TUTORIAL_SEEN_SETTING_KEY = "ui.tui_tutorial_seen"
@@ -137,7 +143,7 @@ class KanbanScreen(Screen[None]):
     COMMANDS = {KanbanCommandProvider}
     BINDINGS = KANBAN_BINDINGS
     search_visible: reactive[bool] = reactive(False, init=False)
-    _chat_overlay_layout_mode: reactive[str] = reactive("vertical", init=False)
+    _chat_overlay_layout_mode: reactive[LayoutMode] = reactive(LayoutMode.VERTICAL, init=False)
 
     def __init__(self) -> None:
         super().__init__(id="kanban-screen")
@@ -266,7 +272,7 @@ class KanbanScreen(Screen[None]):
             if not self._all_tasks:
                 panel = self.query_one(ChatPanel)
                 if not panel.has_class("visible"):
-                    self._chat_overlay_layout_mode = "vertical"
+                    self._chat_overlay_layout_mode = LayoutMode.VERTICAL
                     self._chat_auto_opened = True
                     await self.action_open_orchestrator_chat()
 
@@ -380,23 +386,23 @@ class KanbanScreen(Screen[None]):
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
         if not self._all_tasks and visible and not fullscreen:
-            self._chat_overlay_layout_mode = "vertical"
+            self._chat_overlay_layout_mode = LayoutMode.VERTICAL
         expanded = visible and (panel.has_class("expanded") or fullscreen)
 
         self.set_class(visible, "chat-overlay-visible")
         self.set_class(expanded, "chat-overlay-expanded")
         self.set_class(
-            visible and not fullscreen and self._chat_overlay_layout_mode == "vertical",
+            visible and not fullscreen and self._chat_overlay_layout_mode == LayoutMode.VERTICAL,
             "chat-overlay-vertical",
         )
         self.set_class(
-            visible and not fullscreen and self._chat_overlay_layout_mode == "horizontal",
+            visible and not fullscreen and self._chat_overlay_layout_mode == LayoutMode.HORIZONTAL,
             "chat-overlay-horizontal",
         )
         self._update_hint_bar()
         self._update_review_queue_hint()
 
-    def watch__chat_overlay_layout_mode(self, _value: str) -> None:
+    def watch__chat_overlay_layout_mode(self, _value: LayoutMode) -> None:
         """Re-sync layout CSS classes whenever the layout mode reactive changes."""
         if not self.is_mounted:
             return
@@ -555,17 +561,17 @@ class KanbanScreen(Screen[None]):
 
     def _update_search_bar_state(self) -> None:
         status_counts, high_priority_count = self._compute_task_stats()
-        sf = self._search_status_filter
-        pf = self._search_priority_filter
-        sf2 = self._search_sort_filter
+        status_filter = self._search_status_filter
+        priority_filter = self._search_priority_filter
+        sort_filter = self._search_sort_filter
         self.query_one(SearchBar).update_state(
             filtered_count=len(self._tasks),
             total_count=len(self._all_tasks),
             status_counts=status_counts,
             high_priority_count=high_priority_count,
-            status_filter=sf.value.lower() if sf is not None else "",
-            priority_filter=pf or "",
-            sort_filter=sf2 or "",
+            status_filter=status_filter.value.lower() if status_filter is not None else "",
+            priority_filter=priority_filter or "",
+            sort_filter=sort_filter or "",
             search_active=self.search_visible,
         )
 
@@ -652,9 +658,9 @@ class KanbanScreen(Screen[None]):
         panel = self.query_one(ChatPanel)
         if panel.has_class("visible") and panel.has_class("fullscreen"):
             return "Assistant"
-        if panel.has_class("visible") and self._chat_overlay_layout_mode == "vertical":
+        if panel.has_class("visible") and self._chat_overlay_layout_mode == LayoutMode.VERTICAL:
             return "Split"
-        if panel.has_class("visible") and self._chat_overlay_layout_mode == "horizontal":
+        if panel.has_class("visible") and self._chat_overlay_layout_mode == LayoutMode.HORIZONTAL:
             return "Docked"
         if self.search_visible:
             return "Search"
@@ -719,21 +725,33 @@ class KanbanScreen(Screen[None]):
                 await self._sync_branch()
 
     def _task_actions(self, task: Task | None) -> list[tuple[str, str]]:
-        open_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
-        search_key = get_key_for_action(KANBAN_BINDINGS, "search", default="/")
-        new_key = get_key_for_action(KANBAN_BINDINGS, "new_task", default="n")
-        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+.")
-        right_key = get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right")
-        left_key = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
-        session_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
-        stop_key = get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="Shift+S")
-        attach_key = get_key_for_action(KANBAN_BINDINGS, "attach_agent", default="a")
-        start_agent_key = get_key_for_action(KANBAN_BINDINGS, "start_agent", default="s")
+        keys = {
+            "open_task": get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter"),
+            "search": get_key_for_action(KANBAN_BINDINGS, "search", default="/"),
+            "new_task": get_key_for_action(KANBAN_BINDINGS, "new_task", default="n"),
+            "toggle_chat": get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+."),
+            "move_right": get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right"),
+            "move_left": get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left"),
+            "stop_agent": get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="Shift+S"),
+            "attach_agent": get_key_for_action(KANBAN_BINDINGS, "attach_agent", default="a"),
+            "start_agent": get_key_for_action(KANBAN_BINDINGS, "start_agent", default="s"),
+            "expand_chat_overlay": get_key_for_action(
+                KANBAN_BINDINGS, "expand_chat_overlay", default="Ctrl+F"
+            ),
+        }
+        open_key = keys["open_task"]
+        search_key = keys["search"]
+        new_key = keys["new_task"]
+        overlay_key = keys["toggle_chat"]
+        right_key = keys["move_right"]
+        left_key = keys["move_left"]
+        session_key = keys["open_task"]
+        stop_key = keys["stop_agent"]
+        attach_key = keys["attach_agent"]
+        start_agent_key = keys["start_agent"]
         panel = self.query_one(ChatPanel)
         overlay_open = panel.has_class("visible")
-        fullscreen_key = get_key_for_action(
-            KANBAN_BINDINGS, "expand_chat_overlay", default="Ctrl+F"
-        )
+        fullscreen_key = keys["expand_chat_overlay"]
 
         overlay_hints: list[tuple[str, str]] = []
         if overlay_open:
@@ -836,7 +854,7 @@ class KanbanScreen(Screen[None]):
         panel.set_visible(True)
         panel.set_fullscreen(False)
         if not was_visible:
-            self._chat_overlay_layout_mode = "vertical"
+            self._chat_overlay_layout_mode = LayoutMode.VERTICAL
         panel.set_mode_title("Orchestrator")
         panel.set_session_kind(SessionKind.ORCHESTRATOR)
         await self._load_orchestrator_panel_state(panel)
@@ -857,7 +875,7 @@ class KanbanScreen(Screen[None]):
         panel.set_visible(True)
         panel.set_fullscreen(False)
         if not was_visible:
-            self._chat_overlay_layout_mode = "vertical"
+            self._chat_overlay_layout_mode = LayoutMode.VERTICAL
         panel.query_one("#chat-overlay-input", Input).focus()
         self._chat_mode = ChatMode.TASK
 
@@ -898,7 +916,7 @@ class KanbanScreen(Screen[None]):
     def _transition_from_fullscreen(self, panel: ChatPanel) -> None:
         """Exit fullscreen mode and return to vertical overlay."""
         panel.set_fullscreen(False)
-        self._chat_overlay_layout_mode = "vertical"
+        self._chat_overlay_layout_mode = LayoutMode.VERTICAL
         self._chat_auto_opened = False
         panel.query_one("#chat-overlay-input", Input).focus()
         self._sync_layout_state()
@@ -917,7 +935,7 @@ class KanbanScreen(Screen[None]):
         if not self._all_tasks:
             self._transition_to_hidden(panel)
             return
-        self._chat_overlay_layout_mode = "horizontal"  # watcher fires _sync_layout_state
+        self._chat_overlay_layout_mode = LayoutMode.HORIZONTAL  # watcher fires _sync_layout_state
         self._chat_auto_opened = False
         panel.query_one("#chat-overlay-input", Input).focus()
 
@@ -930,7 +948,7 @@ class KanbanScreen(Screen[None]):
 
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
-        vertical = self._chat_overlay_layout_mode == "vertical"
+        vertical = self._chat_overlay_layout_mode == LayoutMode.VERTICAL
 
         if fullscreen:
             self._transition_from_fullscreen(panel)
@@ -953,7 +971,7 @@ class KanbanScreen(Screen[None]):
         *,
         visible: bool,
         fullscreen: bool,
-        layout: str = "vertical",
+        layout: LayoutMode = LayoutMode.VERTICAL,
     ) -> None:
         """Set panel visible/fullscreen flags and the layout mode in one place.
 
@@ -965,9 +983,9 @@ class KanbanScreen(Screen[None]):
         panel.set_fullscreen(fullscreen)
         self._chat_auto_opened = False
         if not visible:
-            self._chat_overlay_layout_mode = "vertical"
+            self._chat_overlay_layout_mode = LayoutMode.VERTICAL
         elif not fullscreen:
-            self._chat_overlay_layout_mode = layout
+            self._chat_overlay_layout_mode = LayoutMode(layout)
         self._sync_layout_state()
 
     async def action_fullscreen_chat(self) -> None:
@@ -1731,7 +1749,7 @@ class KanbanScreen(Screen[None]):
             panel = self.query_one(ChatPanel)
         panel.set_visible(False)
         panel.set_fullscreen(False)
-        self._chat_overlay_layout_mode = "vertical"
+        self._chat_overlay_layout_mode = LayoutMode.VERTICAL
         self._sync_layout_state()
 
     def on_chat_panel_interrupt_requested(self, _: ChatPanel.InterruptRequested) -> None:
@@ -2029,7 +2047,7 @@ class KanbanScreen(Screen[None]):
                 event.stop()
                 panel.set_visible(False)
                 panel.set_fullscreen(False)
-                self._chat_overlay_layout_mode = "vertical"
+                self._chat_overlay_layout_mode = LayoutMode.VERTICAL
                 self._sync_layout_state()
                 return
 

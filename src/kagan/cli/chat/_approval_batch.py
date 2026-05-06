@@ -326,7 +326,7 @@ async def _run_batch_interactive(
             app.exit(result=None)
             return
         resolve_item(item_idx, opt, fb)
-        state["resolved"][item_idx] = "approved" if opt in (0, 1) else "rejected"
+        state["resolved"][item_idx] = "approved" if opt in (0, 1, 2) else "rejected"
         state["feedback"] = ""
         feedback_buffer.set_document(Document(), bypass_readonly=True)
         next_idx = _find_next_unresolved(item_idx, n, set(state["resolved"]))

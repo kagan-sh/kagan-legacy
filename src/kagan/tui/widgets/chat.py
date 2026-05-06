@@ -572,11 +572,17 @@ class ChatPanel(Vertical):
                 self._schedule_deferred_update()
             return
 
-    def request_permission(self, text: str, *, timeout_seconds: int = 30) -> None:
+    def request_permission(
+        self,
+        text: str,
+        *,
+        timeout_seconds: int = 30,
+        action_key: str | None = None,
+    ) -> None:
         state = self._current_state()
         state.decision_surface = (
             "permission",
-            {"text": text, "timeout_seconds": timeout_seconds},
+            {"text": text, "timeout_seconds": timeout_seconds, "action_key": action_key},
         )
         if self.is_mounted:
             self._render_decision_surface()
@@ -712,6 +718,17 @@ class ChatPanel(Vertical):
     @on(PermissionPrompt.DecisionMade)
     def _on_permission_decision(self, event: PermissionPrompt.DecisionMade) -> None:
         state = self._current_state()
+        # Apply session grants so [s]/[A] don't just dismiss the prompt — the
+        # next identical tool call would re-prompt otherwise.
+        if event.decision in ("allow_session", "allow_all"):
+            from kagan.cli.chat._permission_ui import _session_approvals
+
+            payload = state.decision_surface[1] if state.decision_surface else {}
+            action_key = payload.get("action_key") if isinstance(payload, dict) else None
+            if event.decision == "allow_all":
+                _session_approvals.grant_all()
+            elif action_key:
+                _session_approvals.grant(action_key)
         state.decision_surface = None
         self.add_system_message(f"Permission {event.decision}")
         self._render_decision_surface()

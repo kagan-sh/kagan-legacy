@@ -261,6 +261,10 @@ async def test_acp_stream_wrappers_satisfy_client_side_connection_isinstance_gat
 
     for wrapper in wrappers:
         assert isinstance(wrapper, asyncio.StreamReader), type(wrapper)
+        # Base StreamReader attributes (e.g. ``_exception``) must be initialised
+        # — otherwise ``exception()`` raises ``AttributeError`` on any error
+        # path the SDK might exercise via the inherited interface.
+        assert wrapper.exception() is None
         # Construct the real SDK connection. The isinstance gate fires before
         # any router setup, so success here means the gate accepts the wrapper.
         ClientSideConnection(lambda _agent: cast("Any", object()), writer, wrapper)

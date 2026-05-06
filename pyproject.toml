@@ -133,6 +133,9 @@ max-complexity = 20
 "src/kagan/server/_system_routes.py" = [
   "C901",
 ] # Route registration nests all handlers inside one function
+"tests/helpers/echo_agent.py" = [
+  "TC002",
+] # Vendored ACP example script run as subprocess — imports must resolve at runtime
 
 [tool.ruff.format]
 docstring-code-format = true

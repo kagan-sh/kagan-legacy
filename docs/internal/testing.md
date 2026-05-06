@@ -50,6 +50,32 @@ tests exercise but don't assert on directly, or when it tests **platform-depende
 
 ______________________________________________________________________
 
+## Real-stdio integration tests
+
+Tests in `tests/integration/` exercise the *real* third-party SDK constructors and stdio path
+without depending on a provider binary. They sit between unit and the `KAGAN_INTEGRATION_TESTS=1`
+end-to-end suite, and they catch contracts unit-stubs falsify by accepting too much.
+
+The current suite (`tests/integration/acp_real/`) drives the real `acp.client.connection.ClientSideConnection`
+over either:
+
+1. **TCP-loopback streams** (`tests/helpers/acp_loopback.py`) — yields real `asyncio.StreamReader`
+   / `asyncio.StreamWriter` pairs via `asyncio.start_server` + `asyncio.open_connection`. Catches
+   `isinstance(asyncio.StreamReader)` gates and read-method shape contracts in milliseconds.
+2. **A hermetic echo subprocess** (`tests/helpers/echo_agent.py`, vendored from the ACP SDK
+   examples) invoked via `sys.executable`. Speaks the real ACP wire protocol, exercises
+   handshake → session → prompt → notification → teardown end-to-end.
+
+Add a test here whenever a regression escapes through stubbed SDK fakes. Example: 0.19.0b34
+shipped a `ClientSideConnection requires asyncio StreamWriter/StreamReader` runtime error
+because the always-on suite stubbed `_FakeConnection` and never constructed the real SDK
+type. Both checks now live in `acp_real/test_stream_wrappers.py`.
+
+- Files use `pytestmark = [pytest.mark.integration]` and run on every PR (no env-var gate).
+- They must not require any agent binary on PATH; spawn-based tests use `sys.executable`.
+
+______________________________________________________________________
+
 ## Isolation
 
 Each test creates its own universe — fresh `tmp_path`, fresh SQLite, fresh git repo.
@@ -140,7 +166,12 @@ tests/
 │   └── test_web_ui.py                   # SPA static file serving
 ├── integrations/                        # kagan.core.integrations (behavioral)
 │   └── test_github.py                    # GitHub sync: preflight, preview, create, skip, re-import, labels
+├── integration/                          # real-stdio integration (real SDK, hermetic agent)
+│   └── acp_real/
+│       └── test_stream_wrappers.py      # Stream wrappers + spawn pipeline against the echo agent
 └── helpers/                             # DSL: KaganDriver, FakeAgent, fixtures
+    ├── acp_loopback.py                   # TCP-loopback fixture yielding real asyncio.StreamReader/Writer
+    └── echo_agent.py                     # Vendored ACP echo agent (run as subprocess via sys.executable)
 ```
 
 Name tests as specs: `test_<behavior>_<expected_outcome>`. Each file has 2-6 tests,

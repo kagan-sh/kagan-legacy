@@ -8,6 +8,8 @@ from acp.schema import AgentMessageChunk, AgentThoughtChunk, TextContentBlock
 
 from kagan.core._acp import map_acp_update_to_event, run_acp_session
 from kagan.core._acp_spawn import spawn_filtered_agent_process
+from kagan.core._acp_streams import JsonRpcObjectStreamReader
+from kagan.core._agent import _ByteCountingStreamReader
 
 pytestmark = [pytest.mark.unit]
 
@@ -231,3 +233,80 @@ async def test_map_acp_update_to_event_uses_lightweight_chunk_payload_without_mo
             },
         },
     )
+
+
+async def test_acp_stream_wrappers_satisfy_client_side_connection_isinstance_gate() -> None:
+    """Regression: ``ClientSideConnection.__init__`` enforces
+    ``isinstance(output_stream, asyncio.StreamReader)``. Both wrappers we hand
+    the SDK must therefore be subclasses of ``asyncio.StreamReader`` — losing
+    that inheritance silently produced ``ClientSideConnection requires asyncio
+    StreamWriter/StreamReader`` at runtime in 0.19.0b34.
+    """
+    from acp.client.connection import ClientSideConnection
+
+    loop = asyncio.get_running_loop()
+    reader = asyncio.StreamReader()
+    transport = cast("Any", _NullTransport())
+    writer = asyncio.StreamWriter(
+        transport, asyncio.StreamReaderProtocol(reader), reader, loop
+    )
+
+    class _FakeProcess:
+        returncode: int | None = None
+
+    wrappers: list[asyncio.StreamReader] = [
+        JsonRpcObjectStreamReader(reader, backend_name="claude-code"),
+        cast("asyncio.StreamReader", _ByteCountingStreamReader(reader, cast("Any", _FakeProcess()))),
+    ]
+
+    for wrapper in wrappers:
+        assert isinstance(wrapper, asyncio.StreamReader), type(wrapper)
+        # Base StreamReader attributes (e.g. ``_exception``) must be initialised
+        # — otherwise ``exception()`` raises ``AttributeError`` on any error
+        # path the SDK might exercise via the inherited interface.
+        assert wrapper.exception() is None
+        # Construct the real SDK connection. The isinstance gate fires before
+        # any router setup, so success here means the gate accepts the wrapper.
+        ClientSideConnection(lambda _agent: cast("Any", object()), writer, wrapper)
+
+
+async def test_acp_stream_wrappers_delegate_exception_to_underlying_reader() -> None:
+    """The asyncio transport calls ``set_exception`` on the *wrapped* reader
+    when the process dies. ``wrapper.exception()`` must reflect that, not
+    return ``None`` (its own un-touched ``_exception`` attribute)."""
+    underlying = asyncio.StreamReader()
+
+    class _FakeProcess:
+        returncode: int | None = None
+
+    wrappers: list[asyncio.StreamReader] = [
+        JsonRpcObjectStreamReader(underlying, backend_name="claude-code"),
+        cast("asyncio.StreamReader", _ByteCountingStreamReader(underlying, cast("Any", _FakeProcess()))),
+    ]
+
+    for wrapper in wrappers:
+        assert wrapper.exception() is None
+
+    boom = ConnectionResetError("transport died")
+    underlying.set_exception(boom)
+
+    for wrapper in wrappers:
+        assert wrapper.exception() is boom, (
+            f"{type(wrapper).__name__}.exception() must delegate to the wrapped reader"
+        )
+
+    # ``set_exception`` on the wrapper must also propagate to the underlying
+    # reader so the SDK's own paths see it.
+    fresh_underlying = asyncio.StreamReader()
+    fresh_wrapper = JsonRpcObjectStreamReader(fresh_underlying, backend_name="claude-code")
+    other_boom = OSError("eof")
+    fresh_wrapper.set_exception(other_boom)
+    assert fresh_underlying.exception() is other_boom
+
+
+class _NullTransport(asyncio.Transport):
+    def is_closing(self) -> bool:
+        return True
+
+    def close(self) -> None:
+        return None

@@ -2,25 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from loguru import logger
 
-if TYPE_CHECKING:
-    import asyncio
 
-
-class JsonRpcObjectStreamReader:
+class JsonRpcObjectStreamReader(asyncio.StreamReader):
     """Drop non-JSON-RPC stdout lines before the ACP SDK parses them.
 
     ACP transports are line-delimited JSON-RPC. Some Windows agent launchers can
     emit terminal/control output on stdout before or between JSON-RPC frames.
     The upstream ACP SDK logs a full traceback for every such line, so we filter
     non-object JSON here and leave valid frames untouched.
+
+    Subclasses ``asyncio.StreamReader`` because ``ClientSideConnection.__init__``
+    enforces ``isinstance(output_stream, asyncio.StreamReader)``. ``super().__init__``
+    *is* called so base attributes (``_exception``, ``_buffer``, ``_loop``) are
+    populated — methods like ``exception()`` keep working even though we delegate
+    every read to ``self._reader``.
     """
 
     def __init__(self, reader: asyncio.StreamReader, *, backend_name: str) -> None:
+        super().__init__()
         self._reader = reader
         self._backend_name = backend_name
         self._dropped = 0
@@ -58,6 +63,12 @@ class JsonRpcObjectStreamReader:
 
     def at_eof(self) -> bool:
         return self._reader.at_eof()
+
+    def exception(self) -> BaseException | None:
+        return self._reader.exception()
+
+    def set_exception(self, exc: BaseException) -> None:
+        self._reader.set_exception(exc)
 
     def _record_drop(self, line: bytes, *, reason: str) -> None:
         self._dropped += 1

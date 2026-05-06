@@ -866,13 +866,19 @@ _ACP_PER_MESSAGE_LIMIT: Final[int] = 10 * 1024 * 1024  # 10 MB per JSON-RPC line
 _MAX_CUMULATIVE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB total per session
 
 
-class _ByteCountingStreamReader:
+class _ByteCountingStreamReader(asyncio.StreamReader):
     """Composition wrapper that enforces a cumulative byte cap on reads.
 
     The ACP JSON-RPC read loop calls ``readline()`` or ``read()`` on the
     underlying reader.  This wrapper counts every byte returned and terminates
     the associated process when the cumulative limit is exceeded, preventing
     unbounded memory growth.
+
+    Subclasses ``asyncio.StreamReader`` because ``ClientSideConnection.__init__``
+    enforces ``isinstance(output_stream, asyncio.StreamReader)``. ``super().__init__``
+    *is* called so base attributes (``_exception``, ``_buffer``, ``_loop``) are
+    populated — methods like ``exception()`` keep working even though we delegate
+    every read to ``self._reader``.
     """
 
     def __init__(
@@ -881,6 +887,7 @@ class _ByteCountingStreamReader:
         process: asyncio.subprocess.Process,
         cumulative_limit: int = _MAX_CUMULATIVE_BYTES,
     ) -> None:
+        super().__init__()
         self._reader = reader
         self._process = process
         self._cumulative_bytes = 0
@@ -923,6 +930,12 @@ class _ByteCountingStreamReader:
 
     def at_eof(self) -> bool:
         return self._reader.at_eof()
+
+    def exception(self) -> BaseException | None:
+        return self._reader.exception()
+
+    def set_exception(self, exc: BaseException) -> None:
+        self._reader.set_exception(exc)
 
 
 async def spawn_agent_via_acp(

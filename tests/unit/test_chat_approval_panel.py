@@ -175,7 +175,9 @@ def test_map_decision_allow_always_grants_session(
 
 
 def test_map_decision_reject_once_returns_deny() -> None:
-    decision = _map_decision_from_approval(2, "", action_key="test_tool")
+    # Slot 3 is "reject once" in the 5-slot layout (slot 2 is now
+    # "Allow all for session", intercepted upstream).
+    decision = _map_decision_from_approval(3, "", action_key="test_tool")
     assert decision.outcome == "deny"
     assert decision.feedback is None
 

@@ -89,7 +89,7 @@ function StreamThoughtBlock({ content, startedAt }: { content: string; startedAt
         </div>
         <MarkdownContent
           content={content}
-          className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-fuchsia-400 pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
+          className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-fuchsia-400 prose-pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
         />
       </div>
     </div>

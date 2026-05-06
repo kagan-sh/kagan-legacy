@@ -51,6 +51,7 @@ from kagan.core._agent import (
     OPENCODE_BACKEND,
     get_backend_spec,
 )
+from kagan.core._subprocess import terminate_process
 from kagan.core.errors import AgentError
 
 _ACP_STARTUP_TIMEOUT_ENV_KEY = "KAGAN_ACP_STARTUP_TIMEOUT_SECONDS"
@@ -116,10 +117,6 @@ def acp_startup_timeout_seconds(agent_backend: str) -> float:
     if configured is not None:
         return configured
     return _default_acp_timeout_seconds(agent_backend)
-
-
-def _acp_startup_timeout_seconds(agent_backend: str) -> float:
-    return acp_startup_timeout_seconds(agent_backend)
 
 
 def _infer_backend_name_from_process(process: asyncio.subprocess.Process) -> str:
@@ -190,14 +187,6 @@ def friendly_acp_error_message(*, error: object, agent_backend: str, during: str
     if "overloaded" in lowered or "529" in lowered or "service unavailable" in lowered:
         return f"{prefix} The provider service is overloaded right now. Retry shortly."
     return f"{prefix} {raw}"
-
-
-def _friendly_startup_error_message(*, error: object, agent_backend: str, during: str) -> str:
-    return friendly_acp_error_message(
-        error=error,
-        agent_backend=agent_backend,
-        during=during,
-    )
 
 
 class KaganACPClient(acp.Client):
@@ -437,10 +426,6 @@ def acp_process_exit_hint(*, agent_backend: str, details: str) -> str | None:
     return None
 
 
-def _acp_process_exit_hint(*, agent_backend: str, details: str) -> str | None:
-    return acp_process_exit_hint(agent_backend=agent_backend, details=details)
-
-
 async def _acp_process_exit_message(
     process: asyncio.subprocess.Process, *, during: str, agent_backend: str
 ) -> str | None:
@@ -462,19 +447,6 @@ async def _acp_process_exit_message(
     return message
 
 
-async def _terminate_acp_process(process: asyncio.subprocess.Process) -> None:
-    if process.returncode is not None:
-        return
-    with contextlib.suppress(ProcessLookupError):
-        process.terminate()
-    try:
-        await asyncio.wait_for(process.wait(), timeout=5.0)
-    except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
-        await process.wait()
-
-
 async def run_acp_session(
     process: asyncio.subprocess.Process,
     client: KaganACPClient,
@@ -492,7 +464,7 @@ async def run_acp_session(
 
     stdout = JsonRpcObjectStreamReader(process.stdout, backend_name=resolved_backend)
     conn = acp.connect_to_agent(client, process.stdin, stdout)
-    timeout_s = _acp_startup_timeout_seconds(resolved_backend)
+    timeout_s = acp_startup_timeout_seconds(resolved_backend)
     try:
         try:
             await asyncio.wait_for(
@@ -534,13 +506,13 @@ async def run_acp_session(
             )
             raise RuntimeError(timeout_message) from exc
         await conn.prompt(session_id=session.session_id, prompt=[acp.text_block(prompt)])
-        await _terminate_acp_process(process)
+        await terminate_process(process)
         logger.info(
             "ACP one-shot prompt completed for pid={} rc={}", process.pid, process.returncode
         )
     except (RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.exception("ACP session failed for pid={} cwd={}", process.pid, worktree_path)
-        await _terminate_acp_process(process)
+        await terminate_process(process)
         raise RuntimeError(
             friendly_acp_error_message(
                 error=exc,
@@ -553,4 +525,4 @@ async def run_acp_session(
             with contextlib.suppress(RequestError, OSError, RuntimeError):
                 await conn.close()
         finally:
-            await _terminate_acp_process(process)
+            await terminate_process(process)

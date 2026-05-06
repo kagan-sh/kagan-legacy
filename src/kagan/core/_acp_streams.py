@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+if TYPE_CHECKING:
+    import asyncio
 
-class JsonRpcObjectStreamReader(asyncio.StreamReader):
+
+class JsonRpcObjectStreamReader:
     """Drop non-JSON-RPC stdout lines before the ACP SDK parses them.
 
     ACP transports are line-delimited JSON-RPC. Some Windows agent launchers can
@@ -47,9 +49,6 @@ class JsonRpcObjectStreamReader(asyncio.StreamReader):
 
     def at_eof(self) -> bool:
         return self._reader.at_eof()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._reader, name)
 
     def _record_drop(self, line: bytes, *, reason: str) -> None:
         self._dropped += 1

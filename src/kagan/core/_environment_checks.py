@@ -296,7 +296,13 @@ def resolve_backend_guidance(backend_name: str) -> str | None:
     from kagan.core.errors import KaganError
 
     try:
-        guidance = get_backend_spec(backend_name).guidance_hints()
+        spec = get_backend_spec(backend_name)
+        hints: list[str] = []
+        for action in ("install", "auth"):
+            cmd = spec.resolve_command(action)
+            if cmd is not None:
+                hints.append(f"{cmd.description} {cmd.command}")
+        guidance = tuple(hints)
     except (ImportError, KaganError):
         return None
     return " ".join(guidance) if guidance else None

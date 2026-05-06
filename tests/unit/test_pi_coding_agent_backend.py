@@ -85,13 +85,6 @@ def test_pi_coding_agent_install_hint_present() -> None:
     assert "pi-coding-agent" in cmd.command or "mariozechner" in cmd.command
 
 
-def test_pi_coding_agent_legacy_config_does_not_claim_acp() -> None:
-    """to_legacy_config() must reflect supports_acp=False."""
-    spec = get_backend_spec(PI_CODING_AGENT_BACKEND)
-    cfg = spec.to_legacy_config()
-    assert cfg["supports_acp"] is False
-
-
 # ---------------------------------------------------------------------------
 # Environment gate
 # ---------------------------------------------------------------------------

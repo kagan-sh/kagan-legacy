@@ -62,7 +62,6 @@ _WARMUP_STATE = OrchestratorWarmupState()
 
 
 _acp_handshake_timeout_seconds = acp_handshake_timeout_seconds
-_acp_process_exit_hint = acp_process_exit_hint
 _friendly_acp_error_message = friendly_acp_error_message
 
 
@@ -252,7 +251,7 @@ async def _acp_process_exit_message(agent_backend: str, process: Any, *, during:
     if details:
         compact = " ".join(line.strip() for line in details.splitlines() if line.strip())
         message = f"{message} {compact[:500]}"
-        hint = _acp_process_exit_hint(agent_backend=agent_backend, details=details)
+        hint = acp_process_exit_hint(agent_backend=agent_backend, details=details)
         if hint:
             message = f"{message} {hint}"
     return message

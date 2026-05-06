@@ -5,9 +5,6 @@ from typing import Any
 from loguru import logger
 from textual.widgets._select import SelectOverlay
 
-# Re-export from core so existing TUI imports continue to work.
-from kagan.core import install_asyncio_subprocess_exception_filter
-
 _PATCH_FLAG = "_kagan_select_overlay_move_page_patched"
 
 
@@ -49,4 +46,4 @@ def apply_textual_compat_workarounds() -> None:
     _patch_select_overlay_page_navigation()
 
 
-__all__ = ["apply_textual_compat_workarounds", "install_asyncio_subprocess_exception_filter"]
+__all__ = ["apply_textual_compat_workarounds"]

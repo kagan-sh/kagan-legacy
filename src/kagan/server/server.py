@@ -251,4 +251,4 @@ async def serve_http(
     finally:
         shutdown_event.set()
         _set_server_context(mcp, None)
-        client.close()
+        await client.aclose()

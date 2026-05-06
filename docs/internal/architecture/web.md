@@ -32,7 +32,6 @@ packages/web/src/
 │   ├── board-page.tsx
 │   ├── workspace-page.tsx      # orchestrator-first workspace (session sidebar + conversation surface)
 │   ├── task-detail-page.tsx    # unified task workspace (Overview, Changes, Review tabs)
-│   ├── session-page.tsx        # legacy redirect target for /session/:taskId
 │   ├── chat-page.tsx
 │   ├── settings-page.tsx
 │   ├── welcome-page.tsx        # onboarding/project setup page
@@ -140,7 +139,6 @@ ______________________________________________________________________
 - `/workspace` -- orchestrator-first workspace with session sidebar and full-width conversation surface
 - `/task/:id` -- unified task workspace with 3 tabs: **Overview**, **Changes**, **Review**
 - `/task/:id?lane=worker|reviewer` -- deep-link that auto-opens the ChatSidePanel overlay for live streaming
-- `/session/:taskId` -- legacy redirect to `/task/:id?lane=worker`
 - `/chat/:id` -- orchestrator conversation
 - `/settings` -- categorized system configuration
 - `/welcome` -- onboarding/project setup page

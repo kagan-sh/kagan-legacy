@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from kagan.core import ProjectCreateRequest, RepoAddRequest
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
     _err,
@@ -12,7 +13,6 @@ from kagan.server._helpers import (
     parse_body,
     require_context,
 )
-from kagan.server.requests import AddRepoRequest, CreateProjectRequest
 from kagan.server.responses import (
     ProjectFolderResolutionResponse,
     ProjectResponse,
@@ -72,7 +72,7 @@ def register_project_routes(mcp: FastMCP) -> None:
         )
         if forbidden is not None:
             return forbidden
-        body = await parse_body(request, CreateProjectRequest)
+        body = await parse_body(request, ProjectCreateRequest)
         project = await ctx.client.projects.create(body.name)
         return _ok(_project_dict(project, active=project.id == ctx.client.active_project_id))
 
@@ -122,7 +122,7 @@ def register_project_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return forbidden
         project_id = cast("str", request.path_params["project_id"])
-        body = await parse_body(request, AddRepoRequest)
+        body = await parse_body(request, RepoAddRequest)
         repo = await ctx.client.projects.add_repo(project_id, body.path)
         return _ok(_repo_dict(repo))
 

@@ -32,7 +32,7 @@ async def test_snapshot_task_editor_shows_github_issue_field(
         await pilot.pause()
         await pilot.press("n")
         await pilot.pause()
-        await pilot.press("ctrl+period")
+        await pilot.click("#task-show-advanced")
         await pilot.pause()
 
         field = pilot.app.screen.query_one("#task-github-issue", Input)

@@ -205,12 +205,15 @@ The client is a composition root. Each domain is a namespace object with focused
 | `client.settings`        | Settings                              |
 | `client.audit_log`       | AuditLog                              |
 | `client.persona_presets` | PersonaPresetOps                      |
-| `client.close()`         | Dispose engine, cancel running agents |
+| `client.aclose()`        | Dispose engine, await agent cleanup   |
+| `client.close()`         | Sync best-effort wrapper around close |
 | `client.preflight()`     | Check system requirements             |
 | `client.reset()`         | Wipe all data                         |
 | `client.db_version()`    | Current Alembic migration revision    |
 
-Supports async context manager (`async with KaganCore() as client`).
+Supports async context manager (`async with KaganCore() as client`). Async owners
+(TUI, server, MCP lifespan) must call `await client.aclose()` on shutdown so
+spawned subprocess transports are drained before the event loop closes.
 
 ### Namespace Methods Overview
 
@@ -290,7 +293,7 @@ All three converge at `tasks.events.stream()`.
 Managed (ACP):
   kagan --spawns--> Agent subprocess (piped stdio)
   ├─ events via ACP session/update
-  └─ kagan exit → agent terminates
+  └─ kagan exit/cancel → agent terminates and is awaited before loop shutdown
 
 Interactive (MCP):
   kagan --launches--> IDE/tmux/neovim

@@ -117,11 +117,6 @@ export class KaganApiClient extends BaseClient {
     return this.updateSettings(input) as Promise<Record<string, string>>;
   }
 
-  /** Alias for runTask — runs the review agent on a task. */
-  runReview(taskId: string, options?: { agent_backend?: string }): Promise<WireTask> {
-    return this.runTask(taskId, options);
-  }
-
   /** Alias for updateTask (web consumers pass UpdateTaskInput directly). */
   override updateTask(taskId: string, input: UpdateTaskInput): Promise<WireTask> {
     return super.updateTask(taskId, input);

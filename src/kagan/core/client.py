@@ -55,6 +55,7 @@ class KaganCore:
             acp_factory=make_spawn_per_turn_acp_factory(client=self),
             title_generator=self._make_default_title_generator(),
         )
+        self._closed = False
 
         self.active_project_id: str | None = None
         # reviews namespace must be built after tasks/worktrees are set
@@ -70,19 +71,28 @@ class KaganCore:
         """Close the client synchronously.
 
         Prefer the async context manager (``async with KaganCore() as client``)
-        for deterministic cleanup.  This method is best-effort: when called from
-        a running event loop the spawned-process cleanup is scheduled as a
-        fire-and-forget task and may not complete before the loop exits.
+        or ``await client.aclose()`` for deterministic cleanup. This method is
+        best-effort when called from a running event loop.
         """
-        logger.warning("close() is best-effort; prefer the async context manager")
-        with contextlib.suppress(OSError, RuntimeError, SQLAlchemyError):
-            self._engine.dispose()
+        if self._closed:
+            return
         try:
             loop = asyncio.get_running_loop()
-            task = loop.create_task(cleanup_all_spawned_processes())
-            logger.debug("Cleanup task scheduled (fire-and-forget): {}", task)
         except RuntimeError:
-            asyncio.run(cleanup_all_spawned_processes())
+            asyncio.run(self.aclose())
+            return
+        logger.warning("close() is best-effort in a running loop; prefer await client.aclose()")
+        task = loop.create_task(self.aclose())
+        logger.debug("Cleanup task scheduled (fire-and-forget): {}", task)
+
+    async def aclose(self) -> None:
+        """Close the client and await spawned-process cleanup."""
+        if self._closed:
+            return
+        self._closed = True
+        with contextlib.suppress(OSError, RuntimeError, SQLAlchemyError):
+            self._engine.dispose()
+        await cleanup_all_spawned_processes()
         logger.debug("Client closed")
 
     async def __aenter__(self) -> "KaganCore":
@@ -94,10 +104,7 @@ class KaganCore:
         _exc_val: BaseException | None,
         _exc_tb: Any,
     ) -> None:
-        with contextlib.suppress(OSError, RuntimeError, SQLAlchemyError):
-            self._engine.dispose()
-        await cleanup_all_spawned_processes()
-        logger.debug("Client closed")
+        await self.aclose()
 
     def _make_default_title_generator(self) -> Any:
         """Build a best-effort title generator wired through ``cli.chat._title``.

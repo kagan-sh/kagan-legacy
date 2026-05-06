@@ -49,15 +49,6 @@ export const boardRepoFilterAtom = atom(
   (get) => get(boardFiltersAtom).repoId,
   (_get, set, value: string | null) => set(boardFiltersAtom, (prev) => ({ ...prev, repoId: value })),
 );
-export const resetBoardFiltersAtom = atom(null, (_get, set) => {
-  set(boardFiltersAtom, {
-    query: '',
-    status: 'ALL',
-    sort: 'default',
-    repoId: null,
-  });
-});
-
 /**
  * Incremented when the active project changes.
  * Board and WebSocket sync depend on this to re-fetch / re-subscribe.

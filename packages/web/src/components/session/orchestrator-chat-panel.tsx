@@ -220,7 +220,7 @@ export function OrchestratorChatPanel({
     );
 
     const footerHint = !isMobile && surface === "rail"
-        ? `⌘⇧K sessions · ⌘I toggle${isStreaming ? " · esc stop & edit last" : ""}`
+        ? `Cmd/Ctrl+K sessions · Cmd/Ctrl+. toggle${isStreaming ? " · esc stop & edit last" : ""}`
         : undefined;
 
     return (

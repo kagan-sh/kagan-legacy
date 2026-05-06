@@ -159,7 +159,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
 
       {!isMobile && (
         <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-          ⌘⇧K sessions · ⌘I toggle{isRunning ? " · esc stop & queue" : ""}
+          Cmd/Ctrl+K sessions · Cmd/Ctrl+. toggle{isRunning ? " · esc stop & queue" : ""}
         </div>
       )}
 

@@ -128,7 +128,7 @@ class TaskEditor(Vertical):
                 id="task-show-advanced",
                 classes="task-checkbox",
             )
-            show_advanced_checkbox.tooltip = "Toggle advanced options (Ctrl+.)"
+            show_advanced_checkbox.tooltip = "Toggle advanced options"
             yield show_advanced_checkbox
             yield Label("Description", classes="task-label")
             description_area = TextArea(
@@ -208,14 +208,12 @@ class TaskEditor(Vertical):
                 )
         if self._editing:
             yield Static(
-                "Auto-saved  ·  [bold]Ctrl+.[/] advanced  "
-                "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] close",
+                "Auto-saved  ·  [bold]PgUp/PgDn[/] scroll  [bold]Esc[/] close",
                 classes="modal-action-hint",
             )
         else:
             yield Static(
-                "[bold]Ctrl+S[/] create  [bold]Ctrl+.[/] advanced  "
-                "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] cancel",
+                "[bold]Ctrl+S[/] create  [bold]PgUp/PgDn[/] scroll  [bold]Esc[/] cancel",
                 classes="modal-action-hint",
             )
 

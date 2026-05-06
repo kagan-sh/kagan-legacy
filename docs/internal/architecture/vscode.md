@@ -149,6 +149,8 @@ ______________________________________________________________________
 1. If nothing responds to `/health`, spawn `<serverCommand> serve`
 1. Poll `/health` every 250ms for up to 12 seconds
 1. Pipe server stdout/stderr to the "Kagan Server" OutputChannel
+1. On shutdown, send `SIGTERM`, wait for process exit, then escalate to `SIGKILL`
+   only if the server does not exit within the grace window
 
 ______________________________________________________________________
 

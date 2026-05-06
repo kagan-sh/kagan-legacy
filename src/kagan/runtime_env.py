@@ -53,9 +53,6 @@ _ESSENTIAL_ENV_WINDOWS: frozenset[str] = frozenset(
     }
 )
 
-# Backwards-compatible alias — points to the POSIX set (unchanged behaviour).
-_ESSENTIAL_ENV: frozenset[str] = _ESSENTIAL_ENV_POSIX
-
 
 def _essential_env(platform_name: str | None = None) -> frozenset[str]:
     """Return the platform-appropriate set of essential environment variable names.

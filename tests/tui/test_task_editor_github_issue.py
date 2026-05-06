@@ -18,7 +18,7 @@ async def _open_new_task_editor(pilot) -> None:
         pump_delay=0.05,
     )
     # Expand advanced options so github_issue field is visible
-    await pilot.press("ctrl+period")
+    await pilot.click("#task-show-advanced")
     await wait_for(
         lambda: bool(pilot.app.screen.query("#task-github-issue")),
         pump_delay=0.05,
@@ -126,7 +126,7 @@ async def test_task_editor_edit_prepopulates_github_issue(
             pump_delay=0.05,
         )
         # Expand advanced options
-        await pilot.press("ctrl+period")
+        await pilot.click("#task-show-advanced")
         await wait_for(
             lambda: bool(pilot.app.screen.query("#task-github-issue")),
             pump_delay=0.05,

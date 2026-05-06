@@ -45,6 +45,13 @@ Core writes events to `run_events`. TUI consumes them in exclusive workers itera
 
 Each worker posts Textual messages for events. One pattern: worker pulls `tasks.events.stream()` and posts messages.
 
+### Shutdown
+
+`KaganApp.on_unmount()` awaits `core.aclose()` so active agent subprocess cleanup
+finishes before Textual closes its event loop. Screens that own chat or event
+stream tasks cancel and await those tasks in async `on_unmount()` handlers; do
+not add fire-and-forget task cancellation paths on screen teardown.
+
 ### Dependency Direction
 
 ```text
@@ -155,7 +162,7 @@ WorkspaceScreen
 │   └── OptionList           # Orchestrator sessions
 ├── Vertical (workspace-main)
 │   ├── Workspace header     # Active conversation title + compact guidance
-│   └── ChatPanel            # Main conversation surface (always visible; explicit focus via F4/Ctrl+I or session open)
+│   └── ChatPanel            # Main conversation surface (always visible; explicit focus via Ctrl+. or session open)
 └── Footer hint row          # Workspace-specific navigation hints
 ```
 
@@ -178,7 +185,7 @@ ______________________________________________________________________
 WorkspaceScreen keeps navigation state intentionally simple:
 
 - Sidebar focus is the entry point and safe default after screen switches
-- `F4` (or `Ctrl+I`) is the explicit handoff into chat input
+- `Ctrl+.` is the explicit handoff into chat input
 - `Esc` unwinds focus in layers instead of jumping straight out of the screen
 
 ### Data Flow Direction

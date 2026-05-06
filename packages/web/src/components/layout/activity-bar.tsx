@@ -3,7 +3,7 @@ import { LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Analytics is intentionally excluded from primary nav.
-// Access it via: command palette (Cmd+K → "Go to Analytics") or /settings#advanced.
+// Access it via Quick Actions or /settings#advanced.
 const ITEMS = [
   { to: '/board', label: 'Board', icon: LayoutDashboard },
   { to: '/workspace', label: 'Workspace', icon: MessageSquareText },

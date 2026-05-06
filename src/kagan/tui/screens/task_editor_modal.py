@@ -74,12 +74,12 @@ class TaskEditorModal(ModalScreen[None]):
                 )
             if is_editing:
                 yield Static(
-                    "Auto-saved  ·  [bold]Esc[/] close  [bold]Ctrl+.[/] advanced",
+                    "Auto-saved  ·  [bold]Esc[/] close",
                     classes="modal-action-hint",
                 )
             else:
                 yield Static(
-                    "[bold]Ctrl+S[/] create  [bold]Esc[/] cancel  [bold]Ctrl+.[/] advanced",
+                    "[bold]Ctrl+S[/] create  [bold]Esc[/] cancel",
                     classes="modal-action-hint",
                 )
 

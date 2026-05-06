@@ -3222,10 +3222,10 @@ SettingsModal {
 
 #settings-advanced-toggle {
     width: 100%;
-    height: auto;
+    height: 3;
     min-height: 3;
     margin: 0;
-    padding: 1 2;
+    padding: 0 2;
     color: $text-muted;
     background: transparent;
     border: none;

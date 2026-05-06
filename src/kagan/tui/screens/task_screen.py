@@ -224,10 +224,17 @@ class TaskScreen(Screen[None]):
         self._configure_overlay_chat()
         self._ensure_stream_worker()
 
-    def on_unmount(self) -> None:
+    async def on_unmount(self) -> None:
         if self._stream_task is not None:
             self._stream_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._stream_task
             self._stream_task = None
+        if self._chat_message_task is not None:
+            self._chat_message_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_message_task
+            self._chat_message_task = None
         if self._runtime_poll_timer is not None:
             self._runtime_poll_timer.stop()
             self._runtime_poll_timer = None
@@ -527,6 +534,8 @@ class TaskScreen(Screen[None]):
 
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_message_task
 
         if self._chat_mode == ChatMode.ORCHESTRATOR:
             self._chat_message_task = asyncio.create_task(

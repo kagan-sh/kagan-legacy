@@ -27,7 +27,7 @@ describe('HeaderBar', () => {
 
     renderWithProviders(<HeaderBar onOpenCommandPalette={onOpenCommandPalette} />);
 
-    // The search button contains a Search icon and ⌘K shortcut hint
+    // The search button contains a Search icon and shortcut hint.
     const searchButton = screen.getAllByRole('button')[0]!;
     searchButton.click();
 

@@ -462,6 +462,19 @@ async def _acp_process_exit_message(
     return message
 
 
+async def _terminate_acp_process(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is not None:
+        return
+    with contextlib.suppress(ProcessLookupError):
+        process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5.0)
+    except TimeoutError:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+        await process.wait()
+
+
 async def run_acp_session(
     process: asyncio.subprocess.Process,
     client: KaganACPClient,
@@ -521,22 +534,13 @@ async def run_acp_session(
             )
             raise RuntimeError(timeout_message) from exc
         await conn.prompt(session_id=session.session_id, prompt=[acp.text_block(prompt)])
-        if process.returncode is None:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=5.0)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
+        await _terminate_acp_process(process)
         logger.info(
             "ACP one-shot prompt completed for pid={} rc={}", process.pid, process.returncode
         )
     except (RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.exception("ACP session failed for pid={} cwd={}", process.pid, worktree_path)
-        if process.returncode is None:
-            process.terminate()
-            with contextlib.suppress(ProcessLookupError):
-                await process.wait()
+        await _terminate_acp_process(process)
         raise RuntimeError(
             friendly_acp_error_message(
                 error=exc,
@@ -545,5 +549,8 @@ async def run_acp_session(
             )
         ) from exc
     finally:
-        with contextlib.suppress(RequestError, OSError, RuntimeError):
-            await conn.close()
+        try:
+            with contextlib.suppress(RequestError, OSError, RuntimeError):
+                await conn.close()
+        finally:
+            await _terminate_acp_process(process)

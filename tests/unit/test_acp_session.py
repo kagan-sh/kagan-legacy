@@ -1,11 +1,13 @@
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import pytest
 from acp.schema import AgentMessageChunk, AgentThoughtChunk, TextContentBlock
 
 from kagan.core._acp import map_acp_update_to_event, run_acp_session
+from kagan.core._acp_spawn import spawn_filtered_agent_process
 
 pytestmark = [pytest.mark.unit]
 
@@ -35,6 +37,11 @@ class _FakeConnection:
     async def close(self):
         self.closed = True
         return None
+
+
+class _CancelOnCloseConnection(_FakeConnection):
+    async def close(self):
+        raise asyncio.CancelledError
 
 
 class _FakeProcess:
@@ -107,6 +114,52 @@ async def test_run_acp_session_terminates_process_after_prompt(
     assert process.terminated is True
     assert process.wait_calls >= 1
     assert fake_conn.closed is True
+
+
+async def test_spawn_filtered_agent_process_terminates_process_on_context_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import kagan.core._acp_spawn as acp_spawn
+
+    process = _FakeProcess()
+    fake_conn = _FakeConnection()
+
+    @asynccontextmanager
+    async def fake_spawn_stdio_transport(*_args: Any, **_kwargs: Any):
+        yield object(), object(), process
+
+    monkeypatch.setattr(acp_spawn, "spawn_stdio_transport", fake_spawn_stdio_transport)
+    monkeypatch.setattr(acp_spawn, "ClientSideConnection", lambda *_args, **_kwargs: fake_conn)
+
+    async with spawn_filtered_agent_process(lambda agent: agent, "agent", backend_name="codex"):
+        pass
+
+    assert process.terminated is True
+    assert process.wait_calls == 1
+    assert fake_conn.closed is True
+
+
+async def test_spawn_filtered_agent_process_terminates_process_when_close_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import kagan.core._acp_spawn as acp_spawn
+
+    process = _FakeProcess()
+    fake_conn = _CancelOnCloseConnection()
+
+    @asynccontextmanager
+    async def fake_spawn_stdio_transport(*_args: Any, **_kwargs: Any):
+        yield object(), object(), process
+
+    monkeypatch.setattr(acp_spawn, "spawn_stdio_transport", fake_spawn_stdio_transport)
+    monkeypatch.setattr(acp_spawn, "ClientSideConnection", lambda *_args, **_kwargs: fake_conn)
+
+    with pytest.raises(asyncio.CancelledError):
+        async with spawn_filtered_agent_process(lambda agent: agent, "agent", backend_name="codex"):
+            pass
+
+    assert process.terminated is True
+    assert process.wait_calls == 1
 
 
 async def test_run_acp_session_surfaces_early_process_exit_on_initialize_timeout(

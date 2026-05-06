@@ -167,12 +167,16 @@ class SessionDashboardScreen(Screen[None]):
             f"Session attached — streaming agent output for task {self._task_id[:8]}"
         )
 
-    def on_unmount(self) -> None:
+    async def on_unmount(self) -> None:
         if self._stream_task is not None:
             self._stream_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._stream_task
             self._stream_task = None
         if self._chat_message_task is not None:
             self._chat_message_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_message_task
             self._chat_message_task = None
         if self._agent_status_timer is not None:
             self._agent_status_timer.stop()

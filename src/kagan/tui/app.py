@@ -9,7 +9,7 @@ from textual.binding import Binding, BindingType
 from textual.screen import Screen
 
 from kagan.cli.doctor import DoctorCheck
-from kagan.core import KaganCore
+from kagan.core import KaganCore, install_asyncio_subprocess_exception_filter
 from kagan.core.errors import KaganError, NotFoundError
 from kagan.core.models import Project
 from kagan.tui._utils import is_enabled as _is_enabled
@@ -28,10 +28,7 @@ from kagan.tui.screens.settings import SettingsModal
 from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.screens.task_screen import TaskScreen
 from kagan.tui.screens.workspace import WorkspaceScreen
-from kagan.tui.textual_compat import (
-    apply_textual_compat_workarounds,
-    install_asyncio_subprocess_exception_filter,
-)
+from kagan.tui.textual_compat import apply_textual_compat_workarounds
 from kagan.tui.theme import KAGAN_THEME, KAGAN_THEME_256
 
 
@@ -115,8 +112,8 @@ class KaganApp(App[None]):
         await self._route_startup()
         self.run_worker(self._startup_cleanup(), exclusive=False)
 
-    def on_unmount(self) -> None:
-        self.core.close()
+    async def on_unmount(self) -> None:
+        await self.core.aclose()
 
     async def _apply_saved_theme(self) -> None:
         settings = await self.core.settings.get()

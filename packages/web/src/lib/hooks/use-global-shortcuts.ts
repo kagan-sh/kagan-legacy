@@ -19,17 +19,21 @@ import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { hasOpenOverlay, isEditableTarget } from '@/lib/utils/dom';
 import { type DockedChatRailMode, cycleDockMode } from '@/lib/layout/dock-mode';
 
+function isPeriodKey(event: KeyboardEvent): boolean {
+  return event.key === '.' || event.code === 'Period' || event.code === 'NumpadDecimal';
+}
+
 /**
  * Wires application-level shortcuts for command/search overlays, chat rail
  * docking, help, session switching, and workspace navigation.
  *
  * Design notes:
- *   - We listen on `document` in the capture phase so the palette can open
+ *   - We listen on `document` in the capture phase so global actions can run
  *     even when focus is inside an editor. Cmd/Ctrl is a modifier — users
- *     who hit it explicitly while typing mean to invoke the palette.
+ *     who hit it explicitly while typing mean to invoke an app command.
  *   - Plain `k` (no modifier) inside an editable target falls through to
  *     the underlying control. No interception.
- *   - preventDefault so browsers don't steal Cmd+K for their own actions
+ *   - preventDefault so browsers don't steal the shortcut for their own actions
  *     (Firefox quick-find, Safari web search, etc.).
  *
  * Keep global shortcut ownership here so feature components expose actions
@@ -137,10 +141,12 @@ export function useGlobalShortcuts(): void {
         return;
       }
 
-      if (hasModifier && !event.shiftKey && !event.altKey && key === 'k') {
+      if (!welcomeRoute && hasModifier && !event.shiftKey && !event.altKey && key === 'k') {
         event.preventDefault();
         event.stopPropagation();
-        setCommandOpen((prev) => !prev);
+        setCommandOpen(false);
+        setHelpOverlayOpen(false);
+        setSessionPickerOpen(true);
         return;
       }
 
@@ -149,7 +155,7 @@ export function useGlobalShortcuts(): void {
         hasModifier &&
         !event.shiftKey &&
         !event.altKey &&
-        key === 'i'
+        isPeriodKey(event)
       ) {
         event.preventDefault();
         event.stopPropagation();

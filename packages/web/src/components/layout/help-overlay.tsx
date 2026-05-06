@@ -22,10 +22,10 @@ const SHORTCUTS: ShortcutSection[] = [
   {
     title: 'Global',
     rows: [
-      { keys: ['Cmd/Ctrl', 'K'], description: 'Open Command Palette' },
-      { keys: ['Cmd/Ctrl', 'Shift', 'K'], description: 'Open Session Switcher' },
+      { keys: ['Cmd/Ctrl', 'Shift', 'P'], description: 'Open Quick Actions' },
+      { keys: ['Cmd/Ctrl', 'K'], description: 'Open Session Switcher' },
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
-      { keys: ['Cmd/Ctrl', 'I'], description: 'Toggle AI Panel' },
+      { keys: ['Cmd/Ctrl', '.'], description: 'Toggle AI Panel' },
       { keys: ['Cmd/Ctrl', 'Shift', 'F'], description: 'Fullscreen AI Panel' },
       { keys: ['Esc'], description: 'Stop agent + edit last message' },
     ],
@@ -44,7 +44,7 @@ const SHORTCUTS: ShortcutSection[] = [
     rows: [
       { keys: ['Open Chat'], description: 'Watch the current task workspace in the chat rail' },
       { keys: ['Worker', 'Reviewer'], description: 'Switch the current task workspace lane view' },
-      { keys: ['Cmd/Ctrl', 'Shift', 'K'], description: 'Switch between sessions' },
+      { keys: ['Cmd/Ctrl', 'K'], description: 'Switch between sessions' },
     ],
   },
 ];
@@ -64,7 +64,7 @@ const FLOWS = [
   },
   {
     title: 'Orchestrator Control Flow',
-    body: 'Use Session Switcher (⌘⇧K) to open orchestrator sessions for planning, prioritization, and multi-task coordination.',
+    body: 'Use Session Switcher (Cmd/Ctrl+K) to open orchestrator sessions for planning, prioritization, and multi-task coordination.',
   },
 ];
 

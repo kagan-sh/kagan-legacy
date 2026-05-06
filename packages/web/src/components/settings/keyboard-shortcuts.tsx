@@ -4,8 +4,8 @@ import { Kbd } from '@/components/ui/kbd';
 const SHORTCUTS = [
   { keys: '? / F1', action: 'Help & Shortcuts' },
   { keys: 'Cmd/Ctrl+Shift+P', action: 'Quick Actions' },
-  { keys: 'Cmd/Ctrl+Shift+K', action: 'Session Switcher' },
-  { keys: 'Cmd/Ctrl+I', action: 'Toggle AI Panel' },
+  { keys: 'Cmd/Ctrl+K', action: 'Session Switcher' },
+  { keys: 'Cmd/Ctrl+.', action: 'Toggle AI Panel' },
   { keys: 'Cmd/Ctrl+Shift+F', action: 'Fullscreen AI Panel' },
   { keys: 'Esc', action: 'Stop / dismiss' },
   { keys: 'N', action: 'Create task' },

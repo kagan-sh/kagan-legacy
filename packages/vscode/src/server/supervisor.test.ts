@@ -67,6 +67,30 @@ describe("LocalServerSupervisor", () => {
       /Failed to start Kagan server via "kagan"/,
     );
   });
+
+  it("stops a managed server with a graceful signal", async () => {
+    const child = new FakeProcess();
+    const spawn = vi.fn(() => child);
+    const client = new SequenceClient("http://127.0.0.1:8765", [false, true]);
+    const supervisor = new LocalServerSupervisor(log, spawn);
+
+    await supervisor.ensureRunning(client, "kagan");
+    await supervisor.stop();
+
+    expect(child.signals).toEqual(["SIGTERM"]);
+  });
+
+  it("disposes a managed server with synchronous escalation", async () => {
+    const child = new FakeProcess();
+    const spawn = vi.fn(() => child);
+    const client = new SequenceClient("http://127.0.0.1:8765", [false, true]);
+    const supervisor = new LocalServerSupervisor(log, spawn);
+
+    await supervisor.ensureRunning(client, "kagan");
+    supervisor.dispose();
+
+    expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
+  });
 });
 
 class TestLogSink implements ServerLogSink {
@@ -101,8 +125,10 @@ class SequenceClient implements ServerClient {
 class FakeProcess extends EventEmitter implements SpawnedProcess {
   readonly stdout = new EventEmitter() as unknown as NodeJS.ReadableStream;
   readonly stderr = new EventEmitter() as unknown as NodeJS.ReadableStream;
+  readonly signals: Array<NodeJS.Signals | number | undefined> = [];
 
-  kill(): boolean {
+  kill(signal?: NodeJS.Signals | number): boolean {
+    this.signals.push(signal);
     this.emit("exit", 0, null);
     return true;
   }

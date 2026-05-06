@@ -59,7 +59,7 @@ export const sessionPickerOpenAtom = atom(false);
 
 export const helpOverlayOpenAtom = atom(false);
 
-/** Command palette (Cmd+K) open state. */
+/** Quick Actions command palette open state. */
 export const commandPaletteOpenAtom = atom(false);
 
 /** Integration import dialog open state. */

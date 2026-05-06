@@ -25,6 +25,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import signal
+import subprocess
+import sys
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -132,8 +136,6 @@ async def run_bash(
     dict
         ``{"output": str, "exit_code": int, "timed_out": bool}``
     """
-    import sys
-
     if on_update is None:
         on_update = lambda _line: None  # noqa: E731
 
@@ -143,12 +145,18 @@ async def run_bash(
         args = ["/bin/sh", "-c", command]
 
     cwd_path = Path(cwd) if cwd else None
+    kwargs: dict[str, Any] = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
 
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd_path,
+        **kwargs,
     )
 
     assert proc.stdout is not None
@@ -163,8 +171,7 @@ async def run_bash(
     except TimeoutError:
         timed_out = True
         lines = []
-        with contextlib.suppress(ProcessLookupError):
-            proc.kill()
+        await _kill_process_tree(proc)
     finally:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(proc.wait(), timeout=5.0)
@@ -172,6 +179,29 @@ async def run_bash(
     exit_code = proc.returncode if proc.returncode is not None else -1
     output = "\n".join(lines)
     return {"output": output, "exit_code": exit_code, "timed_out": timed_out}
+
+
+async def _kill_process_tree(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is not None:
+        return
+    if sys.platform == "win32":
+        taskkill = await asyncio.create_subprocess_exec(
+            "taskkill",
+            "/PID",
+            str(proc.pid),
+            "/T",
+            "/F",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(taskkill.wait(), timeout=5.0)
+        if proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(proc.pid, signal.SIGKILL)
 
 
 # ---------------------------------------------------------------------------

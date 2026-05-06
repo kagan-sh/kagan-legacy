@@ -107,28 +107,6 @@ def check_db_writability(db_path: Path) -> PreflightCheckResult:
         )
 
 
-def check_agent_backend(executable: str) -> PreflightCheckResult:
-    """Check a single agent backend executable (legacy single-backend path).
-
-    Returns WARN (not FAIL) when missing — severity escalation to FAIL requires
-    calling check_agent_backends() which applies the multi-backend severity rules.
-    """
-    found = shutil.which(executable)
-    if found is None:
-        return PreflightCheckResult(
-            name="agent_backend",
-            status=CheckStatus.WARN,
-            message=f"Agent backend '{executable}' not found on PATH",
-            fix_hint=f"Install '{executable}' or configure a different agent backend in Settings",
-        )
-    return PreflightCheckResult(
-        name="agent_backend",
-        status=CheckStatus.PASS,
-        message=f"Agent backend '{executable}' found at {found}",
-        fix_hint="",
-    )
-
-
 def check_agent_backends(default_backend: str | None) -> list[PreflightCheckResult]:
     """Survey all registered backends and classify each result by severity.
 

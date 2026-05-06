@@ -156,16 +156,17 @@ async def test_chat_first_turn_invokes_title_generator(tmp_path: Path) -> None:
         )
 
         await asyncio.wait_for(title_called.wait(), timeout=5.0)
-        # The engine awaits `_sessions.update(...)` immediately after the
-        # generator returns; yield until the label is observable.
-        while True:
-            s = await core.chat_sessions.get(sid)
-            if s is not None and s.label == "Generated Title":
-                break
-            await asyncio.sleep(0)
+
+        async def _await_label() -> object:
+            while True:
+                s = await core.chat_sessions.get(sid)
+                if s is not None and s.label == "Generated Title":
+                    return s
+                await asyncio.sleep(0)
+
+        s = await asyncio.wait_for(_await_label(), timeout=3.0)
 
         assert len(calls) == 1
-        assert s is not None
         assert s.label == "Generated Title"
     finally:
         core.close()

@@ -47,6 +47,15 @@ class JsonRpcObjectStreamReader:
 
             return line
 
+    async def readuntil(self, separator: bytes = b"\n") -> bytes:
+        return await self._reader.readuntil(separator)
+
+    async def read(self, n: int = -1) -> bytes:
+        return await self._reader.read(n)
+
+    async def readexactly(self, n: int) -> bytes:
+        return await self._reader.readexactly(n)
+
     def at_eof(self) -> bool:
         return self._reader.at_eof()
 

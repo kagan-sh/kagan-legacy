@@ -13,6 +13,51 @@
 
 
 
+## v0.19.0-beta.33 (2026-05-06)
+
+
+
+
+### Features
+
+- Remap global shortcuts for unified web/TUI experience
+  ([#150](https://github.com/kagan-sh/kagan/pull/150),
+  [`ba78ab8`](https://github.com/kagan-sh/kagan/commit/ba78ab88464793beb0a2b1f10733d53fc568a536))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- Ensure graceful client shutdown ([#150](https://github.com/kagan-sh/kagan/pull/150),
+  [`ba78ab8`](https://github.com/kagan-sh/kagan/commit/ba78ab88464793beb0a2b1f10733d53fc568a536))
+
+- Harden cancellation shutdown cleanup ([#150](https://github.com/kagan-sh/kagan/pull/150),
+  [`ba78ab8`](https://github.com/kagan-sh/kagan/commit/ba78ab88464793beb0a2b1f10733d53fc568a536))
+
+
+
+
+
 ## v0.19.0-beta.32 (2026-05-05)
 
 

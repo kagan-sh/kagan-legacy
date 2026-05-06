@@ -451,6 +451,8 @@ class Tasks:
                 s.refresh(task)
                 # Eagerly load the criteria relationship while the session is open
                 _ = list(task.criteria)
+                for _c in task.criteria:
+                    _ = list(_c.verdicts)
                 logger.debug("Task created id={} type={}", task.id, task.task_type)
                 return task
             except IntegrityError as exc:
@@ -481,6 +483,8 @@ class Tasks:
             t = s.get(Task, task_id)
             if t is not None:
                 _ = list(t.criteria)  # Eagerly load criteria while session is open
+                for _c in t.criteria:
+                    _ = list(_c.verdicts)
             return t
 
         task = await _db_async(self._engine, _get_with_criteria)
@@ -505,6 +509,8 @@ class Tasks:
             tasks = list(s.exec(stmt).all())
             for t in tasks:
                 _ = list(t.criteria)  # Eagerly load criteria while session is open
+                for _c in t.criteria:
+                    _ = list(_c.verdicts)
             return tasks
 
         return await _db_async(self._engine, _list_with_criteria)
@@ -603,6 +609,8 @@ class Tasks:
             s.commit()
             s.refresh(db_task)
             _ = list(db_task.criteria)  # Eagerly load criteria while session is open
+            for _c in db_task.criteria:
+                _ = list(_c.verdicts)
             return db_task
 
         updated = await _db_async(self._engine, op)
@@ -662,6 +670,8 @@ class Tasks:
             s.commit()
             s.refresh(task)
             _ = list(task.criteria)  # Eagerly load criteria while session is open
+            for _c in task.criteria:
+                _ = list(_c.verdicts)
             logger.info("Task {} moved to {}", task_id, status.value)
             return task
 
@@ -726,6 +736,8 @@ class Tasks:
             ][:limit]
             for t in matched:
                 _ = list(t.criteria)
+                for _c in t.criteria:
+                    _ = list(_c.verdicts)
             return matched
 
         return await _db_async(self._engine, _search_with_criteria)

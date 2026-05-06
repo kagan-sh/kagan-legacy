@@ -84,12 +84,54 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
+        _start: dict | None = None
+        _streaming: bool = False
+
         async def _send_with_headers(message: dict) -> None:
-            if message["type"] == "http.response.start":
+            nonlocal _start, _streaming
+
+            mtype = message.get("type")
+
+            if mtype == "http.response.start":
                 headers = list(message.get("headers", []))
                 for name, value in _SECURITY_HEADERS.items():
                     headers.append((name.lower().encode(), value.encode()))
                 message["headers"] = headers
+                _start = message
+                # Hold start until body arrives so content-length can be verified.
+                return
+
+            if mtype == "http.response.body":
+                more_body = message.get("more_body", False)
+
+                if more_body and not _streaming:
+                    # First chunk of a streaming response — release buffered start now.
+                    _streaming = True
+                    if _start is not None:
+                        await send(_start)
+                        _start = None
+                    await send(message)
+                    return
+
+                if not more_body and not _streaming and _start is not None:
+                    # Complete non-streaming body — fix content-length and flush both.
+                    body = message.get("body", b"")
+                    headers = [
+                        (k, v)
+                        for k, v in _start.get("headers", [])
+                        if k.lower() != b"content-length"
+                    ]
+                    headers.append((b"content-length", str(len(body)).encode("latin-1")))
+                    _start["headers"] = headers
+                    await send(_start)
+                    _start = None
+                    await send(message)
+                    return
+
+                # Streaming continuation or start already flushed.
+                await send(message)
+                return
+
             await send(message)
 
         await self.app(scope, receive, _send_with_headers)

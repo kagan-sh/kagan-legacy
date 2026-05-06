@@ -847,12 +847,22 @@ def _build_repl_key_bindings(submit_queue: "asyncio.Queue[str | None]") -> KeyBi
                 buffer.apply_completion(buffer.complete_state.completions[0])
             return
         text = buffer.text
+        if text:
+            # Save the submitted text to history so Up/Down cycling works.
+            # history.append_string deduplicates; we also insert into _working_lines
+            # at the current working position so navigation is available immediately
+            # without waiting for the async history-load task.
+            history_strings = buffer.history.get_strings()
+            if not history_strings or history_strings[-1] != text:
+                buffer.history.append_string(text)
+            working_lines = getattr(buffer, "_working_lines", None)
+            if working_lines is not None:
+                insert_pos = getattr(buffer, "working_index", len(working_lines) - 1)
+                working_lines.insert(insert_pos, text)
+                # Advance the private working_index to the new last (empty) slot.
+                buffer._Buffer__working_index = insert_pos + 1
         buffer.text = ""
         buffer.cursor_position = 0
-        # Reset history pointer to working line
-        line_count = len(getattr(buffer, "_working_lines", []))
-        if line_count > 0:
-            buffer.go_to_history(line_count - 1)
         submit_queue.put_nowait(text)
 
     return kb

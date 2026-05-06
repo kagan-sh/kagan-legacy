@@ -723,26 +723,27 @@ class ChatController:
         # Build a synthetic Task wrapping the engine consumption so SIGINT can
         # cancel the whole turn through the engine. The handler still fires
         # ``engine.cancel`` for the partial-on-cancel persist contract.
-        async def _consume_stream() -> None:
-            nonlocal had_error
-            stream = self.client.chat.stream_assistant(
-                self._chat_session_id,
-                prompt_blocks=prompt_blocks,
-                agent_backend=self.agent_backend,
-                acp_factory=self._factory,
-            )
-            try:
-                async for event in stream:
-                    self._dispatch_event(event)
-                    if isinstance(event, TurnError):
-                        had_error = True
-            finally:
-                # ``stream`` is an async generator — closing it propagates
-                # ``GeneratorExit`` into the engine's cleanup branch.
-                with contextlib.suppress(BaseException):
-                    await stream.aclose()
+        with Live(live_state, console=_console, auto_refresh=False, transient=True) as _live:
 
-        with Live(live_state, console=_console, refresh_per_second=10, transient=True):
+            async def _consume_stream() -> None:
+                nonlocal had_error
+                stream = self.client.chat.stream_assistant(
+                    self._chat_session_id,
+                    prompt_blocks=prompt_blocks,
+                    agent_backend=self.agent_backend,
+                    acp_factory=self._factory,
+                )
+                try:
+                    async for event in stream:
+                        self._dispatch_event(event)
+                        _live.refresh()
+                        if isinstance(event, TurnError):
+                            had_error = True
+                finally:
+                    # ``stream`` is an async generator — closing it propagates
+                    # ``GeneratorExit`` into the engine's cleanup branch.
+                    with contextlib.suppress(BaseException):
+                        await stream.aclose()
             self._renderer.start_turn(live_state=live_state)
             consume_task = asyncio.create_task(_consume_stream(), name="chat-engine-consume")
             original_sigint = install_sigint_handler(consume_task)

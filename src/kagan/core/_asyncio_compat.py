@@ -1,11 +1,13 @@
 """Asyncio compatibility workarounds for subprocess shutdown races."""
 
 import asyncio
+import sys
 from typing import Any
 
 from loguru import logger
 
 _PATCH_FLAG = "_kagan_asyncio_subprocess_handler_patched"
+_UNRAISABLE_PATCH_FLAG = "_kagan_asyncio_unraisable_hook_patched"
 
 
 def _is_known_asyncio_subprocess_invalid_state(context: dict[str, Any]) -> bool:
@@ -24,10 +26,60 @@ def _is_known_asyncio_subprocess_invalid_state(context: dict[str, Any]) -> bool:
     return "BaseSubprocessTransport" in message or "_UnixReadPipeTransport" in message
 
 
+def _is_known_windows_proactor_closed_pipe_unraisable(unraisable: Any) -> bool:
+    exc = getattr(unraisable, "exc_value", None)
+    if not isinstance(exc, ValueError):
+        return False
+    if "I/O operation on closed pipe" not in str(exc):
+        return False
+
+    obj = getattr(unraisable, "object", None)
+    obj_text = " ".join(
+        str(part)
+        for part in (
+            getattr(obj, "__module__", ""),
+            getattr(obj, "__qualname__", ""),
+            repr(obj),
+        )
+        if part
+    )
+    return any(
+        marker in obj_text
+        for marker in (
+            "asyncio.proactor_events",
+            "asyncio.base_subprocess",
+            "_ProactorBasePipeTransport.__del__",
+            "BaseSubprocessTransport.__del__",
+        )
+    )
+
+
+def _install_asyncio_subprocess_unraisable_filter() -> None:
+    if getattr(sys, _UNRAISABLE_PATCH_FLAG, False):
+        return
+    previous_hook = sys.unraisablehook
+
+    def _hook(unraisable: Any) -> None:
+        if _is_known_windows_proactor_closed_pipe_unraisable(unraisable):
+            logger.debug("Ignoring known Windows asyncio subprocess closed-pipe shutdown race")
+            return
+        previous_hook(unraisable)
+
+    sys.unraisablehook = _hook
+    setattr(sys, _UNRAISABLE_PATCH_FLAG, True)
+
+
 def install_asyncio_subprocess_exception_filter(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> None:
-    target = loop or asyncio.get_running_loop()
+    _install_asyncio_subprocess_unraisable_filter()
+    if loop is None:
+        try:
+            target = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+    else:
+        target = loop
     if getattr(target, _PATCH_FLAG, False):
         return
     previous_handler = target.get_exception_handler()

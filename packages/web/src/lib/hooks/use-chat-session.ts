@@ -185,6 +185,14 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   // ── SSE chat stream abort ref ──────────────────────────────────────────────
   const chatAbortRef = useRef<AbortController | null>(null);
 
+  useEffect(() => {
+    return () => {
+      chatAbortRef.current?.abort();
+      chatAbortRef.current = null;
+      localStreamingRef.current = false;
+    };
+  }, [id]);
+
   // ── /watch event handler ───────────────────────────────────────────────────
   const handleWatchEvent = useCallback(
     (event: ChatWatchEvent) => {

@@ -68,8 +68,7 @@ ______________________________________________________________________
 - Worker/Reviewer lane toggle in the overlay header switches streaming context
 - LIVE indicator and streaming status use the shared animated wave glyph
 - the overlay filters events by the active session ID
-- `/session/:taskId` redirects to `/task/:taskId?lane=worker` which auto-opens the overlay
-- session picker navigates to `/task/:id?lane=...` instead of the old `/session/:taskId` route
+- Session picker navigates to `/task/:id?lane=...` so task overlays open directly.
 - live task event updates over SSE
 - AGENT_STATUS events with usage data render an inline metrics row: context window fill bar, percentage, and cost
 

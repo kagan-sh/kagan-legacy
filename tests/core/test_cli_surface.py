@@ -79,7 +79,6 @@ def test_bare_kagan_delegates_to_tui(monkeypatch, tmp_path: Path) -> None:
         called.append(True)
 
     monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
-    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
     runner = CliRunner()
     result = runner.invoke(cli, [], env=_runner_env(tmp_path))
 
@@ -125,7 +124,6 @@ def test_first_run_shows_surface_chooser_and_persists_choice(monkeypatch, tmp_pa
     monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
     monkeypatch.setattr("click.prompt", lambda *args, **kwargs: "tui")
     monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
-    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
 
     runner = CliRunner()
     result = runner.invoke(cli, [], env=_runner_env(tmp_path))
@@ -179,7 +177,6 @@ def test_surface_chooser_is_skipped_after_choice_saved(monkeypatch, tmp_path: Pa
         "click.prompt", lambda *args, **kwargs: pytest.fail("prompt should not run")
     )
     monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
-    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
 
     result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
 
@@ -237,7 +234,6 @@ def test_surface_chooser_is_skipped_when_projects_exist(monkeypatch, tmp_path: P
         "click.prompt", lambda *args, **kwargs: pytest.fail("prompt should not run")
     )
     monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
-    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
 
     result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
 
@@ -706,7 +702,6 @@ def test_crash_footer_mentions_kagan_doctor(monkeypatch, tmp_path: Path) -> None
         raise KaganError("simulated failure")
 
     monkeypatch.setattr("kagan.cli.tui._launch_tui", _raise_kagan_error)
-    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
     monkeypatch.setattr("kagan.cli.tui._collect_startup_checks", lambda **_kw: [])
 
     runner = CliRunner(mix_stderr=True)

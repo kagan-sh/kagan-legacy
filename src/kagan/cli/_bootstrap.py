@@ -24,7 +24,13 @@ def make_client(db_path: str | Path | None = None):
 
 
 def run_async(coro):
-    return asyncio.run(coro)
+    async def _run_with_shutdown_guards():
+        from kagan.core import install_asyncio_subprocess_exception_filter
+
+        install_asyncio_subprocess_exception_filter()
+        return await coro
+
+    return asyncio.run(_run_with_shutdown_guards())
 
 
 def _current_version() -> str:

@@ -9,7 +9,9 @@ from sqlmodel import select
 
 from kagan.core import (
     BackendSelector,
+    TaskCreateRequest,
     TaskStatus,
+    TaskUpdateRequest,
     db_async,
     parse_priority,
     resolve_default_agent_backend,
@@ -33,11 +35,9 @@ from kagan.server._helpers import (
     task_wire_dict,
 )
 from kagan.server.requests import (
-    CreateTaskRequest,
     FollowUpRequest,
     ReviewDecideRequest,
     RunTaskRequest,
-    UpdateTaskRequest,
     UpdateTaskStatusRequest,
 )
 from kagan.server.responses import TaskSessionResponse
@@ -217,7 +217,7 @@ def register_task_routes(mcp: FastMCP) -> None:
         )
         if forbidden is not None:
             return forbidden
-        body = await parse_body(request, CreateTaskRequest)
+        body = await parse_body(request, TaskCreateRequest)
         task = await ctx.client.tasks.create(
             body.title,
             description=body.description,
@@ -254,7 +254,7 @@ def register_task_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return forbidden
         task_id = cast("str", request.path_params["task_id"])
-        body = await parse_body(request, UpdateTaskRequest)
+        body = await parse_body(request, TaskUpdateRequest)
         update_args: dict[str, Any] = {}
         for field in body.model_fields_set:
             value = getattr(body, field)

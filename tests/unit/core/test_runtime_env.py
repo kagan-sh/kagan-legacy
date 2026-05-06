@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 import pytest
 
 from kagan.runtime_env import (
-    _ESSENTIAL_ENV,
     _ESSENTIAL_ENV_POSIX,
     _ESSENTIAL_ENV_WINDOWS,
     _essential_env,
@@ -316,7 +315,7 @@ class TestBuildSanitizedSubprocessEnvironment:
             "GIT_CONFIG_GLOBAL": "/home/user/.gitconfig",
         }
         result = build_sanitized_subprocess_environment(base_env, platform_name="linux")
-        for key in _ESSENTIAL_ENV:
+        for key in _ESSENTIAL_ENV_POSIX:
             assert key in result
             assert result[key] == base_env[key]
 
@@ -658,10 +657,6 @@ class TestEssentialEnvSelector:
     def test_windows_set_returned_for_win32(self) -> None:
         """win32 platform should return the Windows frozenset."""
         assert _essential_env("win32") is _ESSENTIAL_ENV_WINDOWS
-
-    def test_essential_env_alias_is_posix(self) -> None:
-        """The backwards-compat _ESSENTIAL_ENV alias must equal the POSIX set."""
-        assert _ESSENTIAL_ENV is _ESSENTIAL_ENV_POSIX
 
     def test_windows_set_contains_critical_vars(self) -> None:
         """Windows set must include the vars that prevent DLL/config failures."""

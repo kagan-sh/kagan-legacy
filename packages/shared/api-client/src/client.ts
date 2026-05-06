@@ -32,7 +32,6 @@ import type {
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
-  RoleStats,
   RunTaskInput,
   SearchMentionsInput,
   SessionTimelineEntry,
@@ -42,7 +41,6 @@ import type {
   TaskDeletedResponse,
   TaskEventOptions,
   TaskStatus,
-  TaskTypeStats,
   TaskWorktreeResponse,
   TransitionStatusInput,
   TurnStatusResponse,
@@ -724,23 +722,6 @@ export class KaganApiClient {
     if (params.description) qs.set("description", params.description);
     if (params.role) qs.set("role", params.role);
     return this.get<BackendTaskRecommendation>(`/api/analytics/recommend-for-task${withQuery(qs)}`);
-  }
-
-  /** GET /api/analytics/by-role (legacy — flattens the grouped response) */
-  async getStatsByRole(): Promise<RoleStats[]> {
-    const grouped = await this.getAnalyticsByRole();
-    return Object.values(grouped).flat();
-  }
-
-  /** GET /api/analytics/by-task-type (legacy — flattens the grouped response) */
-  async getStatsByTaskType(): Promise<TaskTypeStats[]> {
-    const grouped = await this.getAnalyticsByTaskType();
-    return Object.values(grouped).flat();
-  }
-
-  /** GET /api/analytics/by-role-and-task-type (legacy alias) */
-  getCombinedStats(): Promise<CombinedStats[]> {
-    return this.getAnalyticsByRoleAndTaskType();
   }
 
   // -- Integrations ---------------------------------------------------------

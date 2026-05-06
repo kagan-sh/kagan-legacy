@@ -4,37 +4,19 @@ Each model declares exactly the fields that a route accepts.
 Use ``parse_body(request, Model)`` from ``_helpers`` to validate.
 
 Canonical definitions live in ``kagan.core._io.*`` so both REST routes and
-MCP toolsets share a single source of truth.  The names below are re-exported
-from their canonical locations for backwards compatibility with existing route
-imports.
+MCP toolsets share a single source of truth.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from kagan.core import (
-    ProjectCreateRequest,
-    RepoAddRequest,
-    ReviewDecideRequest,
-    TaskCreateRequest,
-    TaskUpdateRequest,
-)
-
-# Re-export under the legacy names used by route imports.
-CreateTaskRequest = TaskCreateRequest
-UpdateTaskRequest = TaskUpdateRequest
-CreateProjectRequest = ProjectCreateRequest
-AddRepoRequest = RepoAddRequest
+from kagan.core import ReviewDecideRequest
 
 __all__ = [
-    "AddRepoRequest",
-    "CreateProjectRequest",
-    "CreateTaskRequest",
     "FollowUpRequest",
     "ReviewDecideRequest",
     "RunTaskRequest",
-    "UpdateTaskRequest",
     "UpdateTaskStatusRequest",
 ]
 

@@ -119,7 +119,7 @@ async def _lifespan(mcp: FastMCP) -> AsyncIterator[ServerContext]:
     finally:
         logger.debug("MCP lifespan: shutting down")
         _set_server_context(mcp, None)
-        client.close()
+        await client.aclose()
 
 
 def create_server(opts: ServerOptions) -> FastMCP:

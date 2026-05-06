@@ -3,34 +3,14 @@ import {
   ApiError,
   type AnalyticsExport,
   type BackendStats,
-  type ChatAgentsResponse,
   type ChatMessageDetailResponse,
   type TurnStatusResponse,
   type ChatWatchEvent,
-  type CreateTaskInput,
-  type DiffFile,
-  type DiffStats,
   type DoctorReportResponse,
   type Mention,
-  type ReviewDecisionInput,
-  type ReviewDecisionResponse,
-  type ReviewStatusResponse,
-  type RunTaskInput,
   type SearchMentionsInput,
   type SessionTimelineEntry,
-  type SettingsResponse,
-  type TaskEventOptions,
-  type TaskStatus,
-  type TaskWorktreeResponse,
   type TurnInProgressResponse,
-  type UpdateTaskInput,
-  type WireChatSession,
-  type WireChatSessionSummary,
-  type WireEvent,
-  type WireProject,
-  type WireRepository,
-  type WireTask,
-  type WireTaskSession,
 } from "@kagan/shared-api-client";
 
 export { ApiError };
@@ -340,40 +320,3 @@ export class KaganClient extends KaganApiClient {
     });
   }
 }
-
-// ── Unused import aliases kept for caller compatibility ────────────────────
-// All types are re-exported via the `import ... from "@kagan/shared-api-client"` above.
-// Callers that did `import { ApiError } from "../api/client.js"` still work via the re-export.
-
-export type {
-  AnalyticsExport,
-  BackendStats,
-  ChatAgentsResponse,
-  ChatMessageDetailResponse,
-  TurnStatusResponse,
-  ChatWatchEvent,
-  CreateTaskInput,
-  DiffFile,
-  DiffStats,
-  DoctorReportResponse,
-  Mention,
-  ReviewDecisionInput,
-  ReviewDecisionResponse,
-  ReviewStatusResponse,
-  RunTaskInput,
-  SearchMentionsInput,
-  SessionTimelineEntry,
-  SettingsResponse,
-  TaskEventOptions,
-  TaskStatus,
-  TaskWorktreeResponse,
-  TurnInProgressResponse,
-  UpdateTaskInput,
-  WireChatSession,
-  WireChatSessionSummary,
-  WireEvent,
-  WireProject,
-  WireRepository,
-  WireTask,
-  WireTaskSession,
-};

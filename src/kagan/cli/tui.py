@@ -3,9 +3,6 @@
 The doctor gate now runs inside the TUI via DoctorModal (FAIL cases) or a
 degraded banner on WelcomeScreen (WARN-only). The CLI-level hard exit has been
 replaced with an in-TUI modal path so users get a guided remediation flow.
-
-``_run_doctor_gate`` is kept as a compatibility shim so existing test
-monkeypatches continue to work — it no longer blocks startup.
 """
 
 from __future__ import annotations
@@ -32,16 +29,6 @@ def _collect_startup_checks(*, skip_preflight: bool) -> list[DoctorCheck]:
     from kagan.cli.doctor import run_doctor_checks
 
     return run_doctor_checks()
-
-
-def _run_doctor_gate(*, skip_preflight: bool) -> bool:
-    """Compatibility shim — always returns True.
-
-    Previously blocked TUI startup on FAIL checks via a hard exit. FAIL
-    handling is now done inside the TUI by DoctorModal so the CLI gate is
-    a no-op. Kept so existing test monkeypatches continue to resolve.
-    """
-    return True
 
 
 def _launch_tui(
@@ -78,6 +65,9 @@ def _launch_tui(
 )
 def tui(db: str | None, session_id: str | None, skip_preflight: bool) -> None:
     """Run the Kanban TUI (default command)."""
+    from kagan.core import install_asyncio_subprocess_exception_filter
+
+    install_asyncio_subprocess_exception_filter()
     startup_checks = _collect_startup_checks(skip_preflight=skip_preflight)
 
     db_path: str | Path | None = None

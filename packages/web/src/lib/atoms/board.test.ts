@@ -8,7 +8,6 @@ import {
   searchQueryAtom,
   boardStatusFilterAtom,
   boardSortAtom,
-  resetBoardFiltersAtom,
   fetchTasksAtom,
   boardLoadingAtom,
 } from '@/lib/atoms/board';
@@ -78,24 +77,6 @@ describe('board atoms', () => {
       query: 'query',
       status: 'DONE',
       sort: 'recent',
-      repoId: null,
-    });
-  });
-
-  it('resets all filters to defaults', () => {
-    store.set(boardFiltersAtom, {
-      query: 'login',
-      status: 'IN_PROGRESS',
-      sort: 'priority',
-      repoId: 'some-repo',
-    });
-
-    store.set(resetBoardFiltersAtom);
-
-    expect(store.get(boardFiltersAtom)).toEqual({
-      query: '',
-      status: 'ALL',
-      sort: 'default',
       repoId: null,
     });
   });

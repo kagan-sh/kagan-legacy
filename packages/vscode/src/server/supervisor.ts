@@ -34,6 +34,7 @@ interface LocalServerTarget {
 
 const STARTUP_TIMEOUT_MS = 12_000;
 const STARTUP_POLL_MS = 250;
+const SHUTDOWN_TIMEOUT_MS = 3_000;
 
 export class LocalServerSupervisor {
   private child: SpawnedProcess | null = null;
@@ -68,10 +69,11 @@ export class LocalServerSupervisor {
   }
 
   dispose(): void {
-    if (this.child) {
-      this.child.kill();
-      this.child = null;
-    }
+    void this.stop();
+  }
+
+  async stop(): Promise<void> {
+    await this.stopChild(this.child);
   }
 
   private async start(client: ServerClient, target: LocalServerTarget): Promise<void> {
@@ -115,7 +117,7 @@ export class LocalServerSupervisor {
     startupDone = true;
 
     if (!healthy) {
-      child.kill();
+      await this.stopChild(child);
       throw new Error(
         `Timed out waiting for Kagan server on ${target.displayHost}:${target.port}. ` +
           `Check the Kagan Server output for details.`,
@@ -143,6 +145,35 @@ export class LocalServerSupervisor {
         this.log.appendLine(`[server:stderr] ${line}`);
       }
     });
+  }
+
+  private async stopChild(child: SpawnedProcess | null): Promise<void> {
+    if (!child) {
+      return;
+    }
+    if (this.child === child) {
+      this.child = null;
+    }
+    const exited = new Promise<void>((resolve) => {
+      child.once("exit", () => resolve());
+      child.once("error", () => resolve());
+    });
+    let fallback: NodeJS.Timeout | null = null;
+    const forced = new Promise<void>((resolve) => {
+      fallback = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, SHUTDOWN_TIMEOUT_MS);
+    });
+
+    child.kill("SIGTERM");
+    try {
+      await Promise.race([exited, forced]);
+    } finally {
+      if (fallback) {
+        clearTimeout(fallback);
+      }
+    }
   }
 }
 

@@ -1,18 +1,9 @@
-import { Navigate, useParams, useSearchParams, type RouteObject } from 'react-router';
+import { Navigate, type RouteObject } from 'react-router';
 import App from '@/app';
 import { RouteError } from '@/components/shared/route-error';
 
 function HydrateFallback() {
   return null;
-}
-
-/** Redirect legacy /session/:taskId?lane=X to /task/:taskId?lane=X */
-function SessionRedirect() {
-  const { taskId } = useParams<{ taskId: string }>();
-  const [searchParams] = useSearchParams();
-  const lane = searchParams.get('lane');
-  const target = `/task/${taskId}${lane ? `?lane=${lane}` : ''}`;
-  return <Navigate to={target} replace />;
 }
 
 export const routes: RouteObject[] = [
@@ -60,10 +51,6 @@ export const routes: RouteObject[] = [
             path: 'chat/:id',
             lazy: () => import('@/pages/chat-page'),
             errorElement: <RouteError />,
-          },
-          {
-            path: 'session/:taskId',
-            element: <SessionRedirect />,
           },
           {
             path: 'analytics',

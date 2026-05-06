@@ -305,6 +305,16 @@ class KanbanScreen(Screen[None]):
             self._branch_sync_task = None
 
     async def on_unmount(self) -> None:
+        if self._chat_message_task is not None:
+            self._chat_message_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_message_task
+            self._chat_message_task = None
+        if self._chat_stream_task is not None:
+            self._chat_stream_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_stream_task
+            self._chat_stream_task = None
         if self._watcher_reload_task is not None:
             self._watcher_reload_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1617,6 +1627,8 @@ class KanbanScreen(Screen[None]):
     async def on_chat_panel_submit_requested(self, message: ChatPanel.SubmitRequested) -> None:
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_message_task
 
         if self._chat_mode == ChatMode.ORCHESTRATOR:
             self._chat_message_task = asyncio.create_task(

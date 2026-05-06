@@ -22,6 +22,8 @@ import { StatusBar } from "./status/bar.js";
 import { SSE_TYPE, type SSEMessage } from "@kagan/shared-api-client";
 import { LocalServerSupervisor } from "./server/supervisor.js";
 
+let activeServerSupervisor: LocalServerSupervisor | null = null;
+
 function readConnectionConfig(): { serverUrl: string; protocol: "http" | "https"; authToken: string } {
   const cfg = vscode.workspace.getConfiguration("kagan");
   return {
@@ -49,6 +51,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const doctorStatus = new DoctorStatusProvider(client, statusBar);
   const serverLog = vscode.window.createOutputChannel("Kagan Server");
   const serverSupervisor = new LocalServerSupervisor(serverLog);
+  activeServerSupervisor = serverSupervisor;
 
   const boardView = vscode.window.createTreeView("kagan.board", {
     treeDataProvider: boardProvider,
@@ -237,8 +240,9 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 }
 
-export function deactivate(): undefined {
-  return undefined;
+export async function deactivate(): Promise<void> {
+  await activeServerSupervisor?.stop();
+  activeServerSupervisor = null;
 }
 
 async function connect(

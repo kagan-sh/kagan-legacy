@@ -38,7 +38,8 @@ async def _terminate_stdio_process(process: Any) -> None:
             with contextlib.suppress(ProcessLookupError):
                 kill()
         wait_result = cast("Awaitable[Any]", wait())
-        await wait_result
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(wait_result, timeout=5.0)
 
 
 @asynccontextmanager
@@ -65,5 +66,7 @@ async def spawn_filtered_agent_process(
         try:
             yield conn, process
         finally:
-            await conn.close()
-            await _terminate_stdio_process(process)
+            try:
+                await conn.close()
+            finally:
+                await _terminate_stdio_process(process)

@@ -79,6 +79,18 @@ describe("LocalServerSupervisor", () => {
 
     expect(child.signals).toEqual(["SIGTERM"]);
   });
+
+  it("disposes a managed server with synchronous escalation", async () => {
+    const child = new FakeProcess();
+    const spawn = vi.fn(() => child);
+    const client = new SequenceClient("http://127.0.0.1:8765", [false, true]);
+    const supervisor = new LocalServerSupervisor(log, spawn);
+
+    await supervisor.ensureRunning(client, "kagan");
+    supervisor.dispose();
+
+    expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
+  });
 });
 
 class TestLogSink implements ServerLogSink {

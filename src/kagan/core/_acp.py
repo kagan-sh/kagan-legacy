@@ -549,6 +549,8 @@ async def run_acp_session(
             )
         ) from exc
     finally:
-        with contextlib.suppress(RequestError, OSError, RuntimeError):
-            await conn.close()
-        await _terminate_acp_process(process)
+        try:
+            with contextlib.suppress(RequestError, OSError, RuntimeError):
+                await conn.close()
+        finally:
+            await _terminate_acp_process(process)

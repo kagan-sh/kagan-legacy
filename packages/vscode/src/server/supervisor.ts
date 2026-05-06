@@ -69,7 +69,13 @@ export class LocalServerSupervisor {
   }
 
   dispose(): void {
-    void this.stop();
+    const child = this.child;
+    if (!child) {
+      return;
+    }
+    this.child = null;
+    child.kill("SIGTERM");
+    child.kill("SIGKILL");
   }
 
   async stop(): Promise<void> {

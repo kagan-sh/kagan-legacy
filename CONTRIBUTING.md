@@ -40,10 +40,50 @@ Run `uv run poe --help` for the full task list.
 | ----------------- | ---------------------------- | ----------------------------- |
 | Add CLI command   | `src/kagan/cli/`             | Click group, lazy-loaded      |
 | Add MCP tool      | `src/kagan/mcp/toolsets/`    | One file per domain           |
-| Add TUI screen    | `src/kagan/tui/screens/`     | Register in app.py            |
+| Add TUI screen    | `src/kagan/tui/screens/`     | Register in `app.py` SCREENS dict (see below) |
 | Add agent backend | `src/kagan/core/_agent.py`   | Dict entry in AGENT_BACKENDS  |
 | Web UI feature    | `packages/web/src/`          | React 19 + jotai + Tailwind 4 |
 | Modify prompts    | `src/kagan/core/_prompts.py` | Run `uv run poe eval` after   |
+
+## Module ownership
+
+Each `_`-prefixed module in `src/kagan/core/` owns a specific concern. Patch the right layer:
+
+| Module | Owns | Go elsewhere if… |
+| --- | --- | --- |
+| `core/_tasks.py` | Task CRUD, worktree coordination | Adding session/ACP logic → `_sessions.py` |
+| `core/_sessions.py` | Session lifecycle, ACP streaming | Adding task-level features → `_tasks.py` |
+| `core/_agent.py` | Agent backend registry + launcher | Adding session features → `_sessions.py` |
+| `core/_transitions.py` | Status state machine — the only place to add valid (from→to) transitions | You want to bypass the funnel — don't |
+| `core/_prompts.py` | Three-layer prompt resolution | Changing persona defaults → add to the config layer, not here |
+| `core/_events.py` | DB-persisted task/session event streams | Adding in-memory signals → `agent_events.py` |
+| `cli/chat/` | CLI chat REPL + streaming controller | Adding TUI chat — that lives in `tui/widgets/chat.py` |
+| `server/_routes.py` | HTTP/SSE endpoints | Adding MCP tools — those live in `mcp/toolsets/` |
+
+## Package boundaries
+
+Private modules (`_*.py`) are internal to their package. `kagan.tui` and `kagan.cli` may only import
+from `kagan.core`'s public API (non-underscore modules). This is enforced by `import-linter` (see
+`[tool.importlinter]` in `pyproject.toml`).
+
+If you need a new cross-package capability, expose it through the public `__init__.py` of the source
+package — do not import `_`-prefixed modules from outside their parent package.
+
+You will see this failure as `ERROR — contract 'kagan.tui private module access'` when running
+`uv run poe check-boundaries`.
+
+## Adding a TUI screen
+
+1. Create `src/kagan/tui/screens/your_screen.py` — subclass `Screen` (Textual)
+2. Register it in `src/kagan/tui/app.py` under `SCREENS`:
+   ```python
+   SCREENS = {
+       ...
+       "your-screen": YourScreen,
+   }
+   ```
+3. Push it from any screen or app method with `self.app.push_screen("your-screen")` or
+   `self.app.push_screen(YourScreen())`
 
 ## Internal docs
 

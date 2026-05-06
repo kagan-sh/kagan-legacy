@@ -2,6 +2,6 @@
   "name": "kagan-site",
   "compatibility_date": "2026-02-07",
   "assets": {
-    "directory": "./site"
+    "directory": "../site"
   }
 }

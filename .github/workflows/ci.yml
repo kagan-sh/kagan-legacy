@@ -6,7 +6,6 @@ on:
       - "docs/**"
       - "*.md"
       - ".github/assets/**"
-      - "mkdocs.yml"
       - ".readthedocs.yaml"
   push:
     branches: [main]
@@ -14,7 +13,6 @@ on:
       - "docs/**"
       - "*.md"
       - ".github/assets/**"
-      - "mkdocs.yml"
       - ".readthedocs.yaml"
   schedule:
     - cron: "0 3 * * *"

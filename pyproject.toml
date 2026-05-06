@@ -220,13 +220,13 @@ typecheck = "pyrefly check --project-excludes src/kagan/core/adapters/db/migrati
 deadcode = "vulture"
 check = ["lint", "typecheck", "deadcode", "check-boundaries", "test"]
 db-migrations-check = "pytest tests/core/test_db_migrations.py -n 0 -v"
-docs-dev = "mkdocs serve -f mkdocs.local.yml"
-docs-build = "mkdocs build"
-docs-check = "mkdocs build"
+docs-dev = "mkdocs serve -f docs/mkdocs.local.yml"
+docs-build = "mkdocs build -f docs/mkdocs.yml"
+docs-check = "mkdocs build -f docs/mkdocs.yml"
 
 [tool.poe.tasks.db-migration-generate]
 help = "Generate an Alembic revision from SQLModel metadata"
-cmd = "alembic -c alembic.ini revision --autogenerate -m \"${message}\""
+cmd = "alembic -c src/kagan/core/adapters/db/alembic.ini revision --autogenerate -m \"${message}\""
 args = [
   { name = "message", positional = true, required = true, help = "Migration message" },
 ]

@@ -121,7 +121,7 @@ class ContextFooter(Horizontal):
         elif self.context == "task":
             return "[dim]1/2 tabs · Esc back[/]"
         elif self.context == "session":
-            return "[dim]Ctrl+K sessions · F4 AI panel[/]"
+            return "[dim]Ctrl+K sessions · Ctrl+. AI panel[/]"
         return ""
 
     def _build_global_hints(self, width: int) -> str:

@@ -54,3 +54,10 @@ def test_kanban_global_hints_do_not_duplicate_fixed_quick_actions_strip() -> Non
 
     assert "quick actions" not in labels
     assert "help" not in labels
+
+
+def test_ai_panel_shortcut_is_ctrl_period_with_legacy_aliases_hidden() -> None:
+    from kagan.tui.keybindings import KANBAN_BINDINGS, get_key_for_action, get_keys_for_action
+
+    assert get_key_for_action(KANBAN_BINDINGS, "toggle_chat") == "Ctrl+."
+    assert get_keys_for_action(KANBAN_BINDINGS, "toggle_chat") == ["Ctrl+."]

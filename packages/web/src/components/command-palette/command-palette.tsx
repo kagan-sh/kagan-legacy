@@ -57,7 +57,7 @@ function groupBySection(actions: CommandAction[]): Map<CommandSection, CommandAc
 
 /**
  * Global command palette. Mounts once at the app root and opens via the
- * `commandPaletteOpenAtom` atom (toggled by the Cmd+K shortcut hook).
+ * `commandPaletteOpenAtom` atom (toggled by the Quick Actions shortcut hook).
  *
  * Builds on the shadcn/ui `CommandDialog` primitive which wraps `cmdk` —
  * cmdk handles fuzzy matching, keyboard navigation, and aria-selected

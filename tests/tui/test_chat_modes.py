@@ -4,7 +4,7 @@ from tests.helpers.driver import KaganDriver
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
-async def test_ctrl_o_opens_chat_overlay_docked(board_with_task: KaganDriver) -> None:
+async def test_ctrl_period_opens_chat_overlay_docked(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
@@ -14,7 +14,7 @@ async def test_ctrl_o_opens_chat_overlay_docked(board_with_task: KaganDriver) ->
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
         await pilot.pause()
 

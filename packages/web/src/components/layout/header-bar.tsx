@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai';
-import { BotMessageSquare, Command, Maximize2, Search, WifiOff } from 'lucide-react';
+import { BotMessageSquare, Maximize2, Search, WifiOff } from 'lucide-react';
 import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { Button } from '@/components/ui/button';
 import { ContextBar } from '@/components/layout/context-bar';
@@ -46,8 +46,8 @@ export function HeaderBar({
             className="px-2.5 text-[var(--muted-foreground)]"
           >
             <Search className="size-4" />
-            <span className="ml-1 hidden items-center gap-0.5 font-code text-[10px] uppercase tracking-[0.16em] sm:inline-flex">
-              <Command className="size-3" />K
+            <span className="ml-1 hidden font-code text-[10px] uppercase tracking-[0.16em] sm:inline-flex">
+              Cmd/Ctrl+Shift+P
             </span>
           </Button>
           {aiPanelAvailable ? (
@@ -61,8 +61,8 @@ export function HeaderBar({
               aria-pressed={aiPanelOpen}
             >
               <BotMessageSquare className="size-4" />
-              <span className="ml-1 hidden items-center gap-0.5 font-code text-[10px] uppercase tracking-[0.16em] sm:inline-flex">
-                <Command className="size-3" />I
+              <span className="ml-1 hidden font-code text-[10px] uppercase tracking-[0.16em] sm:inline-flex">
+                Cmd/Ctrl+.
               </span>
             </Button>
           ) : null}

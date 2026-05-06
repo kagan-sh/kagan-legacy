@@ -49,7 +49,7 @@ __all__ = [
 APP_BINDINGS: list[BindingType] = [
     Binding("question_mark,f1", "show_help", "Help", key_display="?"),
     Binding(
-        "ctrl+shift+p,f2,full_stop",
+        "ctrl+shift+p,f2",
         "command_palette",
         "Quick Actions",
         key_display="Ctrl+Shift+P",
@@ -86,7 +86,7 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("f", "expand_description", "Expand Description"),
     Binding("p", "peek_task", "Peek"),
     Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+i,f4", "toggle_chat", "AI Panel", key_display="F4"),
+    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "AI Panel", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("b", "set_branch", "Branch"),
@@ -97,7 +97,6 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("tab", "focus_next_card", "Next Card", show=False),
     Binding("shift+tab", "focus_prev_card", "Prev Card", show=False),
     Binding("escape", "clear_focus", "Clear", show=False),
-    Binding("ctrl+period", "interrupt", "Interrupt", show=False),
 ]
 
 TASK_SCREEN_BINDINGS: list[BindingType] = [
@@ -112,7 +111,7 @@ TASK_SCREEN_BINDINGS: list[BindingType] = [
     Binding("m", "merge", "Merge"),
     Binding("b", "rebase", "Rebase"),
     Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+i,f4", "toggle_chat", "AI Panel", key_display="F4"),
+    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "AI Panel", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
@@ -123,7 +122,7 @@ SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
     Binding("s", "start_agent", "Start"),
     Binding("x", "stop_agent", "Stop"),
     Binding("r", "restart_agent", "Restart"),
-    Binding("ctrl+i,f4", "toggle_chat", "AI Panel", key_display="F4"),
+    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "AI Panel", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
@@ -134,7 +133,7 @@ WORKSPACE_BINDINGS: list[BindingType] = [
     Binding("n", "new_session", "New"),
     Binding("x", "delete_session", "Delete"),
     Binding("slash", "focus_search", "Search", key_display="/"),
-    Binding("ctrl+i,f4", "focus_chat", "Chat", key_display="F4"),
+    Binding("ctrl+period,ctrl+i,f4", "focus_chat", "Chat", key_display="Ctrl+."),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("w", "toggle_board", "Board"),
     Binding("escape", "back", "Back"),
@@ -153,12 +152,10 @@ CHAT_BINDINGS: list[BindingType] = [
 SETTINGS_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Close"),
     Binding("slash", "search", "Search", key_display="/"),
-    Binding("ctrl+period", "toggle_advanced", "Advanced", key_display="Ctrl+."),
 ]
 
 SETTINGS_COMMAND_BINDINGS: list[BindingType] = [
     Binding("slash", "focus_search", "Search", key_display="/", show=False),
-    Binding("ctrl+.", "toggle_advanced", "Advanced", key_display="Ctrl+.", show=False),
 ]
 
 SETUP_FLOW_BINDINGS: list[BindingType] = [
@@ -203,7 +200,6 @@ DIFF_VIEW_BINDINGS: list[BindingType] = [
 EDITOR_BINDINGS: list[BindingType] = [
     Binding("ctrl+s", "finish", "Create", key_display="Ctrl+S"),
     Binding("escape", "cancel", "Cancel"),
-    Binding("ctrl+period", "toggle_advanced", "Toggle Advanced", key_display="Ctrl+."),
     Binding("pagedown", "page_down", "Page Down", show=False),
     Binding("pageup", "page_up", "Page Up", show=False),
 ]
@@ -321,7 +317,7 @@ class FooterBuilder:
     def kanban_with_card() -> list[tuple[str, str]]:
         return [
             ("Enter", "open"),
-            ("F4", "AI panel"),
+            ("Ctrl+.", "AI panel"),
             ("P", "peek"),
             ("e", "edit"),
             ("x", "delete"),
@@ -338,7 +334,7 @@ class FooterBuilder:
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
-            ("F4", "AI panel"),
+            ("Ctrl+.", "AI panel"),
             ("Ctrl+F", "assistant full"),
             ("e", "edit"),
             ("d", "delete"),
@@ -364,7 +360,7 @@ class FooterBuilder:
             ("s", "start"),
             ("x", "stop"),
             ("r", "restart"),
-            ("F4", "AI panel"),
+            ("Ctrl+.", "AI panel"),
             ("Esc", "back"),
         ]
 

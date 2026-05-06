@@ -144,7 +144,7 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
     section: 'Navigate',
     keywords: ['session', 'switcher', 'picker', 'chat'],
     icon: PanelRight,
-    shortcut: ['⌘', '⇧', 'K'],
+    shortcut: ['Cmd/Ctrl', 'K'],
     handler: () => store.set(sessionPickerOpenAtom, true),
   },
   {

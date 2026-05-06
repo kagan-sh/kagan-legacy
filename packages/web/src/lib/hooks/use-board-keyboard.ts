@@ -32,7 +32,7 @@ interface UseBoardKeyboardOptions {
  * Removed bindings (conflicted with AT virtual cursors or were TUI-ism):
  *   - j/k/h/l — vim navigation (use Arrow keys instead)
  *   - s/S — start/stop (use visible buttons)
- *   - n — new task (use toolbar button or Cmd+K palette)
+ *   - n — new task (use toolbar button or Quick Actions)
  *   - x — delete (use context menu)
  *   - p — peek (use click or Enter)
  *   - / — search focus (AT intercepts; use click)

@@ -44,27 +44,20 @@ describe('useGlobalShortcuts', () => {
     // Let React Testing Library's afterEach handle unmount cleanup.
   });
 
-  it('opens the palette on Cmd+K', () => {
+  it('opens the session switcher on Cmd+K', () => {
     renderHarness(store);
-    expect(store.get(commandPaletteOpenAtom)).toBe(false);
 
     fireEvent.keyDown(document, { key: 'k', metaKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(true);
+    expect(store.get(commandPaletteOpenAtom)).toBe(false);
+    expect(store.get(sessionPickerOpenAtom)).toBe(true);
   });
 
-  it('opens the palette on Ctrl+K', () => {
+  it('opens the session switcher on Ctrl+K', () => {
     renderHarness(store);
 
     fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(true);
-  });
-
-  it('toggles closed when already open', () => {
-    store.set(commandPaletteOpenAtom, true);
-    renderHarness(store);
-
-    fireEvent.keyDown(document, { key: 'k', metaKey: true });
     expect(store.get(commandPaletteOpenAtom)).toBe(false);
+    expect(store.get(sessionPickerOpenAtom)).toBe(true);
   });
 
   it('ignores plain k with no modifier', () => {
@@ -74,7 +67,7 @@ describe('useGlobalShortcuts', () => {
     expect(store.get(commandPaletteOpenAtom)).toBe(false);
   });
 
-  it('ignores Cmd+Shift+K (reserved for the session switcher)', () => {
+  it('keeps Cmd+Shift+K as a session switcher alias', () => {
     renderHarness(store);
 
     fireEvent.keyDown(document, { key: 'k', metaKey: true, shiftKey: true });
@@ -110,7 +103,7 @@ describe('useGlobalShortcuts', () => {
     input.focus();
 
     fireEvent.keyDown(input, { key: 'k', metaKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(true);
+    expect(store.get(sessionPickerOpenAtom)).toBe(true);
 
     document.body.removeChild(input);
   });
@@ -120,14 +113,14 @@ describe('useGlobalShortcuts', () => {
     unmount();
 
     fireEvent.keyDown(document, { key: 'k', metaKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(false);
+    expect(store.get(sessionPickerOpenAtom)).toBe(false);
   });
 
   it('is case-insensitive', () => {
     renderHarness(store);
 
     fireEvent.keyDown(document, { key: 'K', metaKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(true);
+    expect(store.get(sessionPickerOpenAtom)).toBe(true);
   });
 
   it('opens the palette on Cmd+Shift+P', () => {
@@ -157,18 +150,26 @@ describe('useGlobalShortcuts', () => {
     document.body.removeChild(input);
   });
 
-  it('Mod+I cycles chat-right to chat-bottom to closed', () => {
+  it('Mod+. cycles chat-right to chat-bottom to closed', () => {
     renderHarness(store, ['/task/task-456']);
 
-    fireEvent.keyDown(document, { key: 'i', ctrlKey: true });
+    fireEvent.keyDown(document, { key: '.', ctrlKey: true });
     expect(store.get(rightRailTaskIdAtom)).toBe('task-456');
     expect(store.get(rightRailModeAtom)).toBe('chat-right');
 
-    fireEvent.keyDown(document, { key: 'i', ctrlKey: true });
+    fireEvent.keyDown(document, { key: '.', ctrlKey: true });
     expect(store.get(rightRailModeAtom)).toBe('chat-bottom');
 
-    fireEvent.keyDown(document, { key: 'i', ctrlKey: true });
+    fireEvent.keyDown(document, { key: '.', ctrlKey: true });
     expect(store.get(rightRailModeAtom)).toBe('none');
+  });
+
+  it('accepts keyboard-code Period for the AI panel shortcut', () => {
+    renderHarness(store, ['/task/task-456']);
+
+    fireEvent.keyDown(document, { key: 'Unidentified', code: 'Period', metaKey: true });
+    expect(store.get(rightRailTaskIdAtom)).toBe('task-456');
+    expect(store.get(rightRailModeAtom)).toBe('chat-right');
   });
 
   it('Cmd+Shift+F toggles chat fullscreen when the rail is open', () => {

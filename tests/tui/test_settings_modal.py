@@ -92,16 +92,9 @@ async def test_show_advanced_toggle_is_clickable_and_updates_navigation_state(
         assert "Show advanced" in str(toggle.label)
         assert "basic sections" in str(status.render())
 
-        await pilot.click("#settings-advanced-toggle")
+        await pilot.click("#settings-advanced-toggle", offset=(2, 0))
         await pilot.pause()
         toggle = app.screen.query_one("#settings-advanced-toggle", Button)
         status = app.screen.query_one("#settings-search-status", Static)
         assert "Hide advanced" in str(toggle.label)
         assert "including advanced" in str(status.render())
-
-        await pilot.press("ctrl+.")
-        await pilot.pause()
-        toggle = app.screen.query_one("#settings-advanced-toggle", Button)
-        status = app.screen.query_one("#settings-search-status", Static)
-        assert "Show advanced" in str(toggle.label)
-        assert "basic sections" in str(status.render())

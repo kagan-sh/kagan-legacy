@@ -120,7 +120,7 @@ class SettingsModal(ModalScreen[None]):
                     yield Button(
                         "Show advanced ▸",
                         id="settings-advanced-toggle",
-                        tooltip="Show or hide advanced settings (Ctrl+.)",
+                        tooltip="Show or hide advanced settings",
                     )
                 with Vertical(id="settings-detail-pane"):
                     yield Static("", classes="settings-detail-title", id="settings-detail-title")
@@ -135,7 +135,7 @@ class SettingsModal(ModalScreen[None]):
                 yield Button("Close", id="settings-close", tooltip="Close settings (Esc)")
             with Horizontal(classes="modal-action-hint-row"):
                 yield Static(
-                    "Auto-saved  ·  Ctrl+. advanced  / search  Esc close",
+                    "Auto-saved  ·  / search  Esc close",
                     id="settings-footer-hint",
                     classes="modal-action-hint",
                 )

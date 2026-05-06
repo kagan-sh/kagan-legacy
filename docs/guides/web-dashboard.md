@@ -28,7 +28,7 @@ Toggle between Board and Workspace with `Cmd/Ctrl+Shift+W`.
 
 ## Board view
 
-Four-lane kanban: BACKLOG, IN_PROGRESS, REVIEW, DONE. This is the main operator view in the browser. Drag cards between lanes, click to inspect, double-click to open the full task detail page. The right rail hosts an AI panel (toggle with `Cmd/Ctrl+I`) for orchestrator or task-scoped chat.
+Four-lane kanban: BACKLOG, IN_PROGRESS, REVIEW, DONE. This is the main operator view in the browser. Drag cards between lanes, click to inspect, double-click to open the full task detail page. The right rail hosts an AI panel (toggle with `Cmd/Ctrl+.`) for orchestrator or task-scoped chat.
 
 The header repository selector never stays empty when repositories are available. If the active project has repos, Kagan selects the active repo or the first available repo; if the project has no repos yet, the Add Repository dialog opens as the next required setup step.
 
@@ -81,10 +81,10 @@ Changes save immediately for toggles and dropdowns. Text fields save on blur or 
 | Key                | Action                                          |
 | ------------------ | ----------------------------------------------- |
 | `Cmd/Ctrl+Shift+W` | Toggle Board / Workspace                        |
-| `Cmd/Ctrl+Shift+P` | Command palette                                 |
-| `Cmd/Ctrl+I`       | Cycle AI panel on Board / Task routes           |
+| `Cmd/Ctrl+Shift+P` | Quick Actions                                   |
+| `Cmd/Ctrl+.`       | Cycle AI panel on Board / Task routes           |
 | `Cmd/Ctrl+Shift+F` | Toggle AI panel fullscreen off-workspace        |
-| `Cmd/Ctrl+Shift+K` | Session switcher                                |
+| `Cmd/Ctrl+K`       | Session switcher                                |
 | `?` / `F1`         | Help overlay                                    |
 | `Esc`              | Close AI panel off-workspace or dismiss overlay |
 

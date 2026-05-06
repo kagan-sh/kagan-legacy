@@ -10,7 +10,7 @@ tags:
 
 # Chat & REPL
 
-Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI AI Panel** (`F4` / `Ctrl+I` in Kanban/Task screens). Both share the same slash commands and session persistence.
+Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI AI Panel** (`Ctrl+.` in Kanban/Task screens). Both share the same slash commands and session persistence.
 
 ______________________________________________________________________
 
@@ -90,7 +90,7 @@ ______________________________________________________________________
 
 The AI Panel runs as an orchestrator session with access to all project tasks via MCP tools. Messages are persisted per-session.
 
-In Kanban and Task screens, `F4` (or `Ctrl+I`) opens or closes the panel. `Space` cycles `vertical -> horizontal -> vertical` while the AI Panel stays open. Use `Esc` to close it.
+In Kanban and Task screens, `Ctrl+.` opens or closes the panel. `Space` cycles `vertical -> horizontal -> vertical` while the AI Panel stays open. Use `Esc` to close it.
 
 ______________________________________________________________________
 

@@ -722,7 +722,7 @@ class KanbanScreen(Screen[None]):
         open_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
         search_key = get_key_for_action(KANBAN_BINDINGS, "search", default="/")
         new_key = get_key_for_action(KANBAN_BINDINGS, "new_task", default="n")
-        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="F4")
+        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+.")
         right_key = get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right")
         left_key = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
         session_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")

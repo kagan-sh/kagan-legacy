@@ -218,11 +218,10 @@ async def test_run_uses_backend_spec_capability_for_detached_launch(
     )
     monkeypatch.setattr("kagan.core._sessions.get_persona_prompt", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("kagan.core._sessions.build_persona_section", lambda prompt: prompt)
-    monkeypatch.setattr(
-        sessions,
-        "_update_session_pid",
-        lambda session_id, pid: updated_pids.append((session_id, pid)),
-    )
+    async def fake_update_session_pid(session_id: str, pid: int) -> None:
+        updated_pids.append((session_id, pid))
+
+    monkeypatch.setattr(sessions, "_update_session_pid", fake_update_session_pid)
     monkeypatch.setattr(
         sessions, "_make_acp_callback", lambda *_args, **_kwargs: (lambda *_a, **_k: None)
     )
@@ -333,11 +332,10 @@ async def test_run_parses_float_timeout_for_non_acp_detached_launch(
     )
     monkeypatch.setattr("kagan.core._sessions.get_persona_prompt", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("kagan.core._sessions.build_persona_section", lambda prompt: prompt)
-    monkeypatch.setattr(
-        sessions,
-        "_update_session_pid",
-        lambda session_id, pid: updated_pids.append((session_id, pid)),
-    )
+    async def fake_update_session_pid(session_id: str, pid: int) -> None:
+        updated_pids.append((session_id, pid))
+
+    monkeypatch.setattr(sessions, "_update_session_pid", fake_update_session_pid)
 
     result = await sessions.run("task-timeout", agent_backend="codex")
 
@@ -414,9 +412,10 @@ async def test_run_uses_backend_spec_executable_for_attached_launch(
         "kagan.core._sessions.build_attached_startup_prompt",
         lambda _task, _criteria=None: "prompt",
     )
-    monkeypatch.setattr(
-        sessions, "_mark_session_running", lambda session_id: cast("Any", session_id)
-    )
+    async def fake_mark_session_running(session_id: str) -> None:
+        pass
+
+    monkeypatch.setattr(sessions, "_mark_session_running", fake_mark_session_running)
 
     result = await sessions.run("task-2", agent_backend="codex", launcher="vscode")
 

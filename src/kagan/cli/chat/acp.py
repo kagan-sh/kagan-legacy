@@ -61,10 +61,6 @@ class OrchestratorWarmupState:
 _WARMUP_STATE = OrchestratorWarmupState()
 
 
-_acp_handshake_timeout_seconds = acp_handshake_timeout_seconds
-_friendly_acp_error_message = friendly_acp_error_message
-
-
 def _is_mcp_server_unsupported_error(error: object) -> bool:
     raw = str(error).lower()
     return "mcp" in raw and "server" in raw and ("not implemented" in raw or "unsupported" in raw)
@@ -303,7 +299,7 @@ async def run_orchestrator_turn(
     )
 
     capture_client = _CaptureACPClient(on_update=on_update, permission_resolver=permission_resolver)
-    timeout_s = _acp_handshake_timeout_seconds(agent_backend)
+    timeout_s = acp_handshake_timeout_seconds(agent_backend)
     try:
         async with spawn_filtered_agent_process(
             capture_client,
@@ -419,7 +415,7 @@ async def run_orchestrator_turn(
                     await conn.prompt(session_id=sess.session_id, prompt=prompt_blocks)
                 except (acp.RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
                     raise AgentError(
-                        _friendly_acp_error_message(
+                        friendly_acp_error_message(
                             error=exc,
                             agent_backend=agent_backend,
                             during="prompt delivery",
@@ -427,7 +423,7 @@ async def run_orchestrator_turn(
                     ) from exc
     except (acp.RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
         raise AgentError(
-            _friendly_acp_error_message(error=exc, agent_backend=agent_backend, during="handshake")
+            friendly_acp_error_message(error=exc, agent_backend=agent_backend, during="handshake")
         ) from exc
     finally:
         if not lightweight and mcp_path.exists():

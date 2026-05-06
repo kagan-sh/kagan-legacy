@@ -17,7 +17,7 @@ from textual.widgets import TextArea
 if TYPE_CHECKING:
     from kagan.tui.widgets._mention_typeahead import MentionTypeahead
 
-pytestmark = [pytest.mark.tui, pytest.mark.smoke]
+pytestmark = [pytest.mark.tui, pytest.mark.unit]
 
 
 # ---------------------------------------------------------------------------

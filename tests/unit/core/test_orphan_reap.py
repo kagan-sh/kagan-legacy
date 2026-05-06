@@ -17,7 +17,7 @@ from kagan.core._orphan_reap import reap_orphan_sessions
 from kagan.core.enums import SessionStatus, TaskStatus
 from kagan.core.models import Project, Repository, Session, Task
 
-pytestmark = [pytest.mark.core]
+pytestmark = [pytest.mark.core, pytest.mark.unit]
 
 
 def _make_engine(tmp_path: Path):

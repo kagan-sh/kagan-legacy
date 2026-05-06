@@ -16,7 +16,7 @@ from kagan.core._db_helpers import _db_sync
 from kagan.core.enums import SessionStatus
 from kagan.core.models import Project, Session, Task
 
-pytestmark = [pytest.mark.core]
+pytestmark = [pytest.mark.core, pytest.mark.unit]
 
 
 def _seed_sessions(engine, project_id: str) -> None:

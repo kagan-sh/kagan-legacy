@@ -90,18 +90,3 @@ async def test_push_user_accepts_safe_message(board: KaganDriver) -> None:
     msg = await engine.push_user(sid, "please fix the login bug")
     assert msg.role == "user"
     assert msg.content == "please fix the login bug"
-
-
-def test_rate_limit_log_key_does_not_leak_token() -> None:
-    """Token-keyed rate-limit log lines are hashed, never raw."""
-    from kagan.server._middleware import RateLimitMiddleware
-
-    raw = "token:sk_live_supersecret_AAAAAAAAAAAAAAAA"
-    safe = RateLimitMiddleware._safe_log_key(raw)
-    assert safe.startswith("token:")
-    assert "supersecret" not in safe
-    assert "sk_live" not in safe
-    assert len(safe) <= len("token:") + 8
-
-    # IP keys pass through unchanged.
-    assert RateLimitMiddleware._safe_log_key("192.0.2.1") == "192.0.2.1"

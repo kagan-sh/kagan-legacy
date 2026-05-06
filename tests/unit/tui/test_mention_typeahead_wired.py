@@ -12,7 +12,7 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import TextArea
 
-pytestmark = [pytest.mark.tui, pytest.mark.smoke]
+pytestmark = [pytest.mark.tui, pytest.mark.unit]
 
 
 # ---------------------------------------------------------------------------

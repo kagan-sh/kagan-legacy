@@ -34,6 +34,8 @@ from kagan.tui.screens._chat_runner import (
 )
 from kagan.tui.widgets.chat import ChatPanel
 
+pytestmark = [pytest.mark.tui, pytest.mark.unit]
+
 
 class _ChatPanelHostApp(App[None]):
     def compose(self) -> ComposeResult:

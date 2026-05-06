@@ -14,6 +14,8 @@ from kagan.core.chat import make_spawn_per_turn_acp_factory
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = [pytest.mark.unit]
+
 
 async def _noop_update(_update: Any) -> None:
     return None

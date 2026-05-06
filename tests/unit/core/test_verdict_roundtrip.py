@@ -25,7 +25,7 @@ from kagan.core.models import (
     Task,
 )
 
-pytestmark = [pytest.mark.core]
+pytestmark = [pytest.mark.core, pytest.mark.unit]
 
 
 def _make_engine(tmp_path: Path):

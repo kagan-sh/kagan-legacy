@@ -633,6 +633,7 @@ class _BatchApprovalQueue:
         from kagan.cli.chat._permission_ui import (
             _DecisionTuple,
             _map_decision_from_approval,
+            _session_approvals,
             _tool_action_key,
         )
 
@@ -656,6 +657,13 @@ class _BatchApprovalQueue:
             original_idx = unresolved_index_map[unresolved_idx]
             item = items[original_idx]
             action_key = _tool_action_key(item.tool_call)
+            # Slot 2 in the batch panel is "Allow all for session" — intercept
+            # here (like the single-panel modal does) so the grant is applied
+            # instead of falling through to deny via the unmapped slot.
+            if opt_idx == 2:
+                _session_approvals.grant_all()
+                decisions[original_idx] = _DecisionTuple(outcome="allow_once")
+                return
             decisions[original_idx] = _map_decision_from_approval(
                 opt_idx, feedback, action_key=action_key
             )

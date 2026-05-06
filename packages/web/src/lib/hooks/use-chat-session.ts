@@ -282,6 +282,12 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }
           break;
         }
+        case 'CHAT_TURN_STARTED': {
+          // Clear thinking timer so a new turn whose first chunk is a thought
+          // doesn't inherit the previous turn's startedAt.
+          thinkingStartRef.current = null;
+          break;
+        }
         case 'CHAT_PERMISSION_REQUEST': {
           setPermissionRequest({
             futureId: event.future_id,

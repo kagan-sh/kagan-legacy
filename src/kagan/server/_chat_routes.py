@@ -691,7 +691,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
             return _err("Insufficient access tier", status=403)
         try:
             body = await request.json()
-        except Exception:
+        except Exception:  # malformed or missing body — default to deny below
             body = {}
         outcome = str(body.get("outcome", "deny"))
         feedback = body.get("feedback") or None

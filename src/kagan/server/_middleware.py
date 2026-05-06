@@ -134,7 +134,13 @@ class SecurityHeadersMiddleware:
 
             await send(message)
 
-        await self.app(scope, receive, _send_with_headers)
+        try:
+            await self.app(scope, receive, _send_with_headers)
+        finally:
+            # If the inner app raised before sending a body, flush the buffered
+            # start so the client receives a response frame instead of hanging.
+            if _start is not None:
+                await send(_start)
 
 
 # ---------------------------------------------------------------------------

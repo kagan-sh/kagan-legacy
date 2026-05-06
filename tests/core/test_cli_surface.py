@@ -1,5 +1,4 @@
 import importlib.util
-import os
 import subprocess
 from asyncio import run as asyncio_run
 from pathlib import Path
@@ -9,7 +8,7 @@ from click.testing import CliRunner
 
 from kagan.core import KaganCore
 from kagan.cli.doctor import DoctorCheck
-from kagan.cli.main import _sanitize_startup_environment, cli
+from kagan.cli.main import cli
 
 _HAS_RICH_CLICK = importlib.util.find_spec("rich_click") is not None
 
@@ -619,21 +618,6 @@ def test_startup_update_hint_prints_before_command_output(monkeypatch, tmp_path:
     assert result.exit_code == 0
     lines = [line for line in result.output.splitlines() if line.strip()]
     assert lines[0].startswith("hint: kagan 9.9.9 available")
-
-
-def test_sanitize_startup_environment_removes_macos_malloc_keys(monkeypatch) -> None:
-    monkeypatch.setattr("kagan.cli._env.sys.platform", "darwin")
-    monkeypatch.setenv("MALLOCSTACKLOGGING", "1")
-    monkeypatch.setenv("MALLOCSTACKLOGGINGNOCOMPACT", "1")
-    monkeypatch.setenv("MALLOCSTACKLOGGINGDIRECTORY", "/tmp/msl")
-    monkeypatch.setenv("__XPC_MALLOCSTACKLOGGING", "1")
-
-    _sanitize_startup_environment()
-
-    assert os.environ.get("MALLOCSTACKLOGGING") is None
-    assert os.environ.get("MALLOCSTACKLOGGINGNOCOMPACT") is None
-    assert os.environ.get("MALLOCSTACKLOGGINGDIRECTORY") is None
-    assert os.environ.get("__XPC_MALLOCSTACKLOGGING") is None
 
 
 def test_tools_prompts_help_lists_export_subcommand(tmp_path: Path) -> None:

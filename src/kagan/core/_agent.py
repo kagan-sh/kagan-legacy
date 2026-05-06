@@ -179,19 +179,6 @@ class BackendSpec:
     install: Mapping[OS, BackendCommand] | None = None
     auth: Mapping[OS, BackendCommand] | None = None
 
-    def to_legacy_config(self) -> dict[str, Any]:
-        """Project the typed spec into a dict mapping (legacy compat)."""
-        return {
-            "capabilities": tuple(sorted(cap.value for cap in self.capabilities)),
-            "executable": self.executable,
-            "prompt_flag": self.prompt_flag,
-            "workdir_flag": self.workdir_flag,
-            "env_vars": dict(self.env_vars),
-            "supports_acp": self.has_capability(BackendCapability.ACP_STREAMING),
-            "acp_command": list(self.acp_command),
-            "acp_args": list(self.acp_args),
-        }
-
     def has_capability(self, capability: BackendCapability) -> bool:
         """Return whether the backend declares *capability*."""
         return capability in self.capabilities
@@ -229,21 +216,6 @@ class BackendSpec:
             return exact
         return mapping.get("*")
 
-    def guidance_hints(self) -> tuple[str, ...]:
-        """Return explicit setup hint strings for this backend (legacy shim).
-
-        Derives human-readable hints from the structured ``install`` / ``auth``
-        mappings so that existing callers continue to work during the transition.
-        Each hint is formatted as ``"{description} {command}"`` so callers that
-        previously searched hint text for the command string continue to work.
-        """
-        hints: list[str] = []
-        for action in ("install", "auth"):
-            # type: ignore[arg-type] — looping over known-valid Literal strings.
-            cmd = self.resolve_command(action)  # type: ignore[arg-type]
-            if cmd is not None:
-                hints.append(f"{cmd.description} {cmd.command}")
-        return tuple(hints)
 
 
 CLAUDE_CODE_BACKEND: Final = "claude-code"
@@ -681,11 +653,6 @@ def list_backend_specs() -> dict[str, BackendSpec]:
     return dict(_BACKEND_SPECS)
 
 
-def get_backend(name: str) -> dict[str, Any]:
-    """Return the legacy config dict for *name*, raising AgentError if unknown."""
-    return get_backend_spec(name).to_legacy_config()
-
-
 def list_backends() -> list[str]:
     """Return all registered backend names."""
     return list(_BACKEND_SPECS)
@@ -899,17 +866,13 @@ _ACP_PER_MESSAGE_LIMIT: Final[int] = 10 * 1024 * 1024  # 10 MB per JSON-RPC line
 _MAX_CUMULATIVE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB total per session
 
 
-class _ByteCountingStreamReader(asyncio.StreamReader):
-    """StreamReader subclass that enforces a cumulative byte cap.
+class _ByteCountingStreamReader:
+    """Composition wrapper that enforces a cumulative byte cap on reads.
 
-    The ACP JSON-RPC read loop (inside the ``acp`` library) calls ``readline()``
-    or ``read()`` on the underlying reader.  This subclass wraps another reader,
-    counts every byte returned, and terminates the associated process when the
-    cumulative limit is exceeded, preventing unbounded memory growth.
-
-    Inherits from ``asyncio.StreamReader`` so ``isinstance()`` checks pass when
-    the ACP SDK validates stream types in ``ClientSideConnection.__init__``.
-    Delegates all reads to the wrapped reader rather than using inherited state.
+    The ACP JSON-RPC read loop calls ``readline()`` or ``read()`` on the
+    underlying reader.  This wrapper counts every byte returned and terminates
+    the associated process when the cumulative limit is exceeded, preventing
+    unbounded memory growth.
     """
 
     def __init__(
@@ -918,9 +881,6 @@ class _ByteCountingStreamReader(asyncio.StreamReader):
         process: asyncio.subprocess.Process,
         cumulative_limit: int = _MAX_CUMULATIVE_BYTES,
     ) -> None:
-        # Note: We skip calling super().__init__() because we delegate all
-        # operations to self._reader. The inheritance is only to pass
-        # isinstance() checks in the ACP SDK.
         self._reader = reader
         self._process = process
         self._cumulative_bytes = 0
@@ -963,9 +923,6 @@ class _ByteCountingStreamReader(asyncio.StreamReader):
 
     def at_eof(self) -> bool:
         return self._reader.at_eof()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._reader, name)
 
 
 async def spawn_agent_via_acp(

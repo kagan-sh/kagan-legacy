@@ -712,66 +712,69 @@ class ChatPanel(Vertical):
         self.add_system_message(f"Permission {event.decision}")
         self._render_decision_surface()
 
-    def on_key(self, event: Key) -> None:
-        """Intercept arrow keys for slash/mention completion overlay navigation."""
+    def _handle_overlay_navigation(self, event: Key) -> bool:
         overlay_visible = bool(self._slash_matches or self._mention_matches)
-        if overlay_visible:
-            option_list_id = "#slash-options" if self._slash_matches else "#mention-options"
-            option_list = self.query_one(option_list_id, OptionList)
+        if not overlay_visible:
+            return False
+        option_list_id = "#slash-options" if self._slash_matches else "#mention-options"
+        option_list = self.query_one(option_list_id, OptionList)
 
-            nav_map: dict[str, str] = {
-                "up": "action_cursor_up",
-                "down": "action_cursor_down",
-                "pageup": "action_page_up",
-                "pagedown": "action_page_down",
-                "home": "action_first",
-                "end": "action_last",
-            }
+        nav_map: dict[str, str] = {
+            "up": "action_cursor_up",
+            "down": "action_cursor_down",
+            "pageup": "action_page_up",
+            "pagedown": "action_page_down",
+            "home": "action_first",
+            "end": "action_last",
+        }
 
-            if event.key in nav_map:
-                event.prevent_default()
-                event.stop()
-                with contextlib.suppress(AttributeError):
-                    getattr(option_list, nav_map[event.key])()
-                return
+        if event.key in nav_map:
+            event.prevent_default()
+            event.stop()
+            with contextlib.suppress(AttributeError):
+                getattr(option_list, nav_map[event.key])()
+            return True
 
-            if event.key == "enter":
-                # If the input already contains a complete slash command, submit it
-                # instead of merely accepting the overlay selection.
-                current_text = self._input_widget().value.strip()
-                if current_text.startswith("/"):
-                    cmd_name = (
-                        current_text.lstrip("/").split()[0] if current_text.lstrip("/") else ""
-                    )
-                    specs = [
-                        spec
-                        for spec in SLASH_COMMAND_REGISTRY.specs()
-                        if spec.name in _TUI_SLASH_COMMANDS
-                    ]
-                    exact_match = any(spec.name == cmd_name for spec in specs)
-                    if exact_match:
-                        self._hide_overlays()
-                        self.call_later(self.action_send_message)
-                        return
-                event.prevent_default()
-                event.stop()
-                self.action_accept_completion()
-                return
+        if event.key == "enter":
+            # If the input already contains a complete slash command, submit it
+            # instead of merely accepting the overlay selection.
+            current_text = self._input_widget().value.strip()
+            if current_text.startswith("/"):
+                cmd_name = (
+                    current_text.lstrip("/").split()[0] if current_text.lstrip("/") else ""
+                )
+                specs = [
+                    spec
+                    for spec in SLASH_COMMAND_REGISTRY.specs()
+                    if spec.name in _TUI_SLASH_COMMANDS
+                ]
+                exact_match = any(spec.name == cmd_name for spec in specs)
+                if exact_match:
+                    self._hide_overlays()
+                    self.call_later(self.action_send_message)
+                    return True
+            event.prevent_default()
+            event.stop()
+            self.action_accept_completion()
+            return True
 
-            if event.key == "escape":
-                event.prevent_default()
-                event.stop()
-                self._hide_overlays()
-                return
+        if event.key == "escape":
+            event.prevent_default()
+            event.stop()
+            self._hide_overlays()
+            return True
 
+        return False
+
+    def _handle_input_editing(self, event: Key) -> bool:
         if event.key == "escape" and not self._input_has_focus():
             event.prevent_default()
             event.stop()
             self._input_widget().focus()
-            return
+            return True
 
         if not self._input_has_focus():
-            return
+            return True
 
         if event.key == "ctrl+c":
             event.prevent_default()
@@ -779,28 +782,38 @@ class ChatPanel(Vertical):
             # Ctrl+C clears input — Esc stops agent + edits last message
             if self._input_widget().value:
                 self.action_clear_input()
-            return
+            return True
 
         if event.key == "enter":
             event.prevent_default()
             event.stop()
             self.call_later(self.action_send_message)
-            return
+            return True
 
-        if overlay_visible:
-            return
+        return False
 
+    def _handle_prompt_history(self, event: Key) -> bool:
         if event.key == "up":
             if self._cycle_prompt_history(direction="up"):
                 event.prevent_default()
                 event.stop()
-            return
+            return True
 
         if event.key == "down":
             if self._cycle_prompt_history(direction="down"):
                 event.prevent_default()
                 event.stop()
+            return True
+
+        return False
+
+    def on_key(self, event: Key) -> None:
+        """Intercept arrow keys for slash/mention completion overlay navigation."""
+        if self._handle_overlay_navigation(event):
             return
+        if self._handle_input_editing(event):
+            return
+        self._handle_prompt_history(event)
 
     async def action_send_message(self) -> None:
         await self._submit_current_input()
@@ -1198,7 +1211,7 @@ class ChatPanel(Vertical):
         previous_key = self._selected_session_key
         if self.is_mounted:
             self._flush_deferred()
-            input_widget = self._input_widget_safe()
+            input_widget = self._input_widget()
             if input_widget is not None:
                 self._ensure_session_state(previous_key).draft = input_widget.value
 
@@ -1208,7 +1221,7 @@ class ChatPanel(Vertical):
         self.set_session_kind(self._infer_session_kind(key))
 
         if self.is_mounted:
-            input_widget = self._input_widget_safe()
+            input_widget = self._input_widget()
             if input_widget is not None:
                 input_widget.value = self._current_state().draft
                 self._sync_completion_overlays(input_widget.value)
@@ -1274,18 +1287,12 @@ class ChatPanel(Vertical):
         self._update_content_state()
         self._refresh_status()
 
-    def _input_widget(self) -> Input:
-        chat_input = self._chat_input()
-        if chat_input is None:
-            return self.query_one("#chat-overlay-input", Input)
-        return chat_input.input_widget()
-
-    def _input_widget_safe(self) -> Input | None:
-        # Returns None when called from a partial-mount test fixture that
-        # doesn't yield the input widget (e.g. doctor modal harness). All
-        # post-Ready call sites can use the bare _input_widget() directly.
+    def _input_widget(self) -> Input | None:
         try:
-            return self._input_widget()
+            chat_input = self._chat_input()
+            if chat_input is None:
+                return self.query_one("#chat-overlay-input", Input)
+            return chat_input.input_widget()
         except NoMatches:
             return None
 
@@ -1324,7 +1331,7 @@ class ChatPanel(Vertical):
     def _sync_input_enabled_state(self) -> None:
         # Reachable from on_mount before all children are guaranteed; degrade
         # quietly when the input widget is absent in a partial-compose harness.
-        input_widget = self._input_widget_safe()
+        input_widget = self._input_widget()
         if input_widget is None:
             return
         visible = self.has_class("visible")
@@ -1480,7 +1487,7 @@ class ChatPanel(Vertical):
         close_key = self._overlay_close_key
         is_active = self._runtime_status in {"thinking", "initializing", "waiting"}
         if is_active:
-            input_widget = self._input_widget_safe()
+            input_widget = self._input_widget()
             value = input_widget.value if input_widget is not None else ""
             has_pending = bool(normalize_chat_input(value))
             esc_hint = "Esc stop+send" if has_pending else "Esc stop & edit last"

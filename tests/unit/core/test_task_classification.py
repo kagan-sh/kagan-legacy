@@ -7,8 +7,12 @@ Tests cover:
 - Batch classification
 """
 
+import pytest
+
 from kagan.core._task_classification import classify_task
 from kagan.core.enums import TaskType
+
+pytestmark = [pytest.mark.unit]
 
 
 class TestClassifyTaskIndividual:

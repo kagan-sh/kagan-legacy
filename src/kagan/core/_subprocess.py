@@ -11,11 +11,36 @@ fail with ``FileNotFoundError`` and full ``.cmd`` paths fail with
 so every spawn site works correctly on Windows while being a no-op on POSIX.
 """
 
+import asyncio
+import contextlib
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
-__all__ = ["resolve_spawn_command"]
+__all__ = ["resolve_spawn_command", "terminate_process"]
+
+
+async def terminate_process(proc: Any, timeout: float = 5.0) -> None:
+    """Terminate *proc* gracefully, then kill after *timeout* seconds."""
+    if getattr(proc, "returncode", None) is not None:
+        return
+    terminate = getattr(proc, "terminate", None)
+    if callable(terminate):
+        with contextlib.suppress(ProcessLookupError):
+            terminate()
+    wait = getattr(proc, "wait", None)
+    if not callable(wait):
+        return
+    try:
+        await asyncio.wait_for(wait(), timeout=timeout)
+    except TimeoutError:
+        kill = getattr(proc, "kill", None)
+        if callable(kill):
+            with contextlib.suppress(ProcessLookupError):
+                kill()
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(wait(), timeout=timeout)
 
 
 def resolve_spawn_command(executable: str, *args: str) -> list[str]:

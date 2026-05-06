@@ -186,10 +186,9 @@ def _resolve_backend(agent_backend: str | None, tool: str | None) -> str:
 
 
 def _get_backend_executable(backend_name: str) -> str:
-    from kagan.core import get_backend
+    from kagan.core import get_backend_spec
 
-    backend = get_backend(backend_name)
-    executable = backend.get("executable")
+    executable = get_backend_spec(backend_name).executable
     if not isinstance(executable, str) or not executable:
         raise click.ClickException(f"Invalid backend configuration for: {backend_name}")
     return executable

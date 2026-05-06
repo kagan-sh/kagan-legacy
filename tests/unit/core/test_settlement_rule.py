@@ -9,7 +9,7 @@ import pytest
 
 from kagan.core._events import Events
 
-pytestmark = [pytest.mark.core]
+pytestmark = [pytest.mark.core, pytest.mark.unit]
 
 
 # ---------------------------------------------------------------------------

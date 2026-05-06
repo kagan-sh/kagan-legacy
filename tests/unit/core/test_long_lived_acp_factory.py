@@ -20,7 +20,7 @@ from kagan.core import BackendCapability
 from kagan.core._agent import BackendSpec
 from kagan.core.chat import LongLivedACPFactory
 
-pytestmark = [pytest.mark.core]
+pytestmark = [pytest.mark.core, pytest.mark.unit]
 
 
 # ---------------------------------------------------------------------------

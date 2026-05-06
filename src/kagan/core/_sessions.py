@@ -13,6 +13,7 @@ from sqlmodel import desc, select
 
 from kagan.core._agent import (
     BackendCapability,
+    BackendSpec,
     get_backend_spec,
     resolve_default_agent_backend,
     spawn_agent,
@@ -30,7 +31,6 @@ from kagan.core._compaction import ContextCompactor
 from kagan.core._db import default_db_path
 from kagan.core._db_helpers import (
     _db_async,
-    _db_sync,
     _sa_col,
     _setting_enabled,
     _utc_now,
@@ -316,7 +316,7 @@ class Sessions:
 
     # -- Sync DB helper delegates -------------------------------------------
 
-    def _update_session_pid(self, session_id: str, pid: int) -> None:
+    async def _update_session_pid(self, session_id: str, pid: int) -> None:
         def op(s):
             obj = s.get(Session, session_id)
             if obj:
@@ -324,18 +324,18 @@ class Sessions:
                 obj.status = SessionStatus.RUNNING
                 s.add(obj)
 
-        _db_sync(self._engine, op, commit=True)
+        await _db_async(self._engine, op, commit=True)
 
-    def _mark_session_running(self, session_id: str) -> None:
+    async def _mark_session_running(self, session_id: str) -> None:
         def op(s):
             obj = s.get(Session, session_id)
             if obj and obj.status == SessionStatus.PENDING:
                 obj.status = SessionStatus.RUNNING
                 s.add(obj)
 
-        _db_sync(self._engine, op, commit=True)
+        await _db_async(self._engine, op, commit=True)
 
-    def _complete_session(self, session_id: str) -> None:
+    async def _complete_session(self, session_id: str) -> None:
         def op(s):
             obj = s.get(Session, session_id)
             if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
@@ -361,9 +361,9 @@ class Sessions:
 
                 s.add(obj)
 
-        _db_sync(self._engine, op, commit=True)
+        await _db_async(self._engine, op, commit=True)
 
-    def _fail_session(self, session_id: str) -> None:
+    async def _fail_session(self, session_id: str) -> None:
         def op(s):
             obj = s.get(Session, session_id)
             if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
@@ -371,7 +371,7 @@ class Sessions:
                 obj.ended_at = _utc_now()
                 s.add(obj)
 
-        _db_sync(self._engine, op, commit=True)
+        await _db_async(self._engine, op, commit=True)
 
     # -- Orchestration methods (kept on class) ------------------------------
 
@@ -450,7 +450,7 @@ class Sessions:
         launcher: str | None = None,
         ide: str | None = None,
         persona: str | None = None,
-    ):
+    ) -> Session:
         task, ws, session_obj = await self._prepare_session(
             task_id,
             agent_backend=agent_backend,
@@ -458,93 +458,122 @@ class Sessions:
             launcher=launcher,
         )
 
-        if launcher is None:
-            settings_dict = await _db_async(
-                self._engine,
-                lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
-            )
-
-            project_path = Path(ws.worktree_path)
-            if task.status is TaskStatus.REVIEW:
-                prompt = resolve_review_prompt(task_id, settings_dict, project_path)
-            else:
-                learnings = await self._fetch_project_learnings(task.project_id)
-                task_criteria_texts = await _db_async(
-                    self._engine,
-                    lambda s: [
-                        c.text
-                        for c in s.exec(
-                            select(AcceptanceCriterion).where(
-                                AcceptanceCriterion.task_id == task_id
-                            )
-                        ).all()
-                    ],
-                )
-                prompt = resolve_task_prompt(
-                    task,
-                    settings_dict,
-                    project_path,
-                    learnings=learnings,
-                    criteria_texts=task_criteria_texts,
-                )
-
-            persona_prompt: str | None = None
-            if persona:
-                persona_prompt = get_persona_prompt(persona, settings_dict)
-            if persona_prompt and persona_prompt.strip():
-                prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
-            db_path_str = str(self._db_path or default_db_path())
-            backend_spec = get_backend_spec(agent_backend)
-
-            if backend_spec.has_capability(BackendCapability.ACP_STREAMING):
-                # Register the completion handler as an AgentEnd subscriber so
-                # that wait_idle() can synchronise callers waiting for the
-                # session to finish processing (settlement rule).
-                self._events.register_agent_end_subscriber(session_obj.id)
-                pid, reader_task = await spawn_agent_via_acp(
-                    agent_backend,
-                    Path(ws.worktree_path),
-                    prompt,
-                    session_id=session_obj.id,
-                    task_id=task_id,
-                    db_path=db_path_str,
-                    project_id=task.project_id,
-                    on_session_update=self._make_acp_callback(task_id, session_obj.id),
-                    on_permission_grant=self._make_permission_grant_callback(
-                        task_id, session_obj.id
-                    ),
-                )
-                await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
-                reader_task.add_done_callback(
-                    lambda t: asyncio.create_task(
-                        self._handle_acp_done(t, task_id, session_obj.id)
-                    ).add_done_callback(_log_task_failure)
-                )
-            else:
-                _raw_timeout = settings_dict.get("agent_timeout_seconds")
-                _timeout = agent_timeout_seconds(_raw_timeout)
-                pid = await spawn_agent(
-                    agent_backend,
-                    Path(ws.worktree_path),
-                    prompt,
-                    session_id=session_obj.id,
-                    task_id=task_id,
-                    db_path=db_path_str,
-                    project_id=task.project_id,
-                    timeout_seconds=_timeout,
-                )
-                await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
-                monitor = asyncio.create_task(
-                    self._monitor_detached(pid, task_id, session_obj.id),
-                    name=f"agent-monitor:{task_id}",
-                )
-                monitor.add_done_callback(_log_task_failure)
-            logger.info("Detached session started for task={}", task_id)
-            return session_obj
-
-        launch_fn = get_launcher(launcher or "")
         db_path_str = str(self._db_path or default_db_path())
         backend_spec = get_backend_spec(agent_backend)
+
+        if launcher is None:
+            return await self._run_detached(
+                task, ws, session_obj, task_id, agent_backend, persona, db_path_str, backend_spec
+            )
+        return await self._run_attached(
+            task, ws, session_obj, task_id, agent_backend, launcher, ide, db_path_str, backend_spec
+        )
+
+    async def _run_detached(
+        self,
+        task: Task,
+        ws: Worktree,
+        session_obj: Session,
+        task_id: str,
+        agent_backend: str,
+        persona: str | None,
+        db_path_str: str,
+        backend_spec: BackendSpec,
+    ) -> Session:
+        settings_dict = await _db_async(
+            self._engine,
+            lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
+        )
+
+        project_path = Path(ws.worktree_path)
+        if task.status is TaskStatus.REVIEW:
+            prompt = resolve_review_prompt(task_id, settings_dict, project_path)
+        else:
+            learnings = await self._fetch_project_learnings(task.project_id)
+            task_criteria_texts = await _db_async(
+                self._engine,
+                lambda s: [
+                    c.text
+                    for c in s.exec(
+                        select(AcceptanceCriterion).where(
+                            AcceptanceCriterion.task_id == task_id
+                        )
+                    ).all()
+                ],
+            )
+            prompt = resolve_task_prompt(
+                task,
+                settings_dict,
+                project_path,
+                learnings=learnings,
+                criteria_texts=task_criteria_texts,
+            )
+
+        persona_prompt: str | None = None
+        if persona:
+            persona_prompt = get_persona_prompt(persona, settings_dict)
+        if persona_prompt and persona_prompt.strip():
+            prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
+
+        if backend_spec.has_capability(BackendCapability.ACP_STREAMING):
+            # Register the completion handler as an AgentEnd subscriber so
+            # that wait_idle() can synchronise callers waiting for the
+            # session to finish processing (settlement rule).
+            self._events.register_agent_end_subscriber(session_obj.id)
+            pid, reader_task = await spawn_agent_via_acp(
+                agent_backend,
+                Path(ws.worktree_path),
+                prompt,
+                session_id=session_obj.id,
+                task_id=task_id,
+                db_path=db_path_str,
+                project_id=task.project_id,
+                on_session_update=self._make_acp_callback(task_id, session_obj.id),
+                on_permission_grant=self._make_permission_grant_callback(
+                    task_id, session_obj.id
+                ),
+            )
+            await self._update_session_pid(session_obj.id, pid)
+            reader_task.add_done_callback(
+                lambda t: asyncio.create_task(
+                    self._handle_acp_done(t, task_id, session_obj.id)
+                ).add_done_callback(_log_task_failure)
+            )
+        else:
+            _raw_timeout = settings_dict.get("agent_timeout_seconds")
+            _timeout = agent_timeout_seconds(_raw_timeout)
+            pid = await spawn_agent(
+                agent_backend,
+                Path(ws.worktree_path),
+                prompt,
+                session_id=session_obj.id,
+                task_id=task_id,
+                db_path=db_path_str,
+                project_id=task.project_id,
+                timeout_seconds=_timeout,
+            )
+            await self._update_session_pid(session_obj.id, pid)
+            monitor = asyncio.create_task(
+                self._monitor_detached(pid, task_id, session_obj.id),
+                name=f"agent-monitor:{task_id}",
+            )
+            monitor.add_done_callback(_log_task_failure)
+        logger.info("Detached session started for task={}", task_id)
+        return session_obj
+
+    async def _run_attached(
+        self,
+        task: Task,
+        ws: Worktree,
+        session_obj: Session,
+        task_id: str,
+        agent_backend: str,
+        launcher: str,
+        ide: str | None,
+        db_path_str: str,
+        backend_spec: BackendSpec,
+    ) -> Session:
+        launch_fn = get_launcher(launcher or "")
         criteria_texts = await _db_async(
             self._engine,
             lambda s: [
@@ -568,9 +597,10 @@ class Sessions:
         if ide is not None:
             launch_kwargs["ide"] = ide
         await launch_fn(**launch_kwargs)
-        await asyncio.to_thread(self._mark_session_running, session_obj.id)
+        await self._mark_session_running(session_obj.id)
         logger.info("Interactive session launched for task={}", task_id)
         return session_obj
+
 
     async def detach(self, task_id: str) -> DetachResult:
         task = await self._get_task(task_id)
@@ -629,7 +659,7 @@ class Sessions:
                     ),
                 )
             if latest_attached_session is not None:
-                await asyncio.to_thread(self._complete_session, latest_attached_session.id)
+                await self._complete_session(latest_attached_session.id)
             return {
                 "task_id": task_id,
                 "status": TaskStatus.REVIEW.value,
@@ -640,9 +670,9 @@ class Sessions:
 
         if latest_attached_session is not None:
             if pending_before or pending_after:
-                await asyncio.to_thread(self._fail_session, latest_attached_session.id)
+                await self._fail_session(latest_attached_session.id)
             else:
-                await asyncio.to_thread(self._complete_session, latest_attached_session.id)
+                await self._complete_session(latest_attached_session.id)
 
         current = await self._get_task(task_id)
         return {
@@ -820,7 +850,7 @@ class Sessions:
             exc = task.exception() if not task.cancelled() else None
             if exc is not None:
                 logger.error("ACP session failed for task={}: {}", task_id, exc)
-                await asyncio.to_thread(self._fail_session, session_id)
+                await self._fail_session(session_id)
                 await self._events.emit(
                     task_id,
                     "agent_failed",
@@ -831,7 +861,7 @@ class Sessions:
                 # Notify board so cards clear active_session.
                 self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
             else:
-                await asyncio.to_thread(self._complete_session, session_id)
+                await self._complete_session(session_id)
                 db_task = await self._get_task(task_id)
                 completed_session = await _db_async(
                     self._engine, lambda s: s.get(Session, session_id)
@@ -988,7 +1018,7 @@ class Sessions:
                     raise ProcessLookupError(pid)
             except ProcessLookupError:
                 unregister_spawned_process(session_id)
-                await asyncio.to_thread(self._complete_session, session_id)
+                await self._complete_session(session_id)
                 task = await self._get_task(task_id)
                 detached_session = await _db_async(
                     self._engine, lambda s: s.get(Session, session_id)

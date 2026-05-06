@@ -122,9 +122,11 @@ async def test_chat_first_turn_invokes_title_generator(tmp_path: Path) -> None:
     from kagan.core.chat import ChatEngine
 
     calls: list[tuple[str, str]] = []
+    title_called = asyncio.Event()
 
     async def _gen(user: str, reply: str) -> str | None:
         calls.append((user, reply))
+        title_called.set()
         return "Generated Title"
 
     db_path = tmp_path / "kagan.db"
@@ -153,16 +155,18 @@ async def test_chat_first_turn_invokes_title_generator(tmp_path: Path) -> None:
             )
         )
 
-        # Title generation is fire-and-forget; poll briefly.
-        for _ in range(50):
-            s = await core.chat_sessions.get(sid)
-            if s is not None and s.label == "Generated Title":
-                break
-            await asyncio.sleep(0.01)
+        await asyncio.wait_for(title_called.wait(), timeout=5.0)
+
+        async def _await_label() -> object:
+            while True:
+                s = await core.chat_sessions.get(sid)
+                if s is not None and s.label == "Generated Title":
+                    return s
+                await asyncio.sleep(0)
+
+        s = await asyncio.wait_for(_await_label(), timeout=3.0)
 
         assert len(calls) == 1
-        s = await core.chat_sessions.get(sid)
-        assert s is not None
         assert s.label == "Generated Title"
     finally:
         core.close()

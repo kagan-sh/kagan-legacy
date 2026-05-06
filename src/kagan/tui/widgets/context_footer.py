@@ -1,3 +1,4 @@
+
 from textual.binding import BindingType
 from textual.containers import Horizontal
 from textual.reactive import reactive
@@ -6,6 +7,23 @@ from textual.widgets import Label, Static
 from kagan.tui.keybindings import (
     FooterBuilder,
 )
+
+_PRIMARY_ACTIONS: dict[str, list[tuple[str, str]]] = {
+    "kanban": FooterBuilder.kanban_core(),
+    "kanban_with_card": FooterBuilder.kanban_with_card(),
+    "task": FooterBuilder.task_screen(),
+    "session": FooterBuilder.session_dashboard(),
+    "settings": FooterBuilder.settings(),
+    "confirm": FooterBuilder.confirm(),
+    "chat": FooterBuilder.chat(),
+}
+
+_NAVIGATION_HINTS: dict[str, str] = {
+    "kanban": "",
+    "kanban_with_card": "",
+    "task": "[dim]1/2 tabs · Esc back[/]",
+    "session": "[dim]Ctrl+K sessions · Ctrl+. AI panel[/]",
+}
 
 
 class ContextFooter(Horizontal):
@@ -60,14 +78,17 @@ class ContextFooter(Horizontal):
         right_widget.tooltip = "Global keyboard shortcuts (press ? for help)"
         yield right_widget
 
-    def watch_context(self, context: str) -> None:
+    def _refresh_display(self) -> None:
         self._update_display()
 
-    def watch_has_focused_item(self, has_focus: bool) -> None:
-        self._update_display()
+    def watch_context(self, _context: str) -> None:
+        self._refresh_display()
 
-    def watch_sub_context(self, sub_context: str) -> None:
-        self._update_display()
+    def watch_has_focused_item(self, _has_focus: bool) -> None:
+        self._refresh_display()
+
+    def watch_sub_context(self, _sub_context: str) -> None:
+        self._refresh_display()
 
     def set_context(
         self,
@@ -93,36 +114,18 @@ class ContextFooter(Horizontal):
         center.update(center_content)
         right.update(right_content)
 
-    def _build_primary_actions(self, width: int) -> str:
-        if self.context == "kanban":
-            return self._format_hints(FooterBuilder.kanban_core())
-        elif self.context == "kanban_with_card":
-            return self._format_hints(FooterBuilder.kanban_with_card())
-        elif self.context == "task":
-            if self.sub_context == "review":
-                return self._format_hints(FooterBuilder.task_screen_review())
-            return self._format_hints(FooterBuilder.task_screen())
-        elif self.context == "session":
-            return self._format_hints(FooterBuilder.session_dashboard())
-        elif self.context == "settings":
-            return self._format_hints(FooterBuilder.settings())
-        elif self.context == "confirm":
-            return self._format_hints(FooterBuilder.confirm())
-        elif self.context == "chat":
-            return self._format_hints(FooterBuilder.chat())
-        return ""
+    def _build_primary_actions(self, _width: int) -> str:
+        if self.context == "task" and self.sub_context == "review":
+            return self._format_hints(FooterBuilder.task_screen_review())
+        hints = _PRIMARY_ACTIONS.get(self.context)
+        return self._format_hints(hints) if hints else ""
 
     def _build_navigation_hints(self, width: int) -> str:
         if width < 100:
             return ""  # Hide navigation hints on narrow screens
-
         if self.context in ("kanban", "kanban_with_card"):
             return self._format_hints(FooterBuilder.kanban_navigation(), compact=True)
-        elif self.context == "task":
-            return "[dim]1/2 tabs · Esc back[/]"
-        elif self.context == "session":
-            return "[dim]Ctrl+K sessions · Ctrl+. AI panel[/]"
-        return ""
+        return _NAVIGATION_HINTS.get(self.context, "")
 
     def _build_global_hints(self, width: int) -> str:
         if width < 80:

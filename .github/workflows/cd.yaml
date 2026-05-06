@@ -91,7 +91,7 @@ jobs:
         run: |
           set -o pipefail
           uv run poe db-migrations-check
-          uv run pytest tests/core/unit/ -m "core and unit" -n auto -q
+          uv run pytest tests/unit/core/ -m "core and unit" -n auto -q
 
       - name: Run Semantic Release
         id: release

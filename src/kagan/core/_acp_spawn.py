@@ -2,44 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from acp.client.connection import ClientSideConnection
 from acp.transports import spawn_stdio_transport
 
 from kagan.core._acp_streams import JsonRpcObjectStreamReader
+from kagan.core._subprocess import terminate_process
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+    from collections.abc import AsyncIterator, Callable, Mapping
     from pathlib import Path
 
     import acp
-
-
-async def _terminate_stdio_process(process: Any) -> None:
-    if getattr(process, "returncode", None) is not None:
-        return
-    terminate = getattr(process, "terminate", None)
-    if callable(terminate):
-        with contextlib.suppress(ProcessLookupError):
-            terminate()
-    wait = getattr(process, "wait", None)
-    if not callable(wait):
-        return
-    try:
-        wait_result = cast("Awaitable[Any]", wait())
-        await asyncio.wait_for(wait_result, timeout=5.0)
-    except TimeoutError:
-        kill = getattr(process, "kill", None)
-        if callable(kill):
-            with contextlib.suppress(ProcessLookupError):
-                kill()
-        wait_result = cast("Awaitable[Any]", wait())
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(wait_result, timeout=5.0)
 
 
 @asynccontextmanager
@@ -69,4 +45,4 @@ async def spawn_filtered_agent_process(
             try:
                 await conn.close()
             finally:
-                await _terminate_stdio_process(process)
+                await terminate_process(process)

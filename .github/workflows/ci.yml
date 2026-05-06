@@ -95,7 +95,7 @@ jobs:
             pyproject.toml
       - run: uv sync --frozen --dev
       - run: uv run poe db-migrations-check
-      - run: uv run pytest tests/core/unit/ -m "core and unit" -n auto -q
+      - run: uv run pytest tests/unit/core/ -m "core and unit" -n auto -q
 
   test-pr:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false

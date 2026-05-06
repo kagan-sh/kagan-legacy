@@ -71,7 +71,7 @@ async def test_task_screen_opens_without_app_active_task_id(board: KaganDriver) 
 async def test_layout_mode_reactive_drives_css_on_vertical(board: KaganDriver) -> None:
     """Setting _chat_overlay_layout_mode=vertical updates chat-overlay-vertical class."""
     from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen
+    from kagan.tui.screens.kanban import KanbanScreen, LayoutMode
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
@@ -82,7 +82,7 @@ async def test_layout_mode_reactive_drives_css_on_vertical(board: KaganDriver) -
         screen: KanbanScreen = app.screen
         await pilot.press("ctrl+i")
         await pilot.pause()
-        screen._chat_overlay_layout_mode = "vertical"
+        screen._chat_overlay_layout_mode = LayoutMode.VERTICAL
         await pilot.pause()
         assert screen.has_class("chat-overlay-vertical")
         assert not screen.has_class("chat-overlay-horizontal")
@@ -91,7 +91,7 @@ async def test_layout_mode_reactive_drives_css_on_vertical(board: KaganDriver) -
 async def test_layout_mode_reactive_drives_css_on_horizontal(board: KaganDriver) -> None:
     """Setting _chat_overlay_layout_mode=horizontal updates chat-overlay-horizontal class."""
     from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen
+    from kagan.tui.screens.kanban import KanbanScreen, LayoutMode
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
@@ -102,7 +102,7 @@ async def test_layout_mode_reactive_drives_css_on_horizontal(board: KaganDriver)
         screen: KanbanScreen = app.screen
         await pilot.press("ctrl+i")
         await pilot.pause()
-        screen._chat_overlay_layout_mode = "horizontal"
+        screen._chat_overlay_layout_mode = LayoutMode.HORIZONTAL
         await pilot.pause()
         assert screen.has_class("chat-overlay-horizontal")
         assert not screen.has_class("chat-overlay-vertical")

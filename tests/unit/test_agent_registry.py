@@ -11,7 +11,6 @@ from kagan.core._agent import (
     REFERENCE_BACKENDS,
     AgentError,
     BackendCapability,
-    get_backend,
     get_backend_spec,
     list_backend_specs,
 )
@@ -26,17 +25,6 @@ def test_each_backend_has_required_keys_and_nonempty_executable() -> None:
         assert spec.executable, f"{name}: executable must not be empty"
         assert isinstance(spec.capabilities, frozenset), f"{name}: capabilities must be frozenset"
         assert spec.capabilities, f"{name}: capabilities must not be empty"
-
-
-def test_get_backend_raises_for_unknown_name() -> None:
-    with pytest.raises(AgentError, match="unknown agent backend"):
-        get_backend("nonexistent-backend")
-
-
-def test_get_backend_accepts_legacy_aliases() -> None:
-    assert get_backend("kimi")["executable"] == get_backend_spec("kimi-cli").executable
-    assert get_backend("gemini")["executable"] == get_backend_spec("gemini-cli").executable
-    assert get_backend("claude")["executable"] == get_backend_spec("claude-code").executable
 
 
 def test_backend_specs_expose_reference_backends() -> None:

@@ -25,8 +25,8 @@ from prompt_toolkit.application.run_in_terminal import run_in_terminal
 from rich.markup import escape as _rich_escape
 
 from kagan.cli.chat._streaming import (
+    MarkdownStreamingRegion,
     ResponseChunkBuffer,
-    StreamingMarkdownRegion,
 )
 from kagan.cli.chat.tool_runs import ToolRunTracker
 
@@ -201,11 +201,10 @@ class CLIRenderer:
 
     def __init__(self, console: Console, *, show_thoughts: bool = False) -> None:
         self._console = console
-        self._show_thoughts = show_thoughts
         self._tool_runs = ToolRunTracker()
         self._grouped_tools = _GroupedToolDisplay()
         self._response_chunks = ResponseChunkBuffer()
-        self._md_region = StreamingMarkdownRegion(console)
+        self._md_region = MarkdownStreamingRegion(console, show_thoughts=show_thoughts)
         self.last_usage: Any = None
 
     # ------------------------------------------------------------------
@@ -240,19 +239,13 @@ class CLIRenderer:
     def on_assistant_chunk(self, text: str, *, thought: bool = False) -> None:
         if not text:
             return
-        if thought:
-            if not self._show_thoughts:
-                return
-            self._md_region.finalize()
+        if not thought:
+            self._response_chunks.append(text)
 
-            def _print_thought() -> None:
-                self._console.print(f"[dim]{_rich_escape(text)}[/dim]", end="", highlight=False)
-                self._console.file.flush()
+        def _do_append() -> None:
+            self._md_region.append(text, thought=thought)
 
-            print_via_terminal(_print_thought)
-            return
-        self._response_chunks.append(text)
-        self._md_region.append(text)
+        print_via_terminal(_do_append)
 
     def on_tool_call_start(self, update: Any) -> None:
         self._md_region.finalize()

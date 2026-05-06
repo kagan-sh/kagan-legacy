@@ -101,17 +101,20 @@ def test_streamed_chunks_are_collected_and_returned_by_finish_turn() -> None:
     assert response == "abc"
 
 
-def test_streamed_words_are_printed_and_flushed_before_finish_turn() -> None:
-    fake_console = _FakeConsole()
-    renderer = CLIRenderer(cast("Any", fake_console))
+def test_streamed_text_is_rendered_as_markdown_at_finish_turn() -> None:
+    # Text is buffered during streaming and flushed as rendered Markdown at
+    # finish_turn(), not printed word-by-word as plain text.
+    console, buf = _real_console()
+    renderer = CLIRenderer(console)
     renderer.start_turn()
 
     renderer.on_assistant_chunk("hello world")
+    assert not buf.getvalue(), "text must not appear before finish_turn"
 
-    rendered = "".join(str(args[0]) for args, _ in fake_console.calls if args)
-    assert "hello " in rendered
-    assert "world" in rendered
-    assert fake_console.file.flush_count >= 2
+    renderer.finish_turn()
+    output = buf.getvalue()
+    assert "hello" in output
+    assert "world" in output
 
 
 def test_markdown_region_does_not_reprint_streamed_markdown_at_finish_turn() -> None:

@@ -13,6 +13,86 @@
 
 
 
+## v0.19.0-beta.34 (2026-05-06)
+
+
+
+
+### Refactoring
+
+- **core**: Address greptile review on PR 151 ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+- Drop dead acp aliases and align test layout with testing.md
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+- Guido simplification + testing.md compliance pass
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+- **core**: P1+P2-A/B dead code, stream readers, process termination
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+- **core**: P2-C/D split Sessions.run and async-ify DB helpers
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+- **tui**: P3 cosmetic fixes across settings, footer, workspace, chat, kanban
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+- **tui**: Split task_screen.py into focused modules
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Continuous Integration
+
+- Point fast-gate at relocated tests/unit/core/ path
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Testing
+
+- Update session shutdown mocks for async DB helpers
+  ([#151](https://github.com/kagan-sh/kagan/pull/151),
+  [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
+
+
+
+
+
 ## v0.19.0-beta.33 (2026-05-06)
 
 

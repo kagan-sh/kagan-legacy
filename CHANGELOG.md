@@ -13,6 +13,68 @@
 
 
 
+## v0.19.0-beta.35 (2026-05-06)
+
+
+
+
+### Bug Fixes
+
+- **core**: Call super().__init__() on ACP stream wrappers
+  ([#152](https://github.com/kagan-sh/kagan/pull/152),
+  [`457416d`](https://github.com/kagan-sh/kagan/commit/457416dd676564464463b697281a62dcf2bcf930))
+
+- **core**: Delegate exception()/set_exception() to wrapped reader
+  ([#152](https://github.com/kagan-sh/kagan/pull/152),
+  [`457416d`](https://github.com/kagan-sh/kagan/commit/457416dd676564464463b697281a62dcf2bcf930))
+
+- **core**: Restore asyncio.StreamReader inheritance on ACP stdio wrappers
+  ([#152](https://github.com/kagan-sh/kagan/pull/152),
+  [`457416d`](https://github.com/kagan-sh/kagan/commit/457416dd676564464463b697281a62dcf2bcf930))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Testing
+
+- Add real-stdio ACP integration harness with hermetic echo agent
+  ([#152](https://github.com/kagan-sh/kagan/pull/152),
+  [`457416d`](https://github.com/kagan-sh/kagan/commit/457416dd676564464463b697281a62dcf2bcf930))
+
+- **acp**: Assert wrapper.exception() in unit regression test too
+  ([#152](https://github.com/kagan-sh/kagan/pull/152),
+  [`457416d`](https://github.com/kagan-sh/kagan/commit/457416dd676564464463b697281a62dcf2bcf930))
+
+
+
+
+
 ## v0.19.0-beta.34 (2026-05-06)
 
 

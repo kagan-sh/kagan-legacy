@@ -235,7 +235,7 @@ _DISPLAY_OPTIONS: list[tuple[str, str]] = [
 
 
 def _build_display_options() -> list[tuple[str, str]]:
-    """Return the fixed 4-slot panel option list.
+    """Return the fixed 5-slot panel option list.
 
     The panel surface is constant; ACP options aren't consulted because
     `_map_approval_result` resolves the user's choice by slot index.

@@ -163,6 +163,30 @@ def test_start_turn_discards_in_flight_markdown_region() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _TurnLiveState rendering
+# ---------------------------------------------------------------------------
+
+
+def test_turn_live_state_renders_composing_label_by_default() -> None:
+    from kagan.cli.chat._streaming import _TurnLiveState
+
+    ls = _TurnLiveState()
+    console, buf = _real_console()
+    console.print(ls)
+    assert "Composing" in buf.getvalue()
+
+
+def test_turn_live_state_renders_thinking_label_after_phase_switch() -> None:
+    from kagan.cli.chat._streaming import _TurnLiveState
+
+    ls = _TurnLiveState()
+    ls.set_phase("thinking")
+    console, buf = _real_console()
+    console.print(ls)
+    assert "Thinking" in buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # PermissionUI engine-driven dispatch
 # ---------------------------------------------------------------------------
 

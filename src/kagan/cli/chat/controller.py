@@ -54,6 +54,7 @@ from kagan.cli.chat._session_picker import (
     resolve_chat_session_selector,
 )
 from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
+from kagan.cli.chat._streaming import _TurnLiveState
 from kagan.cli.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.cli.chat.commands import (
     SlashAction,
@@ -713,7 +714,7 @@ class ChatController:
         _console.print()
         _console.print(f"[bold]You:[/bold] {text}")
 
-        self._renderer.start_turn()
+        live_state = _TurnLiveState()
         self._permission_ui.reset_batch_queue()
 
         interrupted = False
@@ -741,30 +742,32 @@ class ChatController:
                 with contextlib.suppress(BaseException):
                     await stream.aclose()
 
-        consume_task = asyncio.create_task(_consume_stream(), name="chat-engine-consume")
-        original_sigint = install_sigint_handler(consume_task)
-        try:
-            await consume_task
-        except asyncio.CancelledError:
-            interrupted = True
-            with contextlib.suppress(BaseException):
-                await self.client.chat.cancel(self._chat_session_id)
-            # Drain remaining events (TurnCancelled / AssistantMessagePersisted)
-            # so the partial-on-cancel persist round-trip surfaces. The
-            # consume_task is already cancelled; the engine's own cancel path
-            # writes the partial via _sessions.append_message.
-            self._permission_ui.cancel_batch_queue()
-        except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
-            logger.exception("Chat engine consume failed")
-            _console.print(f"\n[red]Agent error: {exc}[/red]")
-            had_error = True
-        except Exception as exc:
-            logger.exception("Unexpected chat engine consume failure")
-            _console.print(f"\n[red]Agent error: {exc}[/red]")
-            had_error = True
-        finally:
-            restore_sigint_handler(original_sigint)
-            _TOOLBAR_STATE.is_streaming = False
+        with Live(live_state, console=_console, refresh_per_second=10, transient=True):
+            self._renderer.start_turn(live_state=live_state)
+            consume_task = asyncio.create_task(_consume_stream(), name="chat-engine-consume")
+            original_sigint = install_sigint_handler(consume_task)
+            try:
+                await consume_task
+            except asyncio.CancelledError:
+                interrupted = True
+                with contextlib.suppress(BaseException):
+                    await self.client.chat.cancel(self._chat_session_id)
+                # Drain remaining events (TurnCancelled / AssistantMessagePersisted)
+                # so the partial-on-cancel persist round-trip surfaces. The
+                # consume_task is already cancelled; the engine's own cancel path
+                # writes the partial via _sessions.append_message.
+                self._permission_ui.cancel_batch_queue()
+            except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
+                logger.exception("Chat engine consume failed")
+                _console.print(f"\n[red]Agent error: {exc}[/red]")
+                had_error = True
+            except Exception as exc:
+                logger.exception("Unexpected chat engine consume failure")
+                _console.print(f"\n[red]Agent error: {exc}[/red]")
+                had_error = True
+            finally:
+                restore_sigint_handler(original_sigint)
+                _TOOLBAR_STATE.is_streaming = False
 
         # Finalize any pending Markdown the renderer was still buffering.
         self._renderer.finish_turn()

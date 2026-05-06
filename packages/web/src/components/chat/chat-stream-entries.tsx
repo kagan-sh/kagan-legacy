@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { AlertTriangle, Bot, BrainCircuit } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
 import { cn } from '@/lib/utils';
@@ -25,7 +26,7 @@ export function ChatStreamEntries({ entries }: ChatStreamEntriesProps) {
           case 'text':
             return <StreamTextBlock key={key} content={entry.content} />;
           case 'thought':
-            return <StreamThoughtBlock key={key} content={entry.content} />;
+            return <StreamThoughtBlock key={key} content={entry.content} startedAt={entry.startedAt} />;
           case 'tool':
             return <StreamToolCard key={key} id={entry.id} name={entry.name} status={entry.status} detail={entry.detail} />;
           case 'note':
@@ -63,7 +64,16 @@ function StreamTextBlock({ content }: { content: string }) {
 
 // ── Thinking block ───────────────────────────────────────────────────────────
 
-function StreamThoughtBlock({ content }: { content: string }) {
+function StreamThoughtBlock({ content, startedAt }: { content: string; startedAt: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const id = setInterval(
+      () => setElapsed(Math.round((Date.now() - startedAt) / 100) / 10),
+      100,
+    );
+    return () => clearInterval(id);
+  }, [startedAt]);
+  const tokens = Math.round(content.length / 4);
   return (
     <div className="flex gap-3 py-3 opacity-70">
       <Avatar className="mt-0.5 size-6 shrink-0">
@@ -73,11 +83,13 @@ function StreamThoughtBlock({ content }: { content: string }) {
       </Avatar>
       <div className="min-w-0 flex-1">
         <div className="mb-1">
-          <span className="text-[11px] font-semibold text-fuchsia-400">Thinking</span>
+          <span className="text-[11px] font-semibold text-fuchsia-400">
+            Thinking&nbsp;&nbsp;{elapsed}s&nbsp;·&nbsp;{tokens} tokens
+          </span>
         </div>
         <MarkdownContent
           content={content}
-          className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-fuchsia-400 prose-pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
+          className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-fuchsia-400 pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
         />
       </div>
     </div>

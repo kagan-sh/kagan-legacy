@@ -1,7 +1,10 @@
 import contextlib
 import shlex
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
+
+if TYPE_CHECKING:
+    from kagan.core.chat._turn_display import TurnPhaseTracker
 
 from textual import on
 from textual.app import ComposeResult
@@ -191,6 +194,7 @@ class ChatPanel(Vertical):
         # asynchronously via :meth:`_refresh_project_session_keys`. ``None``
         # means "not yet loaded / no filter" — the picker shows everything.
         self._project_session_keys_cache: dict[str, set[str]] = {}
+        self._turn_tracker: TurnPhaseTracker | None = None
 
     @contextlib.contextmanager
     def state_only_updates(self):

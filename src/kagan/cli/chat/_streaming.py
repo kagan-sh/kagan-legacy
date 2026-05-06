@@ -8,9 +8,13 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 from rich.markdown import Markdown
+from rich.spinner import Spinner
+from rich.text import Text
+
+from kagan.core.chat._turn_display import TurnPhaseTracker
 
 if TYPE_CHECKING:
-    from rich.console import Console
+    from rich.console import Console, RenderableType
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
 _MAX_RESPONSE_CHUNKS_BYTES = 10 * 1024 * 1024
@@ -97,6 +101,27 @@ def _find_committed_boundary(text: str) -> int | None:
     return offset
 
 
+class _TurnLiveState:
+    """Rich-renderable consumed by Rich.Live — re-evaluated on every 10fps refresh."""
+
+    def __init__(self) -> None:
+        self._tracker = TurnPhaseTracker()
+        self._spinner = Spinner("dots", "")
+
+    def set_phase(self, phase: str) -> None:
+        self._tracker.set_phase(phase)
+
+    def add_text(self, text: str) -> None:
+        self._tracker.add_text(text)
+
+    def __rich__(self) -> RenderableType:
+        if self._tracker._phase == "thinking":
+            self._spinner.text = Text(self._tracker.thinking_label(), style="italic grey50")
+        else:
+            self._spinner.text = Text(self._tracker.composing_label(), style="grey50")
+        return self._spinner
+
+
 class MarkdownStreamingRegion:
     """Progressive markdown rendering for streaming assistant responses.
 
@@ -123,10 +148,15 @@ class MarkdownStreamingRegion:
         self._thought_announced: bool = False
         self._thought_start: float = 0.0
         self._thought_buffer: str = ""
+        # Live turn indicator
+        self._live_state: _TurnLiveState | None = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def set_live_state(self, ls: _TurnLiveState | None) -> None:
+        self._live_state = ls
 
     def append(self, text: str, *, thought: bool = False) -> None:
         if not text:
@@ -140,6 +170,7 @@ class MarkdownStreamingRegion:
 
     def finalize(self) -> None:
         """Flush remaining buffered text as markdown and reset state."""
+        self._live_state = None
         with self._lock:
             self._end_thought()
             tail = self._buffer[self._committed_len:]
@@ -178,8 +209,12 @@ class MarkdownStreamingRegion:
             self._thought_start = time.monotonic()
             self._thought_announced = True
             self._in_thought = True
-            self._console.print("[dim italic]Thinking…[/dim italic]", highlight=False)
-            self._console.file.flush()
+            if not self._live_state:
+                self._console.print("[dim italic]Thinking…[/dim italic]", highlight=False)
+                self._console.file.flush()
+        if self._live_state:
+            self._live_state.set_phase("thinking")
+            self._live_state.add_text(text)
         if self._show_thoughts:
             self._thought_buffer += text
 
@@ -187,6 +222,8 @@ class MarkdownStreamingRegion:
         if not self._in_thought:
             return
         self._in_thought = False
+        if self._live_state:
+            self._live_state.set_phase("composing")
         if self._show_thoughts and self._thought_buffer.strip():
             elapsed = time.monotonic() - self._thought_start
             self._console.print(
@@ -202,6 +239,8 @@ class MarkdownStreamingRegion:
     def _append_composing(self, text: str) -> None:
         self._buffer += text
         self._has_printed_anything = True
+        if self._live_state:
+            self._live_state.add_text(text)
         # Only check for committed boundary when a newline is present
         # (block boundaries require at least one newline).
         if "\n" not in text:

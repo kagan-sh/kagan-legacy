@@ -13,7 +13,7 @@ export const chatMessagesAtom = atom<WireChatMessage[]>([]);
 
 export type ChatStreamEntry =
   | { kind: 'text'; content: string }
-  | { kind: 'thought'; content: string }
+  | { kind: 'thought'; content: string; startedAt: number }
   | { kind: 'tool'; id: string; name: string; status: 'running' | 'done'; detail?: string }
   | { kind: 'note'; message: string }
   | { kind: 'error'; message: string };
@@ -23,7 +23,7 @@ export const isStreamingAtom = atom(false);
 
 export const appendStreamChunkAtom = atom(
   null,
-  (get, set, payload: { content: string; thought?: boolean }) => {
+  (get, set, payload: { content: string; thought?: boolean; startedAt?: number }) => {
     const entries = get(streamEntriesAtom);
     const kind = payload.thought ? 'thought' : 'text';
     const last = entries.at(-1);
@@ -32,6 +32,9 @@ export const appendStreamChunkAtom = atom(
       const updated = entries.slice(0, -1);
       updated.push({ ...last, content: last.content + payload.content });
       set(streamEntriesAtom, updated);
+    } else if (kind === 'thought') {
+      const startedAt = payload.startedAt ?? Date.now();
+      set(streamEntriesAtom, [...entries, { kind, content: payload.content, startedAt }]);
     } else {
       set(streamEntriesAtom, [...entries, { kind, content: payload.content }]);
     }

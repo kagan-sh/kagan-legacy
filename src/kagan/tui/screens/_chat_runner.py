@@ -52,6 +52,7 @@ from kagan.core.chat import (
 from kagan.core.chat import (
     ToolCallStart as ChatToolCallStart,
 )
+from kagan.core.chat._turn_display import TurnPhaseTracker
 from kagan.core.errors import KaganError
 
 if TYPE_CHECKING:
@@ -215,16 +216,23 @@ def apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
     inside the spawn-per-turn ACP helper (see ``core/chat/acp.py``).
     """
     if isinstance(event, TurnStarted):
+        panel._turn_tracker = TurnPhaseTracker()
         panel.set_runtime_status("thinking")
         panel.set_stream_action("Initializing...", confidence="assumption")
         return
     if isinstance(event, AssistantChunk):
         panel.set_runtime_status("thinking")
+        if panel._turn_tracker is None:
+            panel._turn_tracker = TurnPhaseTracker()
         if event.thought:
-            panel.set_stream_action("Reasoning through approach", confidence="assumption")
+            panel._turn_tracker.set_phase("thinking")
+            panel._turn_tracker.add_text(event.text)
+            panel.set_stream_action(panel._turn_tracker.thinking_label(), confidence="assumption")
             panel.append_thought_fragment(event.text)
             return
-        panel.set_stream_action("Streaming response", confidence="certain")
+        panel._turn_tracker.set_phase("composing")
+        panel._turn_tracker.add_text(event.text)
+        panel.set_stream_action(panel._turn_tracker.composing_label(), confidence="certain")
         panel.append_assistant_fragment(event.text)
         return
     if isinstance(event, ChatToolCallStart):
@@ -248,11 +256,13 @@ def apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
     if isinstance(event, AssistantMessagePersisted):
         return
     if isinstance(event, TurnDone):
+        panel._turn_tracker = None
         panel.set_runtime_status("ready")
         panel.set_stream_action("Waiting for prompt", confidence="certain")
         panel.increment_turn_count()
         return
     if isinstance(event, TurnCancelled):
+        panel._turn_tracker = None
         panel.set_runtime_status("ready")
         panel.set_stream_action("Waiting for prompt", confidence="certain")
         return

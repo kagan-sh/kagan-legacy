@@ -97,6 +97,8 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   // Track whether the current tab initiated the active stream so CHAT_USER_MESSAGE
   // from other clients can be distinguished.
   const localStreamingRef = useRef(false);
+  // Track when the current thinking phase started (reset when composing begins).
+  const thinkingStartRef = useRef<number | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null) as MutableRefObject<ReturnType<typeof setInterval> | null>;
 
@@ -204,7 +206,17 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         case 'CHAT_CHUNK': {
           setIsStreaming(true);
           const content = event.content ?? '';
-          if (content) appendChunk({ content, thought: event.thought });
+          if (content) {
+            if (event.thought) {
+              if (thinkingStartRef.current === null) {
+                thinkingStartRef.current = Date.now();
+              }
+              appendChunk({ content, thought: true, startedAt: thinkingStartRef.current });
+            } else {
+              thinkingStartRef.current = null;
+              appendChunk({ content, thought: false });
+            }
+          }
           break;
         }
         case 'CHAT_TOOL_START': {

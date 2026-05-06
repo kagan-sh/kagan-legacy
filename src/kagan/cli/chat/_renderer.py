@@ -27,6 +27,7 @@ from rich.markup import escape as _rich_escape
 from kagan.cli.chat._streaming import (
     MarkdownStreamingRegion,
     ResponseChunkBuffer,
+    _TurnLiveState,
 )
 from kagan.cli.chat.tool_runs import ToolRunTracker
 
@@ -211,8 +212,9 @@ class CLIRenderer:
     # Turn lifecycle
     # ------------------------------------------------------------------
 
-    def start_turn(self) -> None:
+    def start_turn(self, live_state: _TurnLiveState | None = None) -> None:
         self._md_region.discard()
+        self._md_region.set_live_state(live_state)
         self._response_chunks.clear()
         self._tool_runs.start_turn()
         self._grouped_tools.clear()

@@ -45,14 +45,13 @@ src/kagan/cli/chat/
 ├── _chat_ui.py        # Shared chat prompt/status UI helpers
 ├── _completion.py     # Slash command completion
 ├── _handshake.py      # Agent handshake/preflight helpers
-├── _permission_ui.py  # Permission prompt interactions
+├── _permission_ui.py  # Permission prompt interactions (trust-tier approval panel)
 ├── _renderer.py       # ACP event renderer and tool call display
 ├── _session_picker.py # Interactive session picker
 ├── _signals.py        # Signal handling helpers
 ├── _streaming.py      # Immediate Markdown streaming region
 ├── _theme.py          # Chat colors and glyphs
 ├── _title.py          # Session title generation
-├── _yolo.py           # Yolo-mode confirmation and display
 ├── controller.py      # ChatController, _OrchestratorACPClient
 ├── acp.py             # run_orchestrator_turn, ACP bridge
 ├── agents.py          # Agent backend selection

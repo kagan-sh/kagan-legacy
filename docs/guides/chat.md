@@ -21,7 +21,6 @@ kagan chat                         # interactive REPL
 kagan chat --prompt "Plan a refactor"  # single-shot (send, print, exit)
 kagan chat --session-id <id>       # resume a previous session
 kagan chat --agent opencode        # override agent backend
-kagan chat --yolo                  # auto-approve every tool call
 ```
 
 The REPL persists conversation history across restarts. Type a message and press Enter to send. Agent responses stream into the terminal as chunks arrive, then the completed turn is kept in history. `Ctrl+D` or `/exit` to quit.
@@ -40,25 +39,26 @@ The bottom toolbar shows the active backend, session, pending approval count, cu
 
 A rotating tip line (eight tips, 30 s cadence; advances on submit) sits beneath the toolbar.
 
-### Yolo mode
-
-`--yolo` skips the per-tool-call permission prompt and auto-approves every request for the session. On boot it shows a disclaimer and requires you to type `I ACCEPT` exactly; anything else aborts. The boot banner border turns red and a `YOLO` badge appears in the bottom toolbar while it is active. Each auto-approved call is still logged as `● yolo auto-approve: <tool>` so you can see what ran. Use only inside disposable worktrees or sandboxes you trust the agent to operate on unattended.
-
 ### Approval panel
 
-When the agent requests permission to run a tool, the REPL surfaces a yellow-bordered panel with the tool name, a short preview (syntax-highlighted for shell commands, key arguments otherwise), and four options:
+When the agent requests permission to run a tool, the REPL surfaces a yellow-bordered panel with the tool name, a short preview (syntax-highlighted for shell commands, key arguments otherwise), and five options:
 
-| #   | Option                             | Effect                                                                |
-| --- | ---------------------------------- | --------------------------------------------------------------------- |
-| 1   | Approve once                       | Allow this single call.                                               |
-| 2   | Approve for this session           | Allow this and any future call to the same tool until the REPL exits. |
-| 3   | Reject                             | Deny without explanation.                                             |
-| 4   | Reject — tell the model what to do | Deny and forward an inline feedback message back to the agent.        |
+| #   | Option                             | Effect                                                                           |
+| --- | ---------------------------------- | -------------------------------------------------------------------------------- |
+| 1   | Approve once                       | Allow this single call.                                                          |
+| 2   | Approve tool for session           | Allow every call to this tool (by name) until the REPL exits.                   |
+| 3   | Allow all for session              | Auto-approve every tool call for the rest of the session (replaces `--yolo`).   |
+| 4   | Reject                             | Deny without explanation.                                                        |
+| 5   | Reject — tell the model what to do | Deny and forward an inline feedback message back to the agent.                   |
+
+Kagan's own MCP tools (`mcp__kagan*`) are auto-approved and never raise a prompt.
+
+Session-level approvals (options 2 and 3) are keyed on the tool base name, so a session approval covers the same tool called with different arguments.
 
 | Key                           | Action                                            |
 | ----------------------------- | ------------------------------------------------- |
 | ++up++ / ++down++             | Move selection                                    |
-| ++1++ / ++2++ / ++3++ / ++4++ | Jump to option and confirm                        |
+| ++1++ / ++2++ / ++3++ / ++4++ / ++5++ | Jump to option and confirm                        |
 | ++enter++                     | Confirm the highlighted option                    |
 | ++ctrl+e++                    | Open the full preview in a pager (when truncated) |
 | ++esc++ / ++ctrl+c++          | Cancel (= reject)                                 |
@@ -67,10 +67,10 @@ Use `/approvals` to list session-granted approvals or revoke one (`/approvals re
 
 #### Batched approvals
 
-When the agent issues several tool calls at once, the REPL collects them inside a 100 ms debounce window and renders a single combined panel listing every pending tool. Per-item options 1–4 work exactly as above; two extra options operate on the entire batch:
+When the agent issues several tool calls at once, the REPL collects them inside a 100 ms debounce window and renders a single combined panel listing every pending tool. Per-item options 1–5 work exactly as above; two extra options operate on the entire batch:
 
-- Option 5 — **Approve all remaining**
-- Option 6 — **Reject all remaining**
+- Option 6 — **Approve all remaining**
+- Option 7 — **Reject all remaining**
 
 Use ++tab++ / ++shift+tab++ to move between items in the header.
 

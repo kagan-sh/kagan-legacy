@@ -62,7 +62,10 @@ ______________________________________________________________________
 ## 6. Managed Runs
 
 - Run a task → provisions worktree, spawns agent subprocess (ACP over STDIO), returns run
-- Agent streams progress via ACP session updates (text chunks, tool calls, plans, permissions)
+- Agent streams progress via ACP session updates (text chunks, tool calls, plans, permission requests)
+- Permission requests surface as `CHAT_PERMISSION_REQUEST` events; the CLI resolves them via the inline approval panel (trust tiers: once / tool-for-session / all-for-session / deny), and the web resolves them via `POST /api/chat/sessions/{session_id}/permission/{future_id}`
+- Kagan's own MCP tools (`mcp__kagan*`) are auto-approved — no user prompt is raised when the orchestrator calls back into itself
+- `_tool_action_key` is keyed on the tool base name (not the full invocation string), so session-level approvals correctly cover repeated calls with different arguments
 - Kagan's ACP reader writes events to DB in real-time
 - Events stream reactively to any connected client (near-zero latency)
 - Client reconnects and picks up full event history from offset 0

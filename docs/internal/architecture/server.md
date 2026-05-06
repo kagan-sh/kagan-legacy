@@ -102,7 +102,7 @@ All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: st
 | `/api/chat/sessions`                 | GET    | List chat sessions                    |
 | `/api/chat/sessions/{id}`            | GET    | Get chat session details              |
 | `/api/chat/sessions/{id}`            | DELETE | Delete a chat session                 |
-| `/api/chat/sessions/{id}`            | DELETE | Delete a chat session                 |
+| `/api/chat/sessions/{id}/permission/{future_id}` | POST | Resolve a pending tool-call permission request (body: `{"outcome": "allow_once"\|"allow_always"\|"allow_all_session"\|"deny", "feedback": str\|null}`; returns 204) |
 | `/api/chat/agents`                   | GET    | List available agent backends         |
 | `/api/integrations`                  | GET    | List enabled integrations             |
 | `/api/integrations/{name}/preflight` | GET    | Run integration preflight checks      |
@@ -130,14 +130,15 @@ Keepalive comments (`: keepalive\n\n`) are sent every 25 seconds.
 
 Per-turn SSE connection. Streams chunks for a single chat turn:
 
-| `t` field              | Payload                 | Description                |
-| ---------------------- | ----------------------- | -------------------------- |
-| `CHAT_CHUNK`           | `{ content, thought? }` | Agent text streaming chunk |
-| `CHAT_TOOL_START`      | `{ tool }`              | Tool call initiated        |
-| `CHAT_TOOL_PROGRESS`   | `{ tool, status }`      | Tool call status update    |
-| `CHAT_DONE`            | `{ full_response }`     | Turn completed             |
-| `CHAT_ERROR`           | `{ error }`             | Turn error                 |
-| `CHAT_SESSION_UPDATED` | `{ session_id, label }` | Title generated            |
+| `t` field                  | Payload                                 | Description                |
+| -------------------------- | --------------------------------------- | -------------------------- |
+| `CHAT_CHUNK`               | `{ content, thought? }`                 | Agent text streaming chunk |
+| `CHAT_TOOL_START`          | `{ tool }`                              | Tool call initiated        |
+| `CHAT_TOOL_PROGRESS`       | `{ tool, status }`                      | Tool call status update    |
+| `CHAT_DONE`                | `{ full_response }`                     | Turn completed             |
+| `CHAT_ERROR`               | `{ error }`                             | Turn error                 |
+| `CHAT_SESSION_UPDATED`     | `{ session_id, label }`                 | Title generated            |
+| `CHAT_PERMISSION_REQUEST`  | `{ future_id, tool, preview, session_id }` | Agent is requesting permission to run a tool; resolve via `POST /api/chat/sessions/{id}/permission/{future_id}` |
 
 ### REST Commands (replace former WS messages)
 

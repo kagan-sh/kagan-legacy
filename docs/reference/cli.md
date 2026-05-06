@@ -56,10 +56,9 @@ Slash commands and usage: [Chat guide](../guides/chat.md).
 
 | Option          | Description                                       |
 | --------------- | ------------------------------------------------- |
-| `--prompt TEXT` | Single-shot mode (send once, print, exit)         |
-| `--session-id`  | Attach to an existing chat or task session        |
-| `--agent`       | Override default orchestrator backend             |
-| `--yolo`        | Auto-approve every tool call (typed ack required) |
+| `--prompt TEXT` | Single-shot mode (send once, print, exit)  |
+| `--session-id`  | Attach to an existing chat or task session |
+| `--agent`       | Override default orchestrator backend      |
 
 ______________________________________________________________________
 

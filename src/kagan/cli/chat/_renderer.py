@@ -171,17 +171,18 @@ def _make_done_printer(
     ended_at: float,
 ) -> Callable[[], None]:
     def _print() -> None:
-        arg_suffix = f"({key_arg})" if key_arg else ""
+        arg_part = f" [dim]({_rich_escape(key_arg)})[/dim]" if key_arg else ""
         elapsed = max(0.0, ended_at - started_at)
         duration = f" [dim]{elapsed:.1f}s[/dim]" if elapsed >= 0.1 else ""
+        name = _rich_escape(title)
         if status == "completed":
             console.print(
-                f"  [green]● {title}{arg_suffix}[/green]{duration}",
+                f"  [green]●[/green] [dim]Used[/dim] [bold]{name}[/bold]{arg_part}{duration}",
                 highlight=False,
             )
         else:
             console.print(
-                f"  [red]● {title}{arg_suffix} failed[/red]",
+                f"  [red]●[/red] [dim]Used[/dim] [bold]{name}[/bold]{arg_part} [red]failed[/red]",
                 highlight=False,
             )
 
@@ -267,19 +268,30 @@ class CLIRenderer:
         self._grouped_tools.start(tool_key, title, run.started_at)
 
         def _print_start() -> None:
-            arg_suffix = f"({key_arg})" if key_arg else ""
-            self._console.print(f"\n  [dim]● {title}{arg_suffix}[/dim]", highlight=False)
+            arg_part = f" [dim]({_rich_escape(key_arg)})[/dim]" if key_arg else ""
+            self._console.print(
+                f"\n  [dim]●[/dim] [dim]Using[/dim] [bold]{_rich_escape(title)}[/bold]{arg_part}",
+                highlight=False,
+            )
 
         print_via_terminal(_print_start)
 
     def on_tool_call_progress(self, update: Any) -> None:
         self._md_region.finalize()
         status = getattr(update, "status", None)
-        title = getattr(update, "title", None) or "tool"
         tool_key = self._tool_runs.tool_key(update)
         if status and self._tool_runs.status_for(tool_key) == status:
             return
-        key_arg = self._tool_runs.extract_tool_key_arg(update)
+        # ToolCallProgress carries no title/args — fall back to what was stored at start
+        existing = self._tool_runs.get_run(tool_key)
+        title = (
+            getattr(update, "title", None)
+            or (existing.title if existing else None)
+            or "tool"
+        )
+        key_arg = self._tool_runs.extract_tool_key_arg(update) or (
+            existing.key_arg if existing else None
+        )
         run = self._tool_runs.ensure_tool_run(update=update, title=title, key_arg=key_arg)
         if status:
             run.status = str(status)

@@ -3,7 +3,6 @@
 import pytest
 
 from kagan.core._agent import (
-    BackendCapability,
     BackendCommand,
     BackendSpec,
 )

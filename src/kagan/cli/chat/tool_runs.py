@@ -129,6 +129,9 @@ class ToolRunTracker:
             summary = f"{summary} - {reason}"
         return summary
 
+    def get_run(self, tool_key: str) -> ToolRunRecord | None:
+        return self._tool_runs_by_key.get(tool_key)
+
     def status_for(self, tool_key: str) -> str | None:
         return self._tool_status_by_key.get(tool_key)
 

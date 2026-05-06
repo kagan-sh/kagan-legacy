@@ -429,8 +429,13 @@ def _run_legacy_batch_input(
             elif raw == "3":
                 from kagan.cli.chat._permission_ui import _session_approvals
 
+                # "Allow all for session" — grant_all short-circuits future
+                # permission checks, so resolve every remaining item as
+                # allow_once and return (matching the interactive modal).
                 _session_approvals.grant_all()
-                resolve_item(i, 0, "")
+                for j in range(i, len(items)):
+                    resolve_item(j, 0, "")
+                return
             elif raw in {"6", "a"}:
                 from kagan.cli.chat._permission_ui import _session_approvals
 

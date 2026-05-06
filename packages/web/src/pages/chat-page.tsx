@@ -22,6 +22,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
+import { PermissionDialog } from '@/components/PermissionDialog';
 
 export function Component() {
   const { id } = useParams<{ id: string }>();
@@ -122,6 +123,12 @@ export function Component() {
           />
         </div>
       </div>
+
+      {/* Tool permission dialog */}
+      <PermissionDialog
+        request={session.permissionRequest}
+        onResolved={() => session.setPermissionRequest(null)}
+      />
 
       {/* 409 Turn-in-progress dialog */}
       <AlertDialog open={session.turnConflict !== null} onOpenChange={(open) => { if (!open) session.onDismissConflict(); }}>

@@ -614,6 +614,12 @@ export interface ChatWatchError {
   error: string;
 }
 
+export interface ChatWatchPermissionRequest {
+  t: "CHAT_PERMISSION_REQUEST";
+  future_id: string;
+  tool_name: string;
+}
+
 export type ChatWatchEvent =
   | ChatWatchChunk
   | ChatWatchToolStart
@@ -624,7 +630,8 @@ export type ChatWatchEvent =
   | ChatWatchTurnStarted
   | ChatWatchTurnTerminated
   | ChatWatchSessionUpdated
-  | ChatWatchError;
+  | ChatWatchError
+  | ChatWatchPermissionRequest;
 
 export const CHAT_WATCH_TYPE = {
   CHAT_CHUNK: "CHAT_CHUNK",
@@ -637,6 +644,7 @@ export const CHAT_WATCH_TYPE = {
   CHAT_TURN_TERMINATED: "CHAT_TURN_TERMINATED",
   CHAT_SESSION_UPDATED: "CHAT_SESSION_UPDATED",
   CHAT_ERROR: "CHAT_ERROR",
+  CHAT_PERMISSION_REQUEST: "CHAT_PERMISSION_REQUEST",
 } as const;
 
 export type ChatWatchType = (typeof CHAT_WATCH_TYPE)[keyof typeof CHAT_WATCH_TYPE];

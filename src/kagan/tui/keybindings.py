@@ -271,7 +271,9 @@ ANALYTICS_BINDINGS: list[BindingType] = [
 ]
 
 CHAT_PERMISSION_BINDINGS: list[BindingType] = [
-    Binding("a", "allow", "Allow"),
+    Binding("a", "allow", "Allow once"),
+    Binding("s", "allow_session", "Allow session"),
+    Binding("A", "allow_all", "Allow all"),
     Binding("d", "deny", "Deny"),
     Binding("escape", "deny", "Deny"),
 ]

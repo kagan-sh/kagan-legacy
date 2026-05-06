@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import acp
 from loguru import logger
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from kagan.core import (
     Attachment,
@@ -56,7 +56,6 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
-    from starlette.responses import Response
 
     from kagan.server.mcp.server import ServerContext
 
@@ -195,6 +194,20 @@ def _chat_event_to_sse_frame(event: ChatEvent) -> dict[str, Any] | None:
             return {"t": "CHAT_ERROR", "error": event.message}
         case "turn_cancelled":
             return {"t": "CHAT_TURN_TERMINATED", "reason": event.reason}
+        case "permission_request":
+            # Strip embedded args from title (e.g. "task_create: {..." → "task_create")
+            raw_title = ""
+            tc = event.tool_call
+            if isinstance(tc, dict):
+                raw_title = tc.get("title") or tc.get("name") or ""
+            else:
+                raw_title = getattr(tc, "title", None) or getattr(tc, "name", None) or ""
+            tool_name = str(raw_title).split(":")[0].split("{")[0].strip()
+            return {
+                "t": "CHAT_PERMISSION_REQUEST",
+                "future_id": event.future_id,
+                "tool_name": tool_name,
+            }
         case "turn_started":
             # Emitted as CHAT_TURN_STARTED at a different point in the producer
             # (it carries by_source from the request), so we ignore it here.
@@ -664,6 +677,28 @@ def _register_stream_routes(mcp: FastMCP) -> None:
                 ),
             }
         )
+
+    @mcp.custom_route("/api/chat/sessions/{session_id}/permission/{future_id}", methods=["POST"])
+    @require_context(mcp)
+    async def chat_resolve_permission(request: Request, *, ctx: ServerContext) -> Response:
+        """Resolve a pending permission request from the agent.
+
+        Body: ``{"outcome": "allow_once"|...|"deny", "feedback": str|null}``
+        """
+        session_id = cast("str", request.path_params["session_id"])
+        future_id = cast("str", request.path_params["future_id"])
+        if not is_access_allowed(ctx, AccessTier.STANDARD):
+            return _err("Insufficient access tier", status=403)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        outcome = str(body.get("outcome", "deny"))
+        feedback = body.get("feedback") or None
+        await ctx.client.chat.resolve_permission(
+            session_id, future_id, outcome=outcome, feedback=feedback
+        )
+        return Response(status_code=204)
 
     @mcp.custom_route("/api/chat/{session_id}/interrupt", methods=["POST"])
     @require_context(mcp)

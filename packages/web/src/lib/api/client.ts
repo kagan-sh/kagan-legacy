@@ -121,6 +121,11 @@ export class KaganApiClient extends BaseClient {
   override updateTask(taskId: string, input: UpdateTaskInput): Promise<WireTask> {
     return super.updateTask(taskId, input);
   }
+
+  /** POST /api/chat/sessions/:sessionId/permission/:futureId */
+  async resolvePermission(sessionId: string, futureId: string, outcome: string, feedback?: string): Promise<void> {
+    await this.post<void>(`/api/chat/sessions/${sessionId}/permission/${futureId}`, { outcome, feedback });
+  }
 }
 
 // ---------------------------------------------------------------------------

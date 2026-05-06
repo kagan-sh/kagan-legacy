@@ -13,10 +13,9 @@ This module owns that shared path. It also keeps the legacy
 ``kanban_chat.py`` which is gone after R1 phase 4c.
 
 Permission events (``PermissionRequest`` / ``PermissionResolved``) emitted
-by the engine are intentionally still no-ops here — the bidirectional
-permission flow remains on the legacy ACP path inside the spawn-per-turn ACP
-helper. Wiring permissions through the engine is tracked for a follow-up; see
-the module docstring of ``kagan.core.chat.acp``.
+by the engine are not handled here; the bidirectional permission flow runs
+through the ACP path inside the spawn-per-turn ACP helper. See the module
+docstring of ``kagan.core.chat.acp``.
 """
 
 from __future__ import annotations
@@ -211,9 +210,9 @@ def apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
     behave identically to phases 1-3.
 
     ``UsageUpdate`` is rendered as a runtime-status nudge — full token / cost
-    UI lands later. ``PermissionRequest`` / ``PermissionResolved`` are
-    intentionally no-ops; permissions still flow through the legacy ACP path
-    inside the spawn-per-turn ACP helper (see TODO in ``core/chat/acp.py``).
+    UI lands later. ``PermissionRequest`` / ``PermissionResolved`` are not
+    handled here; the interactive permission flow runs through the ACP path
+    inside the spawn-per-turn ACP helper (see ``core/chat/acp.py``).
     """
     if isinstance(event, TurnStarted):
         panel.set_runtime_status("thinking")

@@ -31,6 +31,7 @@ import {
 import { useChatWatch } from '@/lib/hooks/use-chat-watch';
 import type { ChatWatchEvent, WireChatMessage } from '@kagan/shared-api-client';
 import type { Attachment } from '@/components/chat/chat-input-bar';
+import type { PermissionRequest } from '@/components/PermissionDialog';
 
 /** Optional context passed to onSlashCommand by panel consumers. */
 export interface SlashCommandExtra {
@@ -63,6 +64,8 @@ export interface ChatSessionState {
   /** Expose setters so embedded panels can reset state on session switch. */
   setEditPrefill: (value: string | null) => void;
   setLabel: (label: string) => void;
+  permissionRequest: PermissionRequest | null;
+  setPermissionRequest: (req: PermissionRequest | null) => void;
 }
 
 export function useChatSession(id: string | undefined): ChatSessionState {
@@ -88,6 +91,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   const [availableBackends, setAvailableBackends] = useState<string[]>([]);
   const [lastSentText, setLastSentText] = useState('');
   const [editPrefill, setEditPrefill] = useState<string | null>(null);
+  const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Track whether the current tab initiated the active stream so CHAT_USER_MESSAGE
@@ -266,6 +270,14 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }
           break;
         }
+        case 'CHAT_PERMISSION_REQUEST': {
+          setPermissionRequest({
+            futureId: event.future_id,
+            toolName: event.tool_name,
+            sessionId: id!,
+          });
+          break;
+        }
         default:
           break;
       }
@@ -280,6 +292,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
       resetStream,
       setMessages,
       setTakeoverBanner,
+      setPermissionRequest,
     ],
   );
 
@@ -510,5 +523,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     switchBackend,
     setEditPrefill,
     setLabel,
+    permissionRequest,
+    setPermissionRequest,
   };
 }

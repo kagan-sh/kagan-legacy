@@ -24,6 +24,7 @@ import { sessionPickerOpenAtom, type RightRailMode } from "@/lib/atoms/ui";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { useChatSession } from "@/lib/hooks/use-chat-session";
+import { PermissionDialog } from "@/components/PermissionDialog";
 
 const INITIAL_VISIBLE = 30;
 
@@ -75,6 +76,8 @@ export function OrchestratorChatPanel({
         switchBackend,
         setEditPrefill,
         setLabel,
+        permissionRequest,
+        setPermissionRequest,
     } = useChatSession(sessionId);
 
     // Progressive message rendering
@@ -224,39 +227,45 @@ export function OrchestratorChatPanel({
         : undefined;
 
     return (
-        <aside
-            data-chat-layout={layout}
-            className={cn(
-                "flex h-full min-h-0 flex-col bg-[color:var(--surface-0)]",
-                surface === "rail" && layout === "chat-right" && "border-l border-[color:var(--border-subtle)]",
-                surface === "rail" && layout === "chat-bottom" && "border-t border-[color:var(--border-subtle)]",
-                layout === "chat-fullscreen" && "w-full overflow-hidden border border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]/95 shadow-[var(--ambient-shadow)]",
-            )}
-        >
-            {loading ? (
-                <div className="flex h-full items-center justify-center px-4 py-4">
-                    <div className="h-12 w-full animate-pulse bg-[var(--muted)]" />
-                </div>
-            ) : (
-                <ChatView
-                    sessionId={sessionId}
-                    messages={messages}
-                    streamEntries={streamEntries}
-                    isStreaming={isStreaming}
-                    loading={false}
-                    editPrefill={editPrefill ?? undefined}
-                    onPrefillConsumed={() => setEditPrefill(null)}
-                    onSend={onSend}
-                    onInterrupt={onInterrupt}
-                    onSlashCommand={handleSlashCommand}
-                    scrollRef={scrollRef}
-                    visibleCount={visibleCount}
-                    onLoadMore={() => setVisibleCount((c) => c + 30)}
-                    headerSlot={headerSlot}
-                    emptySlot={<ChatOverlayEmptyState />}
-                    footerHint={footerHint}
-                />
-            )}
-        </aside>
+        <>
+            <PermissionDialog
+                request={permissionRequest}
+                onResolved={() => setPermissionRequest(null)}
+            />
+            <aside
+                data-chat-layout={layout}
+                className={cn(
+                    "flex h-full min-h-0 flex-col bg-[color:var(--surface-0)]",
+                    surface === "rail" && layout === "chat-right" && "border-l border-[color:var(--border-subtle)]",
+                    surface === "rail" && layout === "chat-bottom" && "border-t border-[color:var(--border-subtle)]",
+                    layout === "chat-fullscreen" && "w-full overflow-hidden border border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]/95 shadow-[var(--ambient-shadow)]",
+                )}
+            >
+                {loading ? (
+                    <div className="flex h-full items-center justify-center px-4 py-4">
+                        <div className="h-12 w-full animate-pulse bg-[var(--muted)]" />
+                    </div>
+                ) : (
+                    <ChatView
+                        sessionId={sessionId}
+                        messages={messages}
+                        streamEntries={streamEntries}
+                        isStreaming={isStreaming}
+                        loading={false}
+                        editPrefill={editPrefill ?? undefined}
+                        onPrefillConsumed={() => setEditPrefill(null)}
+                        onSend={onSend}
+                        onInterrupt={onInterrupt}
+                        onSlashCommand={handleSlashCommand}
+                        scrollRef={scrollRef}
+                        visibleCount={visibleCount}
+                        onLoadMore={() => setVisibleCount((c) => c + 30)}
+                        headerSlot={headerSlot}
+                        emptySlot={<ChatOverlayEmptyState />}
+                        footerHint={footerHint}
+                    />
+                )}
+            </aside>
+        </>
     );
 }

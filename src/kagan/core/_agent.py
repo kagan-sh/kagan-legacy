@@ -876,7 +876,9 @@ class _ByteCountingStreamReader(asyncio.StreamReader):
 
     Subclasses ``asyncio.StreamReader`` because ``ClientSideConnection.__init__``
     enforces ``isinstance(output_stream, asyncio.StreamReader)``. ``super().__init__``
-    is intentionally not called: we delegate every read to ``self._reader``.
+    *is* called so base attributes (``_exception``, ``_buffer``, ``_loop``) are
+    populated — methods like ``exception()`` keep working even though we delegate
+    every read to ``self._reader``.
     """
 
     def __init__(
@@ -885,6 +887,7 @@ class _ByteCountingStreamReader(asyncio.StreamReader):
         process: asyncio.subprocess.Process,
         cumulative_limit: int = _MAX_CUMULATIVE_BYTES,
     ) -> None:
+        super().__init__()
         self._reader = reader
         self._process = process
         self._cumulative_bytes = 0

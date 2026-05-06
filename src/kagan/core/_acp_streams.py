@@ -19,10 +19,13 @@ class JsonRpcObjectStreamReader(asyncio.StreamReader):
 
     Subclasses ``asyncio.StreamReader`` because ``ClientSideConnection.__init__``
     enforces ``isinstance(output_stream, asyncio.StreamReader)``. ``super().__init__``
-    is intentionally not called: we delegate every read to ``self._reader``.
+    *is* called so base attributes (``_exception``, ``_buffer``, ``_loop``) are
+    populated — methods like ``exception()`` keep working even though we delegate
+    every read to ``self._reader``.
     """
 
     def __init__(self, reader: asyncio.StreamReader, *, backend_name: str) -> None:
+        super().__init__()
         self._reader = reader
         self._backend_name = backend_name
         self._dropped = 0

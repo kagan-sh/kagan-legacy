@@ -118,6 +118,10 @@ async def test_client_side_connection_accepts_kagan_stream_wrappers() -> None:
 
         for wrapper in (json_wrapped, bytes_wrapped):
             assert isinstance(wrapper, asyncio.StreamReader), type(wrapper)
+            # Base attributes must be initialised — ``exception()`` reads
+            # ``self._exception`` and would AttributeError if super().__init__
+            # had been skipped.
+            assert wrapper.exception() is None
             ClientSideConnection(_RecordingClient(), link.client_writer, wrapper)
 
 

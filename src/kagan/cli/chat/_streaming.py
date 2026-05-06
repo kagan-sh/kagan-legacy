@@ -7,6 +7,7 @@ from threading import RLock
 from typing import TYPE_CHECKING
 
 from loguru import logger
+from rich.console import Group
 from rich.markdown import Markdown
 from rich.spinner import Spinner
 from rich.text import Text
@@ -102,11 +103,17 @@ def _find_committed_boundary(text: str) -> int | None:
 
 
 class _TurnLiveState:
-    """Rich-renderable consumed by Rich.Live — re-evaluated on every 10fps refresh."""
+    """Rich-renderable consumed by Rich.Live — re-evaluated on every 10fps refresh.
+
+    Renders a status spinner plus, when composing, the uncommitted tail buffer
+    so the user sees words appear as they stream within a paragraph (committed
+    blocks are flushed above the Live region as formatted Markdown).
+    """
 
     def __init__(self) -> None:
         self._tracker = TurnPhaseTracker()
         self._spinner = Spinner("dots", "")
+        self._tail = ""
 
     def set_phase(self, phase: str) -> None:
         self._tracker.set_phase(phase)
@@ -114,12 +121,17 @@ class _TurnLiveState:
     def add_text(self, text: str) -> None:
         self._tracker.add_text(text)
 
+    def set_tail(self, tail: str) -> None:
+        self._tail = tail
+
     def __rich__(self) -> RenderableType:
         if self._tracker._phase == "thinking":
             self._spinner.text = Text(self._tracker.thinking_label(), style="italic grey50")
-        else:
-            self._spinner.text = Text(self._tracker.composing_label(), style="grey50")
-        return self._spinner
+            return self._spinner
+        self._spinner.text = Text(self._tracker.composing_label(), style="grey50")
+        if not self._tail.strip():
+            return self._spinner
+        return Group(self._spinner, Text(self._tail, style="dim"))
 
 
 class MarkdownStreamingRegion:
@@ -224,6 +236,7 @@ class MarkdownStreamingRegion:
         self._in_thought = False
         if self._live_state:
             self._live_state.set_phase("composing")
+            self._live_state.set_tail("")
         if self._show_thoughts and self._thought_buffer.strip():
             elapsed = time.monotonic() - self._thought_start
             self._console.print(
@@ -243,14 +256,14 @@ class MarkdownStreamingRegion:
             self._live_state.add_text(text)
         # Only check for committed boundary when a newline is present
         # (block boundaries require at least one newline).
-        if "\n" not in text:
-            return
-        pending = self._buffer[self._committed_len:]
-        boundary = _find_committed_boundary(pending)
-        if boundary is None:
-            return
-        committed = pending[:boundary]
-        if committed.strip():
-            self._console.print(Markdown(committed.strip()), highlight=False)
-            self._console.file.flush()
-        self._committed_len += boundary
+        if "\n" in text:
+            pending = self._buffer[self._committed_len:]
+            boundary = _find_committed_boundary(pending)
+            if boundary is not None:
+                committed = pending[:boundary]
+                if committed.strip():
+                    self._console.print(Markdown(committed.strip()), highlight=False)
+                    self._console.file.flush()
+                self._committed_len += boundary
+        if self._live_state:
+            self._live_state.set_tail(self._buffer[self._committed_len:])

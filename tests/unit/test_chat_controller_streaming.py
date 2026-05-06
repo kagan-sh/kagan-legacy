@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from rich.console import Console
@@ -184,6 +184,32 @@ def test_turn_live_state_renders_thinking_label_after_phase_switch() -> None:
     console, buf = _real_console()
     console.print(ls)
     assert "Thinking" in buf.getvalue()
+
+
+def test_turn_live_state_renders_uncommitted_tail_below_spinner() -> None:
+    from kagan.cli.chat._streaming import _TurnLiveState
+
+    ls = _TurnLiveState()
+    ls.set_tail("partial paragraph being typed")
+    console, buf = _real_console()
+    console.print(ls)
+    output = buf.getvalue()
+    assert "Composing" in output
+    assert "partial paragraph being typed" in output
+
+
+def test_markdown_region_pushes_tail_to_live_state_on_each_chunk() -> None:
+    from kagan.cli.chat._streaming import _TurnLiveState
+
+    console, _ = _real_console()
+    renderer = CLIRenderer(console)
+    live_state = _TurnLiveState()
+    renderer.start_turn(live_state=live_state)
+
+    renderer.on_assistant_chunk("hello ")
+    assert live_state._tail == "hello "
+    renderer.on_assistant_chunk("world")
+    assert live_state._tail == "hello world"
 
 
 # ---------------------------------------------------------------------------

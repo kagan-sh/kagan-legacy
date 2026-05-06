@@ -67,14 +67,12 @@ def _make_request(future_id: str, title: str) -> PermissionRequest:
 
 def _make_ui(
     monkeypatch: pytest.MonkeyPatch,
-    *,
-    yolo: bool = False,
 ) -> tuple[PermissionUI, _FakeEngine]:
     fake_console = _FakeConsole()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
     monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
     engine = _FakeEngine()
-    ui = PermissionUI(engine=engine, renderer=None, yolo=yolo)
+    ui = PermissionUI(engine=engine, renderer=None)
     return ui, engine
 
 
@@ -228,28 +226,6 @@ async def test_batch_does_not_group_sequential_calls(
 
 
 # ---------------------------------------------------------------------------
-# Yolo
-# ---------------------------------------------------------------------------
-
-
-async def test_yolo_bypasses_batch(monkeypatch: pytest.MonkeyPatch) -> None:
-    ui, engine = _make_ui(monkeypatch, yolo=True)
-    enqueue_called: list[bool] = []
-    original_enqueue = ui._batch_queue.enqueue
-
-    async def _spy_enqueue(*args: Any, **kwargs: Any) -> Any:
-        enqueue_called.append(True)
-        return await original_enqueue(*args, **kwargs)
-
-    ui._batch_queue.enqueue = _spy_enqueue  # type: ignore[method-assign]
-
-    await ui.handle_request(_make_request("fid-y", "yolo_tool"), session_id="s-y")
-
-    assert engine.resolve_calls == [("s-y", "fid-y", "allow_once", None)]
-    assert enqueue_called == []
-
-
-# ---------------------------------------------------------------------------
 # Per-item feedback option (slot 3)
 # ---------------------------------------------------------------------------
 
@@ -268,7 +244,7 @@ async def test_batch_feedback_option_on_focused_item(
         _reject_all: Any,
     ) -> None:
         _resolve_item(0, 0, "")
-        _resolve_item(1, 3, "use a safer approach")
+        _resolve_item(1, 4, "use a safer approach")
         _resolve_item(2, 0, "")
 
     monkeypatch.setattr(batch_module, "_run_batch_modal_async", _fake_batch)

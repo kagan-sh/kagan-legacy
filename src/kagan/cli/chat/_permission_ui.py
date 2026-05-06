@@ -131,16 +131,19 @@ def _format_permission_tool(tool_call: Any) -> str:
 
 
 def _tool_action_key(tool_call: Any) -> str:
-    """Return a stable string that identifies the tool action for session-allow tracking.
+    """Return the base tool name for session-allow tracking (no args embedded).
 
     Accepts both ACP tool-call objects (with ``title`` / ``name`` attrs) and
     plain dicts (used by the engine's :class:`PermissionRequest` event).
+    Strips any trailing ': {...}' argument suffix from the title field so that
+    repeated calls to the same tool with different arguments share one key.
     """
     if isinstance(tool_call, dict):
-        title = tool_call.get("title") or tool_call.get("name") or "tool"
-        return str(title).strip().casefold()
-    title = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or "tool"
-    return str(title).strip().casefold()
+        raw = tool_call.get("title") or tool_call.get("name") or "tool"
+    else:
+        raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or "tool"
+    base = str(raw).split(":")[0].split("{")[0].strip().casefold()
+    return base or "tool"
 
 
 def _get_modal_depth() -> int:  # pragma: no cover — diagnostic helper
@@ -291,8 +294,8 @@ async def _run_interactive_modal(
         if state["feedback_mode"]:
             state["feedback"] = feedback_buffer.text
             feedback_buffer.set_document(Document(), bypass_readonly=True)
-        state["selected"] = (state["selected"] + direction) % 4
-        state["feedback_mode"] = state["selected"] == 3
+        state["selected"] = (state["selected"] + direction) % 5
+        state["feedback_mode"] = state["selected"] == 4
 
     @kb.add("up", eager=True)
     def _up(event) -> None:
@@ -307,13 +310,22 @@ async def _run_interactive_modal(
         if state["feedback_mode"] and not feedback_buffer.text.strip():
             return
         fb = feedback_buffer.text.strip() if state["feedback_mode"] else state["feedback"]
-        _exit_with(event.app, state["selected"], fb)
+        selected = state["selected"]
+        if selected == 2:
+            _session_approvals.grant_all()
+            msg = "[dim green]✓ all tools trusted for this session[/dim green]"
+            from kagan.cli.chat.repl import _console as _c
+
+            _c.print(msg)
+            _exit_with(event.app, 0, "")
+        else:
+            _exit_with(event.app, selected, fb)
 
     @kb.add("escape", eager=True)
     @kb.add("c-c", eager=True)
     @kb.add("c-d", eager=True)
     def _cancel(event) -> None:
-        _exit_with(event.app, 2, "")
+        _exit_with(event.app, 3, "")
 
     @kb.add("c-e", eager=True)
     def _expand(event) -> None:
@@ -332,13 +344,21 @@ async def _run_interactive_modal(
         def _num(event) -> None:
             idx = num - 1
             state["selected"] = idx
-            if idx == 3:
+            if idx == 4:
                 state["feedback_mode"] = True
+            elif idx == 2:
+                state["feedback_mode"] = False
+                _session_approvals.grant_all()
+                msg = "[dim green]✓ all tools trusted for this session[/dim green]"
+                from kagan.cli.chat.repl import _console as _c
+
+                _c.print(msg)
+                _exit_with(event.app, 0, "")
             else:
                 state["feedback_mode"] = False
                 _exit_with(event.app, idx, "")
 
-    for n in range(1, 5):
+    for n in range(1, 6):
         _make_num_handler(n)
 
     app: Application[tuple[int, str]] = Application(
@@ -381,9 +401,13 @@ def _run_legacy_input(
             raw = input().strip()
             if not raw:
                 break
-            if raw in {"1", "2", "3", "4"}:
+            if raw in {"1", "2", "3", "4", "5"}:
                 selected_index = int(raw) - 1
-                if selected_index == 3:
+                if selected_index == 2:
+                    _session_approvals.grant_all()
+                    _console.print("[dim green]✓ all tools trusted for this session[/dim green]")
+                    selected_index = 0
+                elif selected_index == 4:
                     _console.print(
                         "[dim]Type rejection reason (Enter confirm, empty cancel):[/dim]"
                     )
@@ -393,13 +417,13 @@ def _run_legacy_input(
                         feedback_draft = ""
                 break
             if raw in {"q", "n", "reject", "deny"}:
-                selected_index = 2
+                selected_index = 3
                 break
             if raw in {"y", "a", "approve"}:
                 selected_index = 0
                 break
     except (EOFError, KeyboardInterrupt):
-        selected_index = 2
+        selected_index = 3
 
     return selected_index, feedback_draft
 
@@ -414,12 +438,17 @@ class _SessionApprovals:
 
     def __init__(self) -> None:
         self._allowed: set[str] = set()
+        self._all_allowed: bool = False
 
     def is_allowed(self, action_key: str) -> bool:
-        return action_key in self._allowed
+        return self._all_allowed or action_key in self._allowed
 
     def grant(self, action_key: str) -> None:
         self._allowed.add(action_key)
+
+    def grant_all(self) -> None:
+        """Trust all tool calls for the rest of this session."""
+        self._all_allowed = True
 
     def revoke(self, action_key: str) -> None:
         self._allowed.discard(action_key)
@@ -449,13 +478,14 @@ def _map_decision_from_approval(
 ) -> _DecisionTuple:
     """Convert (selected_index, feedback) into a decision.
 
-    Slot mapping:
+    Slot mapping (slot 2 is handled before this call — grant_all + allow_once):
       0 -> allow_once
       1 -> allow_always (also grants session approval for action_key)
-      2 -> deny
-      3 -> deny_feedback (or deny if feedback is empty)
+      2 -> (intercepted upstream — grant_all; never reaches here; treated as allow_once)
+      3 -> deny
+      4 -> deny_feedback (or deny if feedback is empty)
     """
-    slot = min(selected_index, 3)
+    slot = min(selected_index, 4)
     if slot == 0:
         return _DecisionTuple(outcome="allow_once")
     if slot == 1:
@@ -466,7 +496,7 @@ def _map_decision_from_approval(
         )
         _console.print(msg)
         return _DecisionTuple(outcome="allow_always")
-    if slot == 3 and feedback:
+    if slot == 4 and feedback:
         logger.info("Rejection feedback from user: {}", feedback)
         return _DecisionTuple(outcome="deny_feedback", feedback=feedback)
     return _DecisionTuple(outcome="deny")
@@ -480,7 +510,6 @@ def _map_decision_from_approval(
 class PermissionUI:
     """Owns the modal + cache + batch queue for one chat session.
 
-    ``yolo`` short-circuits to ``allow_once`` before the batch queue is armed.
     ``renderer`` is held so the queue can finalize the streaming Markdown
     region before opening a modal. ``engine`` is the :class:`ChatEngine`
     receiving every decision — supplied lazily via :meth:`bind_engine` so
@@ -490,13 +519,11 @@ class PermissionUI:
     def __init__(
         self,
         *,
-        yolo: bool = False,
         renderer: CLIRenderer | None = None,
         engine: Any = None,
     ) -> None:
         from kagan.cli.chat._approval_batch import _BatchApprovalQueue
 
-        self._yolo = yolo
         self._renderer = renderer
         self._engine = engine
         self._batch_queue = _BatchApprovalQueue(engine)
@@ -550,21 +577,13 @@ class PermissionUI:
             await self._engine.resolve_permission(session_id, event.future_id, outcome="deny")
             return
 
-        if self._renderer is not None:
-            self._renderer.finalize_pending_markdown()
-
-        if self._yolo:
-            title = _format_permission_tool(event.tool_call)
-
-            def _print_yolo(_t: str = title) -> None:
-                _console.print(
-                    f"  [red]● yolo auto-approve:[/red] [dim]{_rich_escape(_t)}[/dim]",
-                    highlight=False,
-                )
-
-            self._print_via_terminal(_print_yolo)
+        tool_key = _tool_action_key(event.tool_call)
+        if tool_key.startswith("mcp__kagan"):
             await self._engine.resolve_permission(session_id, event.future_id, outcome="allow_once")
             return
+
+        if self._renderer is not None:
+            self._renderer.finalize_pending_markdown()
 
         if not _stdio_is_interactive():
 

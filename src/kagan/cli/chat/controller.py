@@ -166,13 +166,11 @@ class ChatController:
         agent_backend: str = "claude-code",
         mcp_session_id: str | None = None,
         prefer_session_backend: bool = True,
-        yolo: bool = False,
     ) -> None:
         self.client = client
         self.agent_backend = agent_backend
         self._mcp_session_id = mcp_session_id
         self._prefer_session_backend = prefer_session_backend
-        self._yolo = yolo
         self._restart_requested = False
         self._turn_count = 0
         self._chat_session_id: str | None = None
@@ -188,7 +186,7 @@ class ChatController:
 
         show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
         self._renderer = CLIRenderer(_console, show_thoughts=show_thoughts)
-        self._permission_ui = PermissionUI(yolo=yolo, renderer=self._renderer, engine=client.chat)
+        self._permission_ui = PermissionUI(renderer=self._renderer, engine=client.chat)
         self._factory: LongLivedACPFactory | None = None
         self._permission_tasks: set[asyncio.Task[None]] = set()
 

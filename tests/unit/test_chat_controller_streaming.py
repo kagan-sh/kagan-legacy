@@ -252,23 +252,6 @@ async def test_permission_request_with_no_valid_options_routes_deny() -> None:
     assert engine.resolve_calls == [("s-4", "fid-4", "deny", None)]
 
 
-async def test_permission_request_yolo_short_circuits_to_allow_once(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake_console = _FakeConsole()
-    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
-
-    engine = _FakeEngine()
-    ui = PermissionUI(engine=engine, renderer=None, yolo=True)
-
-    await ui.handle_request(
-        _request("fid-5", "yolo_tool", ("allow_once", "allow_always")),
-        session_id="s-5",
-    )
-
-    assert engine.resolve_calls == [("s-5", "fid-5", "allow_once", None)]
-
-
 async def test_permission_request_raises_when_engine_unbound() -> None:
     ui = PermissionUI(engine=None, renderer=None)
     event = _request("fid-x", "tool", ("allow_once",))

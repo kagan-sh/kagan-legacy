@@ -89,7 +89,8 @@ class _PendingItem:
 
 _BATCH_OPTION_LABELS: list[tuple[str, str]] = [
     ("Approve once", "allow_once"),
-    ("Approve for this session", "allow_always"),
+    ("Approve tool for session", "allow_always"),
+    ("Allow all for session", "allow_all_session"),
     ("Reject", "reject_once"),
     ("Reject — tell the model what to do", "reject_feedback"),
     ("Approve all remaining", "approve_all"),
@@ -145,7 +146,7 @@ def _build_batch_panel_ansi(
     for idx, (label, _kind) in enumerate(_BATCH_OPTION_LABELS):
         num = idx + 1
         is_selected = idx == selected_option
-        is_feedback_slot = idx == 3
+        is_feedback_slot = idx == 4
         if is_selected:
             if is_feedback_slot and feedback_draft:
                 cursor_display = f"→ [{num}] Reject: {feedback_draft}█"
@@ -157,10 +158,10 @@ def _build_batch_panel_ansi(
 
     lines.append(Text(""))
 
-    if selected_option == 3 and feedback_draft:
+    if selected_option == 4 and feedback_draft:
         hint = "  Type feedback  Enter submit  Esc cancel"
     else:
-        hint = "  ▲/▼ option  Tab/S-Tab item  1-6 choose  ↵ confirm  Ctrl-E expand  Esc reject all"
+        hint = "  ▲/▼ option  Tab/S-Tab item  1-7 choose  ↵ confirm  Ctrl-E expand  Esc reject all"
     lines.append(Text(hint, style=APPROVAL.hint))
 
     title = f"[bold]approval ({n} tools)[/bold]"
@@ -237,12 +238,15 @@ def _handle_num_key(
     confirm_fn: Any,
 ) -> None:
     state["selected_option"] = idx
-    if idx == 3:
+    if idx == 4:
         state["feedback_mode"] = True
-    elif idx == 4:
+    elif idx == 5:
+        from kagan.cli.chat._permission_ui import _session_approvals
+
+        _session_approvals.grant_all()
         resolve_all("allow_once")
         app.exit(result=None)
-    elif idx == 5:
+    elif idx == 6:
         reject_all()
         app.exit(result=None)
     else:
@@ -303,18 +307,21 @@ async def _run_batch_interactive(
         if state["feedback_mode"]:
             state["feedback"] = feedback_buffer.text
             feedback_buffer.set_document(Document(), bypass_readonly=True)
-        state["selected_option"] = (state["selected_option"] + direction) % 6
-        state["feedback_mode"] = state["selected_option"] == 3
+        state["selected_option"] = (state["selected_option"] + direction) % 7
+        state["feedback_mode"] = state["selected_option"] == 4
 
     def _confirm_current(app: Any) -> None:
         opt = state["selected_option"]
         item_idx = state["focused_item"]
         fb = feedback_buffer.text.strip() if state["feedback_mode"] else state["feedback"]
-        if opt == 4:
+        if opt == 5:
+            from kagan.cli.chat._permission_ui import _session_approvals
+
+            _session_approvals.grant_all()
             resolve_all("allow_once")
             app.exit(result=None)
             return
-        if opt == 5:
+        if opt == 6:
             reject_all()
             app.exit(result=None)
             return
@@ -376,7 +383,7 @@ async def _run_batch_interactive(
                 confirm_fn=_confirm_current,
             )
 
-    for n_key in range(1, 7):
+    for n_key in range(1, 8):
         _make_num_handler(n_key)
 
     app: Application[None] = Application(
@@ -412,22 +419,30 @@ def _run_legacy_batch_input(
         )
         try:
             raw = input(
-                "  [1] approve once  [2] approve for session  [3] reject  "
-                "[5] approve all  [6] reject all  > "
+                "  [1] approve once  [2] approve tool session  [3] allow all session  "
+                "[4] reject  [6] approve all  [7] reject all  > "
             ).strip()
             if raw == "1":
                 resolve_item(i, 0, "")
             elif raw == "2":
                 resolve_item(i, 1, "")
-            elif raw in {"5", "a"}:
+            elif raw == "3":
+                from kagan.cli.chat._permission_ui import _session_approvals
+
+                _session_approvals.grant_all()
+                resolve_item(i, 0, "")
+            elif raw in {"6", "a"}:
+                from kagan.cli.chat._permission_ui import _session_approvals
+
+                _session_approvals.grant_all()
                 for j in range(i, len(items)):
                     resolve_item(j, 0, "")
                 return
-            elif raw in {"6", "d"}:
+            elif raw in {"7", "d"}:
                 reject_all()
                 return
             else:
-                resolve_item(i, 2, "")
+                resolve_item(i, 3, "")
         except (EOFError, KeyboardInterrupt):
             reject_all()
             return

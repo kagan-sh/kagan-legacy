@@ -106,13 +106,14 @@ def test_extract_key_args_preview_truncates_long_values() -> None:
     assert "..." in result
 
 
-def test_build_display_options_always_returns_four_slots() -> None:
+def test_build_display_options_always_returns_five_slots() -> None:
     result = _build_display_options()
-    assert len(result) == 4
+    assert len(result) == 5
     assert result[0] == ("Approve once", "allow_once")
-    assert result[1] == ("Approve for this session", "allow_always")
-    assert result[2] == ("Reject", "reject_once")
-    assert result[3] == ("Reject — tell the model what to do", "reject_feedback")
+    assert result[1] == ("Approve tool for session", "allow_always")
+    assert result[2] == ("Allow all for session", "allow_all_session")
+    assert result[3] == ("Reject", "reject_once")
+    assert result[4] == ("Reject — tell the model what to do", "reject_feedback")
 
 
 def test_build_approval_panel_highlights_selected_index() -> None:
@@ -188,7 +189,7 @@ def test_map_decision_reject_feedback_carries_reason(
         "info",
         lambda msg, *args, **kw: logged.append(str(args[0]) if args else msg),
     )
-    decision = _map_decision_from_approval(3, "please use a different file", action_key="test_tool")
+    decision = _map_decision_from_approval(4, "please use a different file", action_key="test_tool")
     assert decision.outcome == "deny_feedback"
     assert decision.feedback == "please use a different file"
     assert any("please use a different file" in entry for entry in logged)
@@ -296,7 +297,7 @@ def test_run_legacy_input_eof_defaults_to_reject(monkeypatch: pytest.MonkeyPatch
         queue_position=1,
         queue_depth=1,
     )
-    assert idx == 2  # reject
+    assert idx == 3  # reject (slot 3 in 5-option layout)
 
 
 # ---------------------------------------------------------------------------

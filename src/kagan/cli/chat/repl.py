@@ -69,7 +69,6 @@ class ToolbarState:
     context_pct: float | None = None
     workspace_label: str = ""
     is_streaming: bool = False
-    yolo: bool = False
     pending_approvals: int = 0
     current_tool: str = ""
     token_used_k: float | None = None
@@ -133,7 +132,6 @@ _REPL_COLORS: Final[dict[str, str]] = {
     "primary": "#d4a84b",
     "separator": "#4a5568",
     "plan": "#60a5fa",
-    "yolo": "#f87171",
     "meta": "#9ca3af",
     "meta_current": "#7dd3fc",
     "thinking": "#fbbf24",
@@ -176,7 +174,6 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "bottom-toolbar.tip": f"fg:{_REPL_COLORS['text_soft']} italic",
             "bottom-toolbar.thinking": f"fg:{_REPL_COLORS['thinking']} bold",
             "bottom-toolbar.idle-dot": f"fg:{_REPL_COLORS['text_muted']}",
-            "bottom-toolbar.yolo": f"fg:{_REPL_COLORS['yolo']} bold",
             "bottom-toolbar.plan": f"fg:{_REPL_COLORS['plan']} bold",
             "completion-menu": f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}",
             "completion-menu.completion": (
@@ -205,7 +202,6 @@ def _build_prompt_style_rules() -> dict[str, str]:
         "bottom-toolbar.tip": "fg:ansibrightblack italic",
         "bottom-toolbar.thinking": "fg:ansiyellow bold",
         "bottom-toolbar.idle-dot": "fg:ansibrightblack",
-        "bottom-toolbar.yolo": "fg:ansired bold",
         "bottom-toolbar.plan": "fg:ansiblue bold",
         "completion-menu": "bg:default fg:default",
         "completion-menu.completion": "bg:default fg:default",
@@ -673,8 +669,6 @@ def _toolbar_status_segments() -> tuple[str, str, str, str]:
 
     status_left = _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())
     status_right_parts: list[str] = []
-    if _TOOLBAR_STATE.yolo:
-        status_right_parts.append("YOLO")
     agent_mode = _format_agent_mode(cols)
     if agent_mode:
         status_right_parts.append(agent_mode)
@@ -954,7 +948,6 @@ def _write_boot_banner(
     project_root: Path | None = None,
     *,
     agent_backend: str | None = None,
-    yolo: bool = False,
     interactive: bool = True,
 ) -> None:
     ver = version("kagan")
@@ -976,15 +969,11 @@ def _write_boot_banner(
                 style="dim",
             )
         )
-    if yolo:
-        body.append(
-            Text("Yolo mode — every tool call auto-approved.", style="bold red"),
-        )
 
     banner = Panel(
         Group(*body),
         box=box.ROUNDED,
-        border_style="red" if yolo else "green",
+        border_style="green",
         padding=(0, 2),
         expand=False,
         width=panel_width,
@@ -1036,14 +1025,9 @@ async def run_chat_async(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
-    yolo: bool = False,
 ) -> str | None:
-    from kagan.cli.chat._yolo import confirm_yolo_disclaimer
     from kagan.cli.chat.controller import ChatController
     from kagan.core import KaganCore, resolve_default_agent_backend
-
-    if yolo and not confirm_yolo_disclaimer(_console):
-        return None
 
     async with KaganCore() as client:
         backend = agent
@@ -1056,7 +1040,6 @@ async def run_chat_async(
             agent_backend=backend,
             mcp_session_id=session_id,
             prefer_session_backend=agent is None,
-            yolo=yolo,
         )
 
         if not await controller.ensure_project():
@@ -1068,12 +1051,10 @@ async def run_chat_async(
         _TOOLBAR_STATE.agent_backend = controller.agent_backend
         _TOOLBAR_STATE.turn_count = controller._turn_count
         _TOOLBAR_STATE.context_pct = None
-        _TOOLBAR_STATE.yolo = yolo
 
         _write_boot_banner(
             Path.cwd(),
             agent_backend=controller.agent_backend,
-            yolo=yolo,
             interactive=prompt is None,
         )
 
@@ -1086,6 +1067,5 @@ def run_chat(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
-    yolo: bool = False,
 ) -> str | None:
-    return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent, yolo=yolo))
+    return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent))

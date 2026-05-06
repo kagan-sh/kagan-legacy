@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from kagan.core import KaganCore
 from kagan.cli.doctor import DoctorCheck
 from kagan.cli.main import cli
+from kagan.core import KaganCore
 
 _HAS_RICH_CLICK = importlib.util.find_spec("rich_click") is not None
 
@@ -510,12 +510,10 @@ def test_chat_positional_prompt_is_single_shot(monkeypatch, tmp_path: Path) -> N
         prompt: str | None = None,
         session_id: str | None = None,
         agent: str | None = None,
-        yolo: bool = False,
     ) -> None:
         captured["prompt"] = prompt
         captured["session_id"] = session_id
         captured["agent"] = agent
-        captured["yolo"] = yolo
 
     monkeypatch.setattr("kagan.cli.chat.run_chat_async", _fake_run_chat_async)
 
@@ -527,7 +525,6 @@ def test_chat_positional_prompt_is_single_shot(monkeypatch, tmp_path: Path) -> N
         "prompt": "fix the bug",
         "session_id": None,
         "agent": None,
-        "yolo": False,
     }
 
 
@@ -724,7 +721,7 @@ def test_chat_interactive_banner_contains_help_hint(monkeypatch, tmp_path: Path)
 
     monkeypatch.setattr("kagan.cli.chat.repl._write_boot_banner", _fake_write_boot_banner)
 
-    async def _fake_run_chat_async(*, prompt=None, session_id=None, agent=None, yolo=False):
+    async def _fake_run_chat_async(*, prompt=None, session_id=None, agent=None):
         # Simulate interactive call: no prompt
         from kagan.cli.chat.repl import _write_boot_banner
 

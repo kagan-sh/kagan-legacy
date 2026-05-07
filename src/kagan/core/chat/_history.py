@@ -33,12 +33,22 @@ def _history_dir() -> Path:
     return Path(user_data_dir("kagan", "kagan")) / "history"
 
 
-def _history_path(project_id: str) -> Path:
-    return _history_dir() / f"{project_id}.jsonl"
+def _safe_filename(project_id: str) -> str:
+    """Sanitize a project ID for use as a filename component."""
+    return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in project_id)
 
 
-def load_history(project_id: str) -> list[str]:
-    path = _history_path(project_id)
+def _history_path(project_id: str, *, history_dir: Path | None = None) -> Path:
+    base = history_dir if history_dir is not None else _history_dir()
+    return base / f"{_safe_filename(project_id)}.jsonl"
+
+
+def _read_jsonl(path: Path) -> list[str]:
+    """Read all valid history entries from a JSONL file.
+
+    Returns up to ``_MAX_ENTRIES`` entries, newest at the end.
+    Returns ``[]`` if the file does not exist or cannot be read.
+    """
     if not path.exists():
         return []
     entries: list[str] = []
@@ -60,13 +70,22 @@ def load_history(project_id: str) -> list[str]:
     return entries[-_MAX_ENTRIES:]
 
 
-def save_entry(project_id: str, text: str) -> None:
+def load_history(project_id: str, *, history_dir: Path | None = None) -> list[str]:
+    """Load history entries for *project_id* from disk.
+
+    When *history_dir* is provided, it overrides the default platformdirs path.
+    Useful for tests that need isolated history files.
+    """
+    return _read_jsonl(_history_path(project_id, history_dir=history_dir))
+
+
+def save_entry(project_id: str, text: str, *, history_dir: Path | None = None) -> None:
     if not text:
         return
-    path = _history_path(project_id)
+    path = _history_path(project_id, history_dir=history_dir)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        existing = load_history(project_id)
+        existing = _read_jsonl(path)
         if existing and existing[-1] == text:
             return
         existing.append(text)
@@ -144,14 +163,22 @@ class KaganFileHistory:
     for manual cursor navigation used by the TUI.
 
     ``persist`` maps to the ``persist_input_history`` settings flag.
+    ``history_dir`` overrides the default platformdirs location (useful for tests).
     """
 
-    def __init__(self, project_id: str, *, persist: bool = True) -> None:
+    def __init__(
+        self,
+        project_id: str,
+        *,
+        persist: bool = True,
+        history_dir: Path | None = None,
+    ) -> None:
         self._project_id = project_id
         self._persist = persist
+        self._history_dir = history_dir
         self._cursor = _HistoryCursor()
         if persist:
-            self._cursor.replace_history(load_history(project_id))
+            self._cursor.replace_history(load_history(project_id, history_dir=history_dir))
 
     # --- shared write path ---------------------------------------------------
 
@@ -159,7 +186,7 @@ class KaganFileHistory:
         """Record *text* and persist to disk when enabled."""
         self._cursor.append(text)
         if self._persist:
-            save_entry(self._project_id, text)
+            save_entry(self._project_id, text, history_dir=self._history_dir)
 
     # --- prompt_toolkit History protocol (duck-typed) ------------------------
 
@@ -168,6 +195,14 @@ class KaganFileHistory:
 
     def get_strings(self) -> list[str]:
         return self._cursor.entries
+
+    def get_strings_from_disk(self) -> list[str]:
+        """Return entries read fresh from disk (bypasses the in-memory cursor).
+
+        Useful in tests to assert what was actually persisted without
+        relying on the in-memory cursor state.
+        """
+        return load_history(self._project_id, history_dir=self._history_dir)
 
     # --- TUI cursor navigation -----------------------------------------------
 

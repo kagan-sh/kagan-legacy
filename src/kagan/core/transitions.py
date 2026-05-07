@@ -259,4 +259,87 @@ async def transition_session(
         s.refresh(obj)
         return obj  # type: ignore[return-value]  # SQLModel refresh returns None
 
-    return await _db_async(client.engine, _write)
+    updated = await _db_async(client.engine, _write)
+    await _notify_chat_on_session_transition(client, updated, src=src, to=to)
+    return updated
+
+
+_TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
+    [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]
+)
+
+
+async def _notify_chat_on_session_transition(
+    client: KaganCore,
+    session: Session,
+    *,
+    src: SessionStatus,
+    to: SessionStatus,
+) -> None:
+    """Fire an agent lifecycle notification into orchestrator chat sessions.
+
+    Runs after the DB commit so chat-injection failures never block the
+    transition.  All errors are caught and logged as warnings — the caller
+    always receives the updated Session regardless.
+
+    Fires on:
+    - Any → RUNNING (first time entering RUNNING state): kind="agent_started"
+    - Any → terminal (COMPLETED): kind="agent_finished"
+    - Any → terminal (FAILED / CANCELLED): kind="agent_stopped"
+
+    Skips silently when task or project lookup fails.
+    """
+    # Only notify on meaningful lifecycle boundaries.
+    entering_running = to == SessionStatus.RUNNING and src != SessionStatus.RUNNING
+    entering_terminal = to in _TERMINAL_STATUSES
+
+    if not (entering_running or entering_terminal):
+        return
+
+    try:
+        from kagan.core._db_helpers import _db_async as _dba
+        from kagan.core.chat._attach import notify_project_chat_sessions
+        from kagan.core.models import Task as _Task
+
+        def _lookup(s) -> tuple[str, str] | None:
+            task = s.get(_Task, session.task_id)
+            if task is None:
+                return None
+            return task.project_id, task.title
+
+        task_info = await _dba(client.engine, _lookup)
+        if task_info is None:
+            logger.warning(
+                "_notify_chat: task {} not found for session {}; skipping",
+                session.task_id,
+                session.id,
+            )
+            return
+
+        project_id, task_title = task_info
+        role_label = f" ({session.agent_role})" if session.agent_role else ""
+
+        if entering_running:
+            kind = "agent_started"
+            summary = f"{task_title}{role_label} started"
+        elif to == SessionStatus.COMPLETED:
+            kind = "agent_finished"
+            summary = f"{task_title}{role_label} finished"
+        else:
+            kind = "agent_stopped"
+            summary = f"{task_title}{role_label} stopped ({to.value.lower()})"
+
+        await notify_project_chat_sessions(
+            client.engine,
+            project_id=project_id,
+            kind=kind,
+            session_id=session.id,
+            summary=summary,
+        )
+
+    except Exception:
+        logger.opt(exception=True).warning(
+            "_notify_chat: failed to inject notification for session {}; "
+            "transition already committed",
+            session.id,
+        )

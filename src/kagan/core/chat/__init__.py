@@ -6,6 +6,12 @@ use. The legacy `kagan.cli.chat.sessions` raw-SQL helpers are gone — call
 `client.chat` (the :class:`ChatEngine`) rather than driving ACP directly.
 """
 
+from kagan.core.chat._attach import (
+    AgentNotificationKind,
+    attach_chat_to_session,
+    inject_agent_notification,
+    notify_project_chat_sessions,
+)
 from kagan.core.chat._factories import LongLivedACPFactory
 from kagan.core.chat.acp import (
     ACPSessionFactory,
@@ -51,6 +57,7 @@ __all__ = [
     "CHAT_SCOPE_PREFIX",
     "ACPSessionFactory",
     "ACPTurnResult",
+    "AgentNotificationKind",
     "AssistantChunk",
     "AssistantMessagePersisted",
     "CancelResult",
@@ -73,9 +80,12 @@ __all__ = [
     "UsageUpdate",
     "UserMessagePersisted",
     "acp_update_to_chat_event",
+    "attach_chat_to_session",
     "chat_session_to_view",
     "clean_generated_title",
     "format_relative_time",
+    "inject_agent_notification",
     "make_spawn_per_turn_acp_factory",
+    "notify_project_chat_sessions",
     "run_spawn_per_turn_acp_prompt",
 ]

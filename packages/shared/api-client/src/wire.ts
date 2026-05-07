@@ -278,6 +278,38 @@ export interface MentionResponse {
   state?: string | null;
 }
 
+export interface ActiveAgentRowResponse {
+  task_id: string;
+  task_title: string;
+  task_status: string;
+  session_id: string;
+  agent_role?: string | null;
+  agent_backend: string;
+  session_status: string;
+  started_at: string;
+  last_event_at?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+}
+
+export interface RunningAgentsResponse {
+  agents: ActiveAgentRowResponse[];
+}
+
+export interface SessionReplayEvent {
+  id: string;
+  session_id?: string | null;
+  event_type: string;
+  payload?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SessionReplayPage {
+  events: SessionReplayEvent[];
+  next_cursor?: string | null;
+  has_more?: boolean;
+}
+
 export interface TaskCreateRequest {
   acceptance_criteria?: string[] | null;
   title: string;

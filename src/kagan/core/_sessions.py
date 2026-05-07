@@ -1167,7 +1167,14 @@ class Sessions:
             )
 
 
+from kagan.core._sessions_query import (  # noqa: E402 — deferred to avoid circular import
+    ActiveAgentRow,
+    list_running_agents,
+    resolve_active_session,
+)
+
 __all__ = [
+    "ActiveAgentRow",
     "DetachResult",
     "SessionSummary",
     "Sessions",
@@ -1177,6 +1184,8 @@ __all__ = [
     "get_latest_task_session",
     "has_active_session",
     "list_active_sessions",
+    "list_running_agents",
     "list_task_sessions",
+    "resolve_active_session",
     "resolve_session_binding",
 ]

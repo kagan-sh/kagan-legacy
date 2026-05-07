@@ -136,6 +136,50 @@ class KaganCore:
 
         return _generate
 
+    # -------------------------------------------------------------------------
+    # Orchestrator-chat overlay helpers (public API)
+    # -------------------------------------------------------------------------
+
+    async def resolve_active_session(self, task_id: str):
+        """Return the most relevant agent Session for *task_id*, or None.
+
+        Priority: active worker → active reviewer → latest reviewer → latest worker.
+        """
+        from kagan.core._sessions import list_task_sessions
+        from kagan.core._sessions_query import resolve_active_session
+
+        sessions = await list_task_sessions(self._engine, task_id)
+        return resolve_active_session(sessions)
+
+    async def list_running_agents(self, project_id: str | None = None):
+        """Return all sessions currently in an active status joined with their task.
+
+        Results are sorted by ``started_at DESC``.  Optionally scoped to a project.
+        """
+        from kagan.core._sessions_query import list_running_agents
+
+        return await list_running_agents(self._engine, project_id=project_id)
+
+    async def attach_chat(
+        self,
+        chat_session_id: str,
+        session_id: str | None,
+        *,
+        agent_role: str | None = None,
+    ) -> None:
+        """Attach (or detach) a ChatSession to a specific agent Session.
+
+        Pass ``session_id=None`` to return the chat to orchestrator mode.
+        """
+        from kagan.core.chat._attach import attach_chat_to_session
+
+        await attach_chat_to_session(
+            self._engine,
+            chat_session_id,
+            session_id,
+            agent_role=agent_role,
+        )
+
     async def preflight(self, *, agent_backend: str | None = None) -> list[PreflightCheckResult]:
         return await asyncio.to_thread(run_all_checks, self._db_path, agent_backend)
 

@@ -384,6 +384,69 @@ class IntegrationSyncResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+# ── Running agents ───────────────────────────────────────────────────────────
+
+
+class ActiveAgentRowResponse(BaseModel):
+    """Wire shape for a single running-agent row (Task + Session join)."""
+
+    task_id: str
+    task_title: str
+    task_status: str
+    session_id: str
+    agent_role: str | None = None
+    agent_backend: str
+    session_status: str
+    started_at: str
+    last_event_at: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+    @field_validator("started_at", mode="before")
+    @classmethod
+    def _coerce_started_at(cls, v: Any) -> str:
+        result = _dt_iso(v)
+        return result or ""
+
+    @field_validator("last_event_at", mode="before")
+    @classmethod
+    def _coerce_last_event_at(cls, v: Any) -> str | None:
+        return _dt_iso(v)
+
+
+class RunningAgentsResponse(BaseModel):
+    """Response for GET /api/v1/agents/running."""
+
+    agents: list[ActiveAgentRowResponse]
+
+
+# ── Session replay ────────────────────────────────────────────────────────────
+
+
+class SessionReplayEvent(BaseModel):
+    """A single persisted session event returned by the replay endpoint."""
+
+    id: str
+    session_id: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _coerce_dt(cls, v: Any) -> str:
+        result = _dt_iso(v)
+        return result or ""
+
+
+class SessionReplayPage(BaseModel):
+    """Paginated response for GET /api/v1/sessions/{session_id}/replay."""
+
+    events: list[SessionReplayEvent]
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
 # ── Mentions ──────────────────────────────────────────────────────────────────
 
 
@@ -424,4 +487,8 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "IntegrationInfo": IntegrationInfo,
     "IntegrationSyncResult": IntegrationSyncResult,
     "MentionResponse": MentionResponse,
+    "ActiveAgentRowResponse": ActiveAgentRowResponse,
+    "RunningAgentsResponse": RunningAgentsResponse,
+    "SessionReplayEvent": SessionReplayEvent,
+    "SessionReplayPage": SessionReplayPage,
 }

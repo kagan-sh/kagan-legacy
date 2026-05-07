@@ -221,6 +221,14 @@ class ChatSession(SQLModel, table=True):
     source: str
     agent_backend: str | None = Field(default=None)
     project_id: str | None = Field(default=None, foreign_key="projects.id", index=True)
+    # Orchestrator-chat attach target: which agent session this chat is tracking.
+    # None means "orchestrator mode" (not attached to any specific session).
+    # No SQLite FK constraint: the sessions table is sometimes recreated via
+    # rename-and-recreate migrations, which corrupts SQLite's trigger-based FK
+    # enforcement. The application layer enforces referential integrity instead.
+    attached_session_id: str | None = Field(default=None, index=True)
+    # Role context for the attached session ("worker" | "reviewer" | None).
+    attached_role: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utc_now, index=True)
     updated_at: datetime = Field(default_factory=_utc_now, index=True)
 

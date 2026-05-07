@@ -142,21 +142,21 @@ class _TaskReviewMixin:
         except PreflightError as exc:
             self._last_merge_blocker = "Preflight failed  \u2192  fix and retry"
             self._set_status(str(exc))
-            self._output_stream().post_note(str(exc))
+            self.app.notify(str(exc), severity="error")
             self._sync_merge_readiness()
             return
         except MergeConflictError as exc:
             self._last_merge_blocker = "Merge conflicts  \u2192  b to rebase"
             message = self._conflict_message(exc.conflict_files, prefix="Merge has conflicts")
             self._set_status(message)
-            self._output_stream().post_note(message)
+            self.app.notify(message, severity="error")
             self._sync_merge_readiness()
             return
         except WorktreeError as exc:
             self._last_merge_blocker = f"Worktree error: {exc}"
             message = f"Unable to merge: {exc}"
             self._set_status(message)
-            self._output_stream().post_note(message)
+            self.app.notify(message, severity="error")
             self._sync_merge_readiness()
             return
 
@@ -204,7 +204,7 @@ class _TaskReviewMixin:
             conflict_files = cast("list[str]", conflicts.get("conflicted_files", []))
             message = self._conflict_message(conflict_files, prefix=str(exc))
             self._set_status(message)
-            self._output_stream().post_note(message)
+            self.app.notify(message, severity="error")
             self._sync_merge_readiness()
             return
         self._last_merge_blocker = None
@@ -227,14 +227,14 @@ class _TaskReviewMixin:
         with contextlib.suppress(KaganError, OSError, RuntimeError):
             await self.kagan_app.core.reviews.clear_verdicts(self._task_id)
         backend = await self._resolve_backend(self._task_model)
-        self._reviewer_session_id = None
-        self._pending_reviewer_session_id = True
         await self.kagan_app.core.tasks.run(self._task_id, agent_backend=backend)
         self._running = True
         self._set_stream_source(StreamSource.REVIEWER)
         self._set_status("AI Reviewing...")
-        self.app.notify("AI review started", severity="information")
-        self._ensure_stream_worker()
+        self.app.notify(
+            "AI review started \u2014 open AI Overlay (o) to follow progress",
+            severity="information",
+        )
 
     async def _load_task_or_fail(self) -> Task | None:
         if self._task_id is None:

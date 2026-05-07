@@ -317,13 +317,6 @@ class KaganApp(App[None]):
             return
         self.push_screen(OrchestratorOverlay())
 
-    async def action_open_task_chat(self) -> None:
-        handler = getattr(self.screen, "action_open_task_chat", None)
-        if callable(handler):
-            result: Any = handler()
-            if inspect.isawaitable(result):
-                await result
-
     def action_show_help(self) -> None:
         sections: list[tuple[str, tuple[tuple[str, str], ...]]] = []
 

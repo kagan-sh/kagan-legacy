@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import contextlib
 from typing import TYPE_CHECKING, cast
 
@@ -11,7 +10,6 @@ from textual.widgets import (
     Checkbox,
     Input,
     Label,
-    Select,
     Static,
     TabbedContent,
     TabPane,
@@ -21,8 +19,6 @@ from textual.widgets import (
 from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import (
-    ChatMode,
-    SessionKind,
     StreamSource,
     TaskStatus,
 )
@@ -30,13 +26,9 @@ from kagan.core.errors import (
     KaganError,
     NotFoundError,
 )
-from kagan.tui._chat_helpers import build_session_options
 from kagan.tui.keybindings import TASK_SCREEN_BINDINGS
-from kagan.tui.screens._task_chat import _TaskChatMixin
 from kagan.tui.screens._task_review import _TaskReviewMixin
-from kagan.tui.screens._task_stream import _TaskStreamMixin
 from kagan.tui.screens.task_commands import TaskScreenCommandProvider
-from kagan.tui.widgets.chat import ChatPanel
 from kagan.tui.widgets.diff import DiffFileTree
 from kagan.tui.widgets.header import KaganHeader
 from kagan.tui.widgets.task_action_bar import TaskActionBar
@@ -57,7 +49,7 @@ if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
 
 
-class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None]):
+class TaskScreen(_TaskReviewMixin, Screen[None]):
     BINDINGS = TASK_SCREEN_BINDINGS
     COMMANDS = {TaskScreenCommandProvider}
 
@@ -68,28 +60,17 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         self._review_approved: bool = False
         self._running = False
         self._status_override: str | None = None
-        self._stream_task: asyncio.Task[None] | None = None
         self._runtime_poll_timer: Timer | None = None
-        self._stream_refresh_timer: Timer | None = None
         self._pending_runtime_refresh = False
         self._pending_workspace_refresh = False
         self._pending_review_refresh = False
         self._simulated_session = False
-        self._chat_mode = ChatMode.TASK
-        self._overlay_layout_mode = "vertical"
-        self._chat_orchestrator_history: list[tuple[str, str]] = []
-        self._chat_session_switch_token = 0
-        self._chat_message_task: asyncio.Task[None] | None = None
         self._review_criteria_signature: tuple[str, ...] | None = None
         self._review_file_entries_signature: tuple[tuple[str, int, int], ...] | None = None
         self._stream_source: str | None = None
         self._last_merge_blocker: str | None = None
-        self._oldest_event_ts: str | None = None
-        self._replay_count: int = 0
-        self._worker_session_id: str | None = None
-        self._reviewer_session_id: str | None = None
-        self._pending_reviewer_session_id = False
         self._user_switched_tab = False
+        self._stream_refresh_timer: Timer | None = None
 
     @property
     def kagan_app(self) -> KaganApp:
@@ -136,7 +117,6 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
                         )
 
             yield Static("Press o · AI Overlay", id="ts-chat-hint", classes="ts-chat-hint")
-            yield ChatPanel(id="ts-chat-overlay", classes="chat-overlay")
 
         yield TaskActionBar(id="ts-actions")
 
@@ -148,7 +128,6 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
             self._set_status("Idle")
             self._select_initial_tab()
             self._sync_action_bar()
-            self._sync_overlay_layout_class()
             self._sync_stream_source_indicator()
             self.run_worker(
                 self._refresh_header_context(),
@@ -167,22 +146,20 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         await self._hydrate_workspace_panels()
         await self._load_review_context()
         self._sync_action_bar()
-        self._sync_overlay_layout_class()
         self.run_worker(
             self._refresh_header_context(),
             group="task-screen-header-context",
             exclusive=True,
             exit_on_error=False,
         )
-        self.query_one("#ts-overview-scroll", VerticalScroll).focus()
+        with contextlib.suppress(NoMatches):
+            if self._active_tab() == "overview":
+                self.query_one("#ts-overview-scroll", VerticalScroll).focus()
         self.call_after_refresh(self.refresh_bindings)
 
         if self._task_model is not None and self._task_model.status is TaskStatus.IN_PROGRESS:
             self._running = True
-            self.call_after_refresh(
-                lambda: self.run_worker(self.action_open_task_overlay(), exit_on_error=False)
-            )
-        elif self._task_model is not None and self._task_model.status is TaskStatus.BACKLOG:
+        if self._task_model is not None and self._task_model.status is TaskStatus.BACKLOG:
             from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 
             self.call_after_refresh(
@@ -191,21 +168,7 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         self._sync_stream_source_indicator()
         self._runtime_poll_timer = self.set_interval(1.0, self._schedule_runtime_refresh)
 
-    def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
-        self._configure_overlay_chat()
-        self._ensure_stream_worker()
-
     async def on_unmount(self) -> None:
-        if self._stream_task is not None:
-            self._stream_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._stream_task
-            self._stream_task = None
-        if self._chat_message_task is not None:
-            self._chat_message_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._chat_message_task
-            self._chat_message_task = None
         if self._runtime_poll_timer is not None:
             self._runtime_poll_timer.stop()
             self._runtime_poll_timer = None
@@ -217,26 +180,10 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         self._pending_review_refresh = False
 
     def on_show(self) -> None:
-        self._sync_overlay_layout_class()
         self._sync_action_bar()
         self.refresh_bindings()
 
     def action_back(self) -> None:
-        panel = self._overlay_panel()
-        # If chat overlay is fullscreen, exit fullscreen first (same as split-cycle shortcut)
-        if panel.has_class("visible") and panel.has_class("fullscreen"):
-            panel.set_fullscreen(False)
-            self._overlay_layout_mode = "vertical"
-            self._sync_overlay_layout_class()
-            return
-        # If chat overlay is visible (not fullscreen), close it
-        if panel.has_class("visible"):
-            panel.set_visible(False)
-            panel.set_fullscreen(False)
-            self._overlay_layout_mode = "vertical"
-            self._sync_overlay_layout_class()
-            return
-        # Otherwise, go back to kanban
         self.app.pop_screen()
 
     def action_tab_detail(self) -> None:
@@ -286,9 +233,6 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
                     return
 
     async def action_primary_action(self) -> None:
-        if self._overlay_panel().has_class("visible") and self._focused_widget_accepts_text():
-            return
-
         task = self._task_model
 
         def _approve_or_merge() -> None:
@@ -309,7 +253,6 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
             self._running = True
             self._set_stream_source(StreamSource.WORKER)
             self._set_status("Running")
-            self._output_stream().append_text("[started]")
             await self._start_or_attach_session()
             return
 
@@ -326,13 +269,11 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         self._running = True
         self._set_stream_source(StreamSource.WORKER)
         self._set_status("Running")
-        self._output_stream().append_text("[started]")
         await self._start_or_attach_session()
 
     async def action_cancel_run(self) -> None:
         self._running = False
         self._set_status("Stopped")
-        self._output_stream().append_text("[stopped]")
         if self._task_id is not None and not self._simulated_session:
             with contextlib.suppress(KaganError, OSError, RuntimeError):
                 await self.kagan_app.core.tasks.cancel(self._task_id)
@@ -372,7 +313,7 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         worktree = await self.kagan_app.core.worktrees.get(task.id)
         warning_lines = ["This removes the task from the board and its persisted state."]
         if worktree is not None:
-            warning_lines.append("⚠ The git worktree and branch will be removed.")
+            warning_lines.append("The git worktree and branch will be removed.")
         confirmed = await self.app.push_screen_wait(
             ConfirmModal(
                 title="Delete Task",
@@ -390,39 +331,14 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
     def action_open_repo_picker(self) -> None:
         self.run_worker(self._open_repo_picker_flow(), exit_on_error=False)
 
-    async def action_switch_session(self) -> None:
-        panel = self._overlay_panel()
-        if not panel.has_class("visible"):
-            await self.action_open_task_overlay()
-            panel = self._overlay_panel()
-        self._open_overlay_session_picker(panel)
-
-    async def action_open_session_picker(self) -> None:
-        await self.action_switch_session()
-
-    def _open_overlay_session_picker(self, panel: ChatPanel, *, initial_query: str = "") -> None:
-        modal = panel.create_session_picker_modal(initial_query=initial_query)
-
-        def _on_select(selected_key: str | None) -> None:
-            if selected_key is None:
-                return
-            selector = panel.query_one("#chat-overlay-session-select", Select)
-            selector.value = selected_key
-
-        self.app.push_screen(modal, callback=_on_select)
-
     async def _open_repo_picker_flow(self) -> None:
         await self.app.push_screen_wait("repo-picker-modal")
         await self._hydrate_workspace_panels()
         await self._load_review_context()
 
     async def _start_or_attach_session(self, *, backend_hint: str | None = None) -> str | None:
-        if self._effective_stream_source() == "worker":
-            self._worker_session_id = None
-            self._pending_reviewer_session_id = False
         if self._task_id is None:
             self._simulated_session = True
-            self._output_stream().post_note("No task selected; running simulated output")
             return "No task selected"
 
         if self._task_model is None:
@@ -433,14 +349,9 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
             await self._ensure_workspace()
             await self.kagan_app.core.tasks.run(self._task_id, agent_backend=backend)
             self._simulated_session = False
-            self._output_stream().post_note(f"Session started with backend: {backend}")
-            self._ensure_stream_worker()
-            self._sync_stream_source_indicator()
             return None
         except (KaganError, OSError, RuntimeError, ValueError) as exc:
             self._simulated_session = True
-            self._output_stream().post_note(f"Session unavailable, using local simulation: {exc}")
-            self._sync_stream_source_indicator()
             return str(exc)
 
     async def _ensure_workspace(self) -> None:
@@ -526,10 +437,8 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         backend_suffix = f" · {backend}" if backend else ""
         if self._running:
             text = f"Stream: {source_label}{advisory} · LIVE{backend_suffix}"
-            stream_title = f"{source_label} STREAM · LIVE{backend_suffix}"
         else:
             text = f"Stream: {source_label} · IDLE{backend_suffix}"
-            stream_title = f"{source_label} STREAM{backend_suffix}"
 
         with contextlib.suppress(NoMatches):
             source_widget = self.query_one("#ts-detail-stream-source", Static)
@@ -537,19 +446,6 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
             source_widget.set_class(source == StreamSource.REVIEWER, "ts-source-reviewer")
             source_widget.set_class(source == StreamSource.WORKER, "ts-source-worker")
             source_widget.set_class(self._running, "ts-source-live")
-
-        with contextlib.suppress(NoMatches):
-            stream = self._output_stream()
-            stream.border_title = stream_title
-            show_hint = (
-                not self._running
-                and source == StreamSource.WORKER
-                and self._task_model is not None
-                and self._task_model.status is TaskStatus.REVIEW
-            )
-            stream.border_subtitle = (
-                "Ctrl+Shift+P quick actions: AI review (advisory)" if show_hint else ""
-            )
 
     def _refresh_header_labels(self) -> None:
         task = self._task_model
@@ -564,10 +460,10 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
 
         self.query_one("#ts-title", Label).update(f"{task.title}")
         branch = task.base_branch or "main"
-        self.query_one("#ts-branch", Label).update(f"task-{task.id[:8]} \u2192 {branch}")
+        self.query_one("#ts-branch", Label).update(f"task-{task.id[:8]} → {branch}")
         status_label = task.status.value.replace("_", " ").title()
         if self._review_approved:
-            status_label += " \u00b7 APPROVED"
+            status_label += " · APPROVED"
         status = self._status_override or status_label
         self.query_one("#ts-status", Static).update(status)
 
@@ -615,23 +511,8 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
             )
 
     async def on_key(self, event: events.Key) -> None:
-        panel = self._overlay_panel()
-        active = self._active_tab()
-
-        if event.key == "ctrl+k":
-            event.prevent_default()
-            event.stop()
-            await self.action_open_session_picker()
-            return
-
-        if event.key == "ctrl+f" and panel.has_class("visible"):
-            event.prevent_default()
-            event.stop()
-            await self.action_expand_chat_overlay()
-            return
-
         if event.key == "q":
-            if panel.has_class("visible") or self._focused_widget_accepts_text():
+            if self._focused_widget_accepts_text():
                 return
             event.prevent_default()
             event.stop()
@@ -639,42 +520,13 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
             return
 
         if event.key == "escape":
-            if panel.has_class("visible"):
-                event.prevent_default()
-                event.stop()
-                panel.set_visible(False)
-                panel.set_fullscreen(False)
-                self._overlay_layout_mode = "vertical"
-                self._sync_overlay_layout_class()
-                return
             event.prevent_default()
             event.stop()
             self.action_back()
             return
 
-        if self._focused_widget_accepts_text():
-            if event.key == "enter" and panel.has_class("visible"):
-                event.prevent_default()
-                event.stop()
-                panel.call_later(panel.action_send_message)
-                return
-            return
-
-        if panel.has_class("visible"):
-            return
-
-        if active != "changes":
-            return
-
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         del parameters
-        if action in {"primary_action", "cancel_run"}:
-            with contextlib.suppress(NoMatches):
-                if (
-                    self._overlay_panel().has_class("visible")
-                    and self._focused_widget_accepts_text()
-                ):
-                    return False
         return True
 
     def _focused_widget_accepts_text(self) -> bool:
@@ -684,35 +536,18 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
     def _sync_action_bar(self) -> None:
         action_bar = self.query_one(TaskActionBar)
         task = self._task_model
-        panel = self._overlay_panel()
         action_bar.active_tab = self._active_tab()
         action_bar.task_data = task
         action_bar.task_running = self._running
         action_bar.review_approved = self._review_approved
-        action_bar.chat_visible = panel.has_class("visible")
-        action_bar.chat_fullscreen = panel.has_class("visible") and panel.has_class("fullscreen")
+        action_bar.chat_visible = False
+        action_bar.chat_fullscreen = False
         criteria = (
             [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
             if task is not None
             else []
         )
         action_bar.has_criteria = bool(criteria)
-
-    def _sync_overlay_layout_class(self) -> None:
-        panel = self._overlay_panel()
-        visible = panel.has_class("visible")
-        fullscreen = visible and panel.has_class("fullscreen")
-        self.set_class(visible, "ts-chat-visible")
-        self.set_class(fullscreen, "ts-chat-fullscreen")
-        self.set_class(
-            visible and not fullscreen and self._overlay_layout_mode == "vertical",
-            "ts-chat-vertical",
-        )
-        self.set_class(
-            visible and not fullscreen and self._overlay_layout_mode == "horizontal",
-            "ts-chat-horizontal",
-        )
-        self._sync_action_bar()
 
     def _active_tab(self) -> str:
         with contextlib.suppress(NoMatches, AttributeError):
@@ -728,40 +563,77 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
         else:
             self.query_one("#ts-tabs", TabbedContent).active = "overview"
 
-    def _configure_overlay_chat(
+    def _schedule_runtime_refresh(self) -> None:
+        if not self.is_mounted:
+            return
+        self._queue_stream_refresh(runtime=True)
+
+    def _queue_stream_refresh(
         self,
         *,
-        visible: bool = False,
-        fullscreen: bool = False,
-        mode: str = ChatMode.TASK,
-        layout_mode: str | None = None,
-        focus: bool = False,
+        runtime: bool = False,
+        workspace: bool = False,
+        review: bool = False,
     ) -> None:
-        panel = self._overlay_panel()
-        panel.set_visible(visible)
-        panel.set_fullscreen(fullscreen)
-        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
+        if not self.is_mounted:
+            return
+        self._pending_runtime_refresh = self._pending_runtime_refresh or runtime
+        self._pending_workspace_refresh = self._pending_workspace_refresh or workspace
+        self._pending_review_refresh = self._pending_review_refresh or review
+        if self._stream_refresh_timer is not None:
+            return
+        self._stream_refresh_timer = self.set_timer(0.12, self._flush_stream_refresh)
 
-        if layout_mode is not None:
-            self._overlay_layout_mode = layout_mode
-
-        if mode == ChatMode.ORCHESTRATOR:
-            panel.set_mode_title("Orchestrator")
-            panel.set_session_kind(SessionKind.ORCHESTRATOR)
-        else:
-            panel.set_mode_title("Task Chat")
-            panel.set_session_kind(SessionKind.DETACHED)
-            panel.set_sessions(
-                build_session_options(self.kagan_app, self._task_session_options()),
-                self._active_task_session_key(),
+    def _flush_stream_refresh(self) -> None:
+        self._stream_refresh_timer = None
+        runtime = self._pending_runtime_refresh
+        workspace = self._pending_workspace_refresh
+        review = self._pending_review_refresh
+        self._pending_runtime_refresh = False
+        self._pending_workspace_refresh = False
+        self._pending_review_refresh = False
+        if not self.is_mounted:
+            return
+        if runtime:
+            self.run_worker(
+                self._refresh_runtime_state,
+                group="task-screen-runtime-refresh",
+                exclusive=True,
+                exit_on_error=False,
             )
-            if self._task_id is not None:
-                panel.set_mode_title(f"Task #{self._task_id[:8]}")
+        if workspace:
+            self.run_worker(
+                self._hydrate_workspace_panels,
+                group="task-screen-hydrate-stream",
+                exclusive=True,
+                exit_on_error=False,
+            )
+        if review:
+            self.run_worker(
+                self._load_review_context,
+                group="task-screen-review-hydrate-stream",
+                exclusive=True,
+                exit_on_error=False,
+            )
 
-        if focus:
-            panel.query_one("#chat-overlay-input", Input).focus()
+    def _maybe_auto_switch_to_review(self) -> None:
+        if self._user_switched_tab:
+            return
+        if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
+            with contextlib.suppress(NoMatches):
+                tabs = self.query_one("#ts-tabs", TabbedContent)
+                if getattr(tabs, "active", "") != "review":
+                    tabs.active = "review"
 
-        self._chat_mode = mode
-
-    def _overlay_panel(self) -> ChatPanel:
-        return self.query_one("#ts-chat-overlay", ChatPanel)
+    async def _refresh_runtime_state(self) -> None:
+        if self._task_id is None:
+            return
+        with contextlib.suppress(KaganError):
+            latest = await self.kagan_app.core.tasks.get(self._task_id)
+            self._task_model = latest
+            self._refresh_header()
+            self._refresh_header_labels()
+            self._sync_action_bar()
+            self._maybe_auto_switch_to_review()
+            await self._load_review_context()
+            await self._hydrate_workspace_panels()

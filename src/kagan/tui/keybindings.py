@@ -123,10 +123,6 @@ TASK_SCREEN_BINDINGS: list[BindingType] = [
     Binding("x", "reject", "Reject"),
     Binding("m", "merge", "Merge"),
     Binding("b", "rebase", "Rebase"),
-    Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "AI Panel", key_display="Ctrl+."),
-    Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
-    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
 ]
 

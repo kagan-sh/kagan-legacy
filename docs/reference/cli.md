@@ -54,8 +54,8 @@ Interactive orchestrator REPL by default. Use `--prompt` for single-shot mode.
 Session lifecycle details: [ACP session lifecycle](../guides/acp-session-lifecycle.md).
 Slash commands and usage: [Chat guide](../guides/chat.md).
 
-| Option          | Description                                       |
-| --------------- | ------------------------------------------------- |
+| Option          | Description                                |
+| --------------- | ------------------------------------------ |
 | `--prompt TEXT` | Single-shot mode (send once, print, exit)  |
 | `--session-id`  | Attach to an existing chat or task session |
 | `--agent`       | Override default orchestrator backend      |

@@ -495,9 +495,7 @@ class Sessions:
                 lambda s: [
                     c.text
                     for c in s.exec(
-                        select(AcceptanceCriterion).where(
-                            AcceptanceCriterion.task_id == task_id
-                        )
+                        select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
                     ).all()
                 ],
             )
@@ -529,9 +527,7 @@ class Sessions:
                 db_path=db_path_str,
                 project_id=task.project_id,
                 on_session_update=self._make_acp_callback(task_id, session_obj.id),
-                on_permission_grant=self._make_permission_grant_callback(
-                    task_id, session_obj.id
-                ),
+                on_permission_grant=self._make_permission_grant_callback(task_id, session_obj.id),
             )
             await self._update_session_pid(session_obj.id, pid)
             reader_task.add_done_callback(
@@ -600,7 +596,6 @@ class Sessions:
         await self._mark_session_running(session_obj.id)
         logger.info("Interactive session launched for task={}", task_id)
         return session_obj
-
 
     async def detach(self, task_id: str) -> DetachResult:
         task = await self._get_task(task_id)

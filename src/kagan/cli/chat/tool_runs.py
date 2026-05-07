@@ -55,7 +55,15 @@ class ToolRunTracker:
     @staticmethod
     def extract_tool_key_arg(update: object) -> str | None:
         key_priority = (
-            "file_path", "path", "command", "query", "url", "pattern", "task_id", "name", "title"
+            "file_path",
+            "path",
+            "command",
+            "query",
+            "url",
+            "pattern",
+            "task_id",
+            "name",
+            "title",
         )
         raw = ToolRunTracker.extract_tool_args(update)
         if raw is None:

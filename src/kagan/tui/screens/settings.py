@@ -182,9 +182,7 @@ class SettingsModal(ModalScreen[None]):
             else "always"
         )
         self.query_one("#settings-theme", Select).value = (
-            settings.get("theme", "")
-            if settings.get("theme", "") in valid_theme_names()
-            else ""
+            settings.get("theme", "") if settings.get("theme", "") in valid_theme_names() else ""
         )
         self.query_one("#settings-attached-launcher", Select).value = (
             settings.get("attached_launcher", "tmux")

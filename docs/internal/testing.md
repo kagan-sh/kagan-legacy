@@ -62,7 +62,7 @@ over either:
 1. **TCP-loopback streams** (`tests/helpers/acp_loopback.py`) — yields real `asyncio.StreamReader`
    / `asyncio.StreamWriter` pairs via `asyncio.start_server` + `asyncio.open_connection`. Catches
    `isinstance(asyncio.StreamReader)` gates and read-method shape contracts in milliseconds.
-2. **A hermetic echo subprocess** (`tests/helpers/echo_agent.py`, vendored from the ACP SDK
+1. **A hermetic echo subprocess** (`tests/helpers/echo_agent.py`, vendored from the ACP SDK
    examples) invoked via `sys.executable`. Speaks the real ACP wire protocol, exercises
    handshake → session → prompt → notification → teardown end-to-end.
 

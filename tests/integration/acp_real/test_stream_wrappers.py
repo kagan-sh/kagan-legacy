@@ -67,13 +67,9 @@ class _RecordingClient:
     async def read_text_file(self, *_args: Any, **_kwargs: Any) -> Any:
         raise NotImplementedError
 
-    async def session_update(
-        self, session_id: str, update: Any, **kwargs: Any
-    ) -> None:
+    async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self.notifications.append(
-            SessionNotification(
-                session_id=session_id, update=update, field_meta=kwargs or None
-            )
+            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None)
         )
 
     async def create_terminal(self, *_args: Any, **_kwargs: Any) -> Any:
@@ -97,9 +93,7 @@ class _RecordingClient:
 
         raise RequestError.method_not_found(method)
 
-    async def ext_notification(
-        self, method: str, params: dict[str, Any]
-    ) -> None:
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         del method, params
 
 
@@ -111,9 +105,7 @@ async def test_client_side_connection_accepts_kagan_stream_wrappers() -> None:
         class _FakeProcess:
             returncode: int | None = None
 
-        json_wrapped = JsonRpcObjectStreamReader(
-            link.client_reader, backend_name="echo"
-        )
+        json_wrapped = JsonRpcObjectStreamReader(link.client_reader, backend_name="echo")
         bytes_wrapped = _ByteCountingStreamReader(link.client_reader, _FakeProcess())  # type: ignore[arg-type]
 
         for wrapper in (json_wrapped, bytes_wrapped):
@@ -145,9 +137,7 @@ async def test_spawn_filtered_agent_process_completes_full_handshake(
             conn.initialize(
                 protocol_version=PROTOCOL_VERSION,
                 client_capabilities=ClientCapabilities(terminal=False),
-                client_info=Implementation(
-                    name="kagan-test", title="Kagan Test", version="0.0.0"
-                ),
+                client_info=Implementation(name="kagan-test", title="Kagan Test", version="0.0.0"),
             ),
             timeout=5.0,
         )

@@ -279,11 +279,7 @@ class CLIRenderer:
             return
         # ToolCallProgress carries no title/args — fall back to what was stored at start
         existing = self._tool_runs.get_run(tool_key)
-        title = (
-            getattr(update, "title", None)
-            or (existing.title if existing else None)
-            or "tool"
-        )
+        title = getattr(update, "title", None) or (existing.title if existing else None) or "tool"
         key_arg = self._tool_runs.extract_tool_key_arg(update) or (
             existing.key_arg if existing else None
         )

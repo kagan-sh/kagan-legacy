@@ -1,4 +1,5 @@
 """Surface-agnostic turn-phase timing for CLI and TUI renderers."""
+
 from __future__ import annotations
 
 import time

@@ -51,13 +51,13 @@ from kagan.core.events_common import MessageStart, ToolExecutionEnd
 
 ## Decision guide
 
-| I want to… | Use |
-| --- | --- |
-| Add a new agent task lifecycle event | New variant in `agent_events.py`, add to `AgentEvent` union |
-| Add a new chat-specific UI event | New variant in `chat/events.py`, add to `ChatEvent` union |
+| I want to…                                 | Use                                                           |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| Add a new agent task lifecycle event       | New variant in `agent_events.py`, add to `AgentEvent` union   |
+| Add a new chat-specific UI event           | New variant in `chat/events.py`, add to `ChatEvent` union     |
 | Add an event that appears in both surfaces | New variant in `events_common.py`, re-export from both unions |
-| Read task event history from DB | Query `SessionEvent` table via `_db_async` |
-| Emit an event during task execution | Call `Events.emit()` in `core/_events.py` |
+| Read task event history from DB            | Query `SessionEvent` table via `_db_async`                    |
+| Emit an event during task execution        | Call `Events.emit()` in `core/_events.py`                     |
 
 ## Why four types?
 

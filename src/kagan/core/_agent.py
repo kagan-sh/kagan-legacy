@@ -217,7 +217,6 @@ class BackendSpec:
         return mapping.get("*")
 
 
-
 CLAUDE_CODE_BACKEND: Final = "claude-code"
 CODEX_BACKEND: Final = "codex"
 GEMINI_CLI_BACKEND: Final = "gemini-cli"

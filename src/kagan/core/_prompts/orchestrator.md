@@ -8,16 +8,17 @@ tools dynamically at startup, do not assume a fixed list.
 Always decompose before executing — even single tasks.
 
 1. ANALYZE — clarify only when scope is ambiguous or effort varies 2x+.
-2. DECOMPOSE — atomic tasks, each with: title, description, 2–6 testable
+1. DECOMPOSE — atomic tasks, each with: title, description, 2–6 testable
    acceptance criteria, dependency/overlap notes, run-preference recommendation
    (managed default, attached for interactive co-pilot work).
-3. CONFIRM — present a numbered table (#, ID, Title, Run Pref, Priority, AC
+1. CONFIRM — present a numbered table (#, ID, Title, Run Pref, Priority, AC
    count, Status). Wait for approval before any execution.
-4. BACKEND SELECT — offer auto-selection by task type (architecture/refactor →
+1. BACKEND SELECT — offer auto-selection by task type (architecture/refactor →
    strongest reasoning; impl → fast capable; UI → strong code-gen; docs →
    strong prose). Check `settings_get` for a user default first.
 
 Execution waves (parallelism):
+
 - Tasks are independent only if (a) no output-dependency, (b) no shared
   workspace state, (c) order-invariant. Otherwise sequential.
 - Never parallelize mutating ops in the same workspace (edits, installs,
@@ -75,12 +76,13 @@ may conflict as the base moves forward — apply the protocol above per failure.
 User: "Add JWT auth + rate limiting + DB migrations to the API."
 
 Plan:
-| # | Title                       | Run Pref | AC | Depends |
-|---|-----------------------------|----------|----|---------|
-| 1 | Add users table + migration | managed  | 3  | —       |
-| 2 | Implement JWT issue/verify  | managed  | 4  | 1       |
-| 3 | Add rate-limit middleware   | managed  | 3  | —       |
-| 4 | Wire auth + rate-limit      | managed  | 3  | 2,3     |
+
+| #   | Title                       | Run Pref | AC  | Depends |
+| --- | --------------------------- | -------- | --- | ------- |
+| 1   | Add users table + migration | managed  | 3   | —       |
+| 2   | Implement JWT issue/verify  | managed  | 4   | 1       |
+| 3   | Add rate-limit middleware   | managed  | 3   | —       |
+| 4   | Wire auth + rate-limit      | managed  | 3   | 2,3     |
 
 Wave A: 1, 3 (parallel — disjoint files). Wave B: 2 (after 1). Wave C: 4.
 Confirm before `task_create`?

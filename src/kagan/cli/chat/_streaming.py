@@ -185,7 +185,7 @@ class MarkdownStreamingRegion:
         self._live_state = None
         with self._lock:
             self._end_thought()
-            tail = self._buffer[self._committed_len:]
+            tail = self._buffer[self._committed_len :]
             self._buffer = ""
             self._committed_len = 0
             printed = self._has_printed_anything
@@ -210,7 +210,7 @@ class MarkdownStreamingRegion:
     @property
     def is_active(self) -> bool:
         with self._lock:
-            return bool(self._buffer[self._committed_len:])
+            return bool(self._buffer[self._committed_len :])
 
     # ------------------------------------------------------------------
     # Internal
@@ -257,7 +257,7 @@ class MarkdownStreamingRegion:
         # Only check for committed boundary when a newline is present
         # (block boundaries require at least one newline).
         if "\n" in text:
-            pending = self._buffer[self._committed_len:]
+            pending = self._buffer[self._committed_len :]
             boundary = _find_committed_boundary(pending)
             if boundary is not None:
                 committed = pending[:boundary]
@@ -266,4 +266,4 @@ class MarkdownStreamingRegion:
                     self._console.file.flush()
                 self._committed_len += boundary
         if self._live_state:
-            self._live_state.set_tail(self._buffer[self._committed_len:])
+            self._live_state.set_tail(self._buffer[self._committed_len :])

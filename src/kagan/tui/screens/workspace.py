@@ -618,9 +618,7 @@ class WorkspaceScreen(Screen[None]):
         keys = {
             "focus_search": get_key_for_action(WORKSPACE_BINDINGS, "focus_search", default="/"),
             "new_session": get_key_for_action(WORKSPACE_BINDINGS, "new_session", default="n"),
-            "delete_session": get_key_for_action(
-                WORKSPACE_BINDINGS, "delete_session", default="x"
-            ),
+            "delete_session": get_key_for_action(WORKSPACE_BINDINGS, "delete_session", default="x"),
             "toggle_board": get_key_for_action(WORKSPACE_BINDINGS, "toggle_board", default="w"),
             "focus_chat": get_key_for_action(WORKSPACE_BINDINGS, "focus_chat", default="Ctrl+."),
             "switch_session": get_key_for_action(

@@ -121,6 +121,3 @@ def test_resolve_command_missing_platform_no_wildcard_returns_none() -> None:
     )
     result = spec.resolve_command("install", platform="linux")
     assert result is None
-
-
-

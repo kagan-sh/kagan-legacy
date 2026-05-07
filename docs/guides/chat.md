@@ -43,25 +43,25 @@ A rotating tip line (eight tips, 30 s cadence; advances on submit) sits beneath 
 
 When the agent requests permission to run a tool, the REPL surfaces a yellow-bordered panel with the tool name, a short preview (syntax-highlighted for shell commands, key arguments otherwise), and five options:
 
-| #   | Option                             | Effect                                                                           |
-| --- | ---------------------------------- | -------------------------------------------------------------------------------- |
-| 1   | Approve once                       | Allow this single call.                                                          |
-| 2   | Approve tool for session           | Allow every call to this tool (by name) until the REPL exits.                   |
-| 3   | Allow all for session              | Auto-approve every tool call for the rest of the session (replaces `--yolo`).   |
-| 4   | Reject                             | Deny without explanation.                                                        |
-| 5   | Reject — tell the model what to do | Deny and forward an inline feedback message back to the agent.                   |
+| #   | Option                             | Effect                                                                        |
+| --- | ---------------------------------- | ----------------------------------------------------------------------------- |
+| 1   | Approve once                       | Allow this single call.                                                       |
+| 2   | Approve tool for session           | Allow every call to this tool (by name) until the REPL exits.                 |
+| 3   | Allow all for session              | Auto-approve every tool call for the rest of the session (replaces `--yolo`). |
+| 4   | Reject                             | Deny without explanation.                                                     |
+| 5   | Reject — tell the model what to do | Deny and forward an inline feedback message back to the agent.                |
 
 Kagan's own MCP tools (`mcp__kagan*`) are auto-approved and never raise a prompt.
 
 Session-level approvals (options 2 and 3) are keyed on the tool base name, so a session approval covers the same tool called with different arguments.
 
-| Key                           | Action                                            |
-| ----------------------------- | ------------------------------------------------- |
-| ++up++ / ++down++             | Move selection                                    |
+| Key                                   | Action                                            |
+| ------------------------------------- | ------------------------------------------------- |
+| ++up++ / ++down++                     | Move selection                                    |
 | ++1++ / ++2++ / ++3++ / ++4++ / ++5++ | Jump to option and confirm                        |
-| ++enter++                     | Confirm the highlighted option                    |
-| ++ctrl+e++                    | Open the full preview in a pager (when truncated) |
-| ++esc++ / ++ctrl+c++          | Cancel (= reject)                                 |
+| ++enter++                             | Confirm the highlighted option                    |
+| ++ctrl+e++                            | Open the full preview in a pager (when truncated) |
+| ++esc++ / ++ctrl+c++                  | Cancel (= reject)                                 |
 
 Use `/approvals` to list session-granted approvals or revoke one (`/approvals revoke <name>`).
 

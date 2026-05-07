@@ -549,6 +549,50 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         return _ok(ChatAgentsResponse(backends=backends, default=default).model_dump(mode="json"))
 
 
+async def _resolve_stream_request(
+    request: Request, ctx: ServerContext, session_id: str
+) -> Response | tuple[ChatSessionView, str, str, list[Attachment] | None]:
+    """Validate + resolve a /stream request. Returns an early Response on
+    failure, or the (session, text, backend, attachments) tuple to stream."""
+    if not is_access_allowed(ctx, AccessTier.STANDARD):
+        return _err("Insufficient access tier for chat", status=403)
+    body = await request.json()
+    if not isinstance(body, dict):
+        return _err("Request body must be a JSON object", status=400)
+    text = cast("str", body.get("text", "")).strip()
+    if not text:
+        return _err("text is required", status=400)
+    agent_backend = cast("str | None", body.get("agent_backend"))
+    attachments = _parse_attachments(body)
+
+    session = await _load_session_view(ctx.client, session_id)
+    if session is None:
+        return _err("Session not found", status=404)
+    settings = await ctx.client.settings.get()
+    if agent_backend or session.agent_backend:
+        backend = agent_backend or session.agent_backend
+    else:
+        from kagan.cli.chat.agents import resolve_available_chat_backend
+
+        backend = resolve_available_chat_backend(settings)
+
+    # Pre-flight 409: cheap turn_status read keeps the early-error path fast
+    # (no need to start the SSE response just to tear it down).
+    status = ctx.client.chat.turn_status(session_id)
+    if status.active:
+        return JSONResponse(
+            TurnInProgressResponse(
+                running_since=(
+                    status.started_at.isoformat() if status.started_at is not None else None
+                ),
+                partial_chars=status.partial_chars,
+            ).model_dump(mode="json"),
+            status_code=409,
+        )
+
+    return session, text, cast("str", backend), attachments
+
+
 def _register_stream_routes(mcp: FastMCP) -> None:
     """Register chat streaming, watch, and interrupt endpoints."""
 
@@ -561,46 +605,10 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         Chunks are simultaneously broadcast to all /watch subscribers.
         """
         session_id = cast("str", request.path_params["session_id"])
-        if not is_access_allowed(ctx, AccessTier.STANDARD):
-            return _err("Insufficient access tier for chat", status=403)
-
-        body = await request.json()
-        if not isinstance(body, dict):
-            return _err("Request body must be a JSON object", status=400)
-
-        text = cast("str", body.get("text", "")).strip()
-        if not text:
-            return _err("text is required", status=400)
-        agent_backend = cast("str | None", body.get("agent_backend"))
-        attachments = _parse_attachments(body)
-
-        # Resolve session + backend up-front (mirrors the legacy
-        # ``_claim_turn_slot`` body).
-        session = await _load_session_view(ctx.client, session_id)
-        if session is None:
-            return _err("Session not found", status=404)
-        settings = await ctx.client.settings.get()
-        if agent_backend or session.agent_backend:
-            backend = agent_backend or session.agent_backend
-        else:
-            from kagan.cli.chat.agents import resolve_available_chat_backend
-
-            backend = resolve_available_chat_backend(settings)
-
-        # Pre-flight 409: cheap turn_status read keeps the early-error path
-        # fast (no need to start the SSE response just to tear it down).
-        status = ctx.client.chat.turn_status(session_id)
-        if status.active:
-            return JSONResponse(
-                TurnInProgressResponse(
-                    running_since=(
-                        status.started_at.isoformat() if status.started_at is not None else None
-                    ),
-                    partial_chars=status.partial_chars,
-                ).model_dump(mode="json"),
-                status_code=409,
-            )
-
+        resolved = await _resolve_stream_request(request, ctx, session_id)
+        if isinstance(resolved, Response):
+            return resolved
+        session, text, backend, attachments = resolved
         return StreamingResponse(
             _sse_stream(ctx, session_id, session, text, backend, attachments),
             media_type="text/event-stream",

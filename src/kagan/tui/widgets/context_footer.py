@@ -1,4 +1,3 @@
-
 from textual.binding import BindingType
 from textual.containers import Horizontal
 from textual.reactive import reactive

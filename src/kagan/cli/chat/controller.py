@@ -76,6 +76,7 @@ from kagan.cli.chat.repl import (
     _find_git_root,
     _get_prompt_session,
     _release_prompt_session,
+    build_live_footer,
     rotate_tip_on_submit,
     searchable_picker,
     supports_interactive_picker,
@@ -714,7 +715,7 @@ class ChatController:
         _console.print()
         _console.print(f"[bold]You:[/bold] {text}")
 
-        live_state = _TurnLiveState()
+        live_state = _TurnLiveState(footer=build_live_footer)
         self._permission_ui.reset_batch_queue()
 
         interrupted = False

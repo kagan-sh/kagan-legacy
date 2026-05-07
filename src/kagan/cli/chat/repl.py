@@ -20,7 +20,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 from rich import box
-from rich.console import Console, Group
+from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
@@ -642,6 +642,8 @@ def _format_agent_mode(remaining_cols: int) -> str:
 
 
 def _bottom_toolbar() -> FormattedText:
+    if _TOOLBAR_STATE.is_streaming:
+        return FormattedText([])
     _TIP_ROTATOR.maybe_rotate()
     cols = shutil.get_terminal_size().columns
 
@@ -660,6 +662,24 @@ def _bottom_toolbar() -> FormattedText:
             ),
         ]
     )
+
+
+def build_live_footer() -> RenderableType | None:
+    if not _TOOLBAR_STATE.is_streaming:
+        return None
+    _TIP_ROTATOR.maybe_rotate()
+    cols = shutil.get_terminal_size().columns
+    status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
+    if _supports_truecolor_terminal():
+        sep_style = f"color({_REPL_COLORS['separator']})"
+        line_style = f"color({_REPL_COLORS['text_soft']})"
+    else:
+        sep_style = "dim"
+        line_style = "dim"
+    sep = Text("─" * max(cols, 1), style=sep_style)
+    status = Text(_compose_toolbar_line(status_left, status_right, cols), style=line_style)
+    tip = Text(_compose_toolbar_line(tip_left, tip_right, cols), style=line_style)
+    return Group(sep, status, tip)
 
 
 def _toolbar_status_segments() -> tuple[str, str, str, str]:

@@ -15,6 +15,8 @@ from rich.text import Text
 from kagan.core.chat._turn_display import TurnPhaseTracker
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from rich.console import Console, RenderableType
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
@@ -110,10 +112,11 @@ class _TurnLiveState:
     blocks are flushed above the Live region as formatted Markdown).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, footer: Callable[[], RenderableType | None] | None = None) -> None:
         self._tracker = TurnPhaseTracker()
         self._spinner = Spinner("dots", "")
         self._tail = ""
+        self._footer = footer
 
     def set_phase(self, phase: str) -> None:
         self._tracker.set_phase(phase)
@@ -127,11 +130,20 @@ class _TurnLiveState:
     def __rich__(self) -> RenderableType:
         if self._tracker._phase == "thinking":
             self._spinner.text = Text(self._tracker.thinking_label(), style="italic grey50")
-            return self._spinner
-        self._spinner.text = Text(self._tracker.composing_label(), style="grey50")
-        if not self._tail.strip():
-            return self._spinner
-        return Group(self._spinner, Text(self._tail, style="dim"))
+            spinner_content: RenderableType = self._spinner
+        else:
+            self._spinner.text = Text(self._tracker.composing_label(), style="grey50")
+            if not self._tail.strip():
+                spinner_content = self._spinner
+            else:
+                spinner_content = Group(self._spinner, Text(self._tail, style="dim"))
+
+        if self._footer is not None:
+            footer_renderable = self._footer()
+            if footer_renderable is not None:
+                return Group(spinner_content, footer_renderable, Text(""))
+            return Group(spinner_content, Text(""))
+        return spinner_content
 
 
 class MarkdownStreamingRegion:

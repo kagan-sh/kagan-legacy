@@ -58,6 +58,8 @@ class SlashAction(Enum):
     SWITCH_REPO = "switch_repo"
     SHOW_REPO = "show_repo"
     SHOW_APPROVALS = "show_approvals"
+    ATTACH_AGENT = "attach_agent"
+    DETACH_AGENT = "detach_agent"
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,8 +354,50 @@ def _handle_flow(
     return SlashCommandOutcome(handled=True, info_lines=tuple(lines), action=SlashAction.SHOW_INFO)
 
 
+def _handle_attach(
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    """Handle /attach <task-id|session-id>.
+
+    Accepts an 8-char prefix or a full UUID.  The caller (controller) performs
+    the actual resolution via client.resolve_active_session / client.attach_chat.
+    """
+    target = invocation.arg.strip()
+    if not target:
+        return SlashCommandOutcome(
+            handled=True,
+            action=SlashAction.ATTACH_AGENT,
+            error_lines=("Usage: /attach <task-id|session-id>",),
+        )
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.ATTACH_AGENT,
+        data=target,
+    )
+
+
+def _handle_detach(
+    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    """Handle /detach — return to orchestrator mode."""
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.DETACH_AGENT,
+    )
+
+
 def _build_slash_command_registry() -> SlashCommandRegistry:
     registry = SlashCommandRegistry()
+    registry.register(
+        name="attach",
+        description="Attach to a running agent: /attach <task-id|session-id>",
+        handler=_handle_attach,
+    )
+    registry.register(
+        name="detach",
+        description="Detach from agent, return to orchestrator",
+        handler=_handle_detach,
+    )
     registry.register(
         name="help",
         description="Show available slash commands",

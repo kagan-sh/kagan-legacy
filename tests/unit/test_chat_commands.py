@@ -166,8 +166,10 @@ def test_slash_command_registry_is_canonical() -> None:
         "agents",
         "analytics",
         "approvals",
+        "attach",
         "clear",
         "delete",
+        "detach",
         "exit",
         "flow",
         "help",
@@ -182,6 +184,8 @@ def test_slash_command_registry_is_canonical() -> None:
     assert SLASH_COMMAND_REGISTRY.get("flow") is not None
     assert SLASH_COMMAND_REGISTRY.get("sessions") is not None
     assert SLASH_COMMAND_REGISTRY.get("tool") is not None
+    assert SLASH_COMMAND_REGISTRY.get("attach") is not None
+    assert SLASH_COMMAND_REGISTRY.get("detach") is not None
     assert SLASH_COMMAND_REGISTRY.get("ghost") is None
 
 
@@ -900,3 +904,90 @@ async def test_handle_slash_help_prints_structured_help_documentation(monkeypatc
     assert "/help" in output
     assert "/quit" in output
     assert "docs.kagan.sh" in output
+
+
+# ---------------------------------------------------------------------------
+# /attach and /detach parsing tests
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_slash_input_attach_with_id_sets_attach_action() -> None:
+    """/attach <id> resolves to ATTACH_AGENT action with data=<id>."""
+    result = resolve_slash_input(
+        "/attach abc12345",
+        session_label="Orchestrator",
+        session_key="orchestrator",
+        runtime_session_id=None,
+        current_backend="claude-code",
+        available_backends=["claude-code"],
+    )
+    assert result.handled is True
+    assert result.action.name == "ATTACH_AGENT"
+    assert result.data == "abc12345"
+    assert result.error_lines == ()
+
+
+def test_resolve_slash_input_attach_without_arg_errors() -> None:
+    """/attach without an argument returns an error, REPL state unchanged."""
+    result = resolve_slash_input(
+        "/attach",
+        session_label="Orchestrator",
+        session_key="orchestrator",
+        runtime_session_id=None,
+        current_backend="claude-code",
+        available_backends=["claude-code"],
+    )
+    assert result.handled is True
+    assert result.action.name == "ATTACH_AGENT"
+    assert any("Usage" in line for line in result.error_lines)
+    assert result.data is None
+
+
+def test_resolve_slash_input_detach_sets_detach_action() -> None:
+    """/detach resolves to DETACH_AGENT action."""
+    result = resolve_slash_input(
+        "/detach",
+        session_label="Orchestrator",
+        session_key="orchestrator",
+        runtime_session_id=None,
+        current_backend="claude-code",
+        available_backends=["claude-code"],
+    )
+    assert result.handled is True
+    assert result.action.name == "DETACH_AGENT"
+    assert result.error_lines == ()
+
+
+def test_slash_command_registry_includes_attach_and_detach() -> None:
+    """attach and detach must be in the canonical registry."""
+    specs = SLASH_COMMAND_REGISTRY.specs()
+    names = [spec.name for spec in specs]
+    assert "attach" in names
+    assert "detach" in names
+
+
+def test_resolve_slash_input_attach_full_uuid_sets_data() -> None:
+    """/attach accepts a full UUID-style id."""
+    full_id = "550e8400-e29b-41d4-a716-446655440000"
+    result = resolve_slash_input(
+        f"/attach {full_id}",
+        session_label="Orchestrator",
+        session_key="orchestrator",
+        runtime_session_id=None,
+        current_backend="claude-code",
+        available_backends=["claude-code"],
+    )
+    assert result.handled is True
+    assert result.data == full_id
+    assert result.error_lines == ()
+
+
+def test_slash_command_registry_canonical_list_includes_attach_detach() -> None:
+    """Canonical registry list includes attach and detach in alphabetical order."""
+    specs = SLASH_COMMAND_REGISTRY.specs()
+    names = [spec.name for spec in specs]
+    # Both are present
+    assert "attach" in names
+    assert "detach" in names
+    # attach comes before detach alphabetically
+    assert names.index("attach") < names.index("detach")

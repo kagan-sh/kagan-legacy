@@ -185,3 +185,150 @@ async def test_attach_chat_switches_session_id_on_reattach(client: KaganCore) ->
     assert row is not None
     assert row.attached_session_id == s2
     assert row.attached_role == "reviewer"
+
+
+# ---------------------------------------------------------------------------
+# Slash-command behavioral tests: /attach and /detach through ChatController
+# ---------------------------------------------------------------------------
+
+
+async def test_handle_slash_attach_resolves_task_id_and_switches_transcript(
+    client: KaganCore, monkeypatch
+) -> None:
+    """/attach <task-id> resolves to the active session and prints a breadcrumb."""
+    project_id = client.active_project_id
+    assert project_id is not None
+
+    task_id = await _seed_task(client.engine, project_id, title="Attach test task")
+    session_id = await _seed_session(client.engine, task_id, role="worker")
+
+    chat = await client.chat_sessions.create(source="repl", label="Orchestrator")
+
+    from typing import Any, cast
+
+    from kagan.cli.chat.controller import ChatController
+
+    lines: list[str] = []
+
+    def _capture_print(*args, **kwargs) -> None:
+        del kwargs
+        if args:
+            lines.append(str(args[0]))
+
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    controller._chat_session_id = chat.id
+
+    should_exit = await controller._handle_slash(f"/attach {task_id}")
+
+    assert should_exit is False
+    # A breadcrumb line was printed
+    assert any("Attached" in line for line in lines)
+    # The chat row now has attached_session_id set
+    row = await _get_chat_row(client.engine, chat.id)
+    assert row is not None
+    assert row.attached_session_id == session_id
+
+
+async def test_handle_slash_detach_returns_to_orchestrator(client: KaganCore, monkeypatch) -> None:
+    """/detach clears the attached session and prints 'Detached → Orchestrator'."""
+    project_id = client.active_project_id
+    assert project_id is not None
+
+    task_id = await _seed_task(client.engine, project_id)
+    session_id = await _seed_session(client.engine, task_id, role="worker")
+    chat = await client.chat_sessions.create(source="repl", label="Orchestrator")
+
+    # Pre-attach
+    await client.attach_chat(chat.id, session_id, agent_role="worker")
+
+    from typing import Any, cast
+
+    from kagan.cli.chat.controller import ChatController
+
+    lines: list[str] = []
+
+    def _capture_print(*args, **kwargs) -> None:
+        del kwargs
+        if args:
+            lines.append(str(args[0]))
+
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    controller._chat_session_id = chat.id
+
+    should_exit = await controller._handle_slash("/detach")
+
+    assert should_exit is False
+    assert any("Orchestrator" in line for line in lines)
+    row = await _get_chat_row(client.engine, chat.id)
+    assert row is not None
+    assert row.attached_session_id is None
+
+
+async def test_attach_state_persists_across_repl_restart_via_command(
+    db_path,
+) -> None:
+    """Attach state written by _handle_slash /attach survives client close/reopen."""
+    from typing import Any, cast
+
+    from kagan.cli.chat.controller import ChatController
+
+    async with KaganCore(db_path=db_path) as c1:
+        project = await c1.projects.create("Persist2 Project")
+        await c1.projects.set_active(project.id)
+
+        task_id = await _seed_task(c1.engine, project.id, title="Persist task")
+        session_id = await _seed_session(c1.engine, task_id, role="worker")
+        chat = await c1.chat_sessions.create(source="repl", label="Orchestrator")
+
+        lines: list[str] = []
+
+        def _noop_print(*args, **kwargs) -> None:
+            del kwargs
+            if args:
+                lines.append(str(args[0]))
+
+        import unittest.mock as mock
+
+        with mock.patch("kagan.cli.chat.repl._console.print", _noop_print):
+            controller = ChatController(cast("Any", c1), agent_backend="claude-code")
+            controller._chat_session_id = chat.id
+            await controller._handle_slash(f"/attach {task_id}")
+
+    # Re-open — attach_session_id must survive
+    async with KaganCore(db_path=db_path) as c2:
+        row = await _get_chat_row(c2.engine, chat.id)
+        assert row is not None
+        assert row.attached_session_id == session_id
+
+
+async def test_handle_slash_attach_unknown_id_prints_error(client: KaganCore, monkeypatch) -> None:
+    """/attach with an unknown id prints an error and leaves state unchanged."""
+    from typing import Any, cast
+
+    from kagan.cli.chat.controller import ChatController
+
+    chat = await client.chat_sessions.create(source="repl", label="Orchestrator")
+
+    lines: list[str] = []
+
+    def _capture_print(*args, **kwargs) -> None:
+        del kwargs
+        if args:
+            lines.append(str(args[0]))
+
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    controller._chat_session_id = chat.id
+    original_session_id = controller._chat_session_id
+
+    should_exit = await controller._handle_slash("/attach deadbeef")
+
+    assert should_exit is False
+    assert any("Unknown" in line or "not found" in line.lower() for line in lines)
+    # REPL state unchanged
+    assert controller._chat_session_id == original_session_id

@@ -1108,6 +1108,11 @@ class ChatController:
                 )
             case SlashAction.SHOW_APPROVALS:
                 self._show_approvals(result.data or "")
+            case SlashAction.ATTACH_AGENT:
+                if result.data:
+                    await self._attach_agent(result.data)
+            case SlashAction.DETACH_AGENT:
+                await self._detach_agent()
             case SlashAction.CLOSE:
                 return True
             case _:
@@ -1202,3 +1207,86 @@ class ChatController:
         self._restart_requested = True
         await self.client.settings.set({"default_agent_backend": new_backend})
         return True
+
+    async def _attach_agent(self, target_id: str) -> None:
+        """Resolve *target_id* (task-id or session-id) and attach the chat session.
+
+        Heuristic: try as a task-id first via ``resolve_active_session``.  If
+        that yields no result, treat the id as a bare session-id and call
+        ``attach_chat`` directly.  On any lookup failure a clear error is
+        printed and the REPL state is not modified.
+        """
+        if self._chat_session_id is None:
+            _console.print("[red]No active chat session — cannot attach.[/red]")
+            return
+
+        # Try resolving as task-id.
+        session_id: str | None = None
+        agent_role: str | None = None
+        try:
+            tasks = await self.client.tasks.list()
+            matched_task = next(
+                (t for t in tasks if t.id == target_id or t.id.startswith(target_id)),
+                None,
+            )
+            if matched_task is not None:
+                resolved = await self.client.resolve_active_session(matched_task.id)
+                if resolved is not None:
+                    session_id = resolved.id
+                    agent_role = getattr(resolved, "agent_role", None)
+        except Exception:
+            logger.opt(exception=True).warning(
+                "_attach_agent: task lookup failed for {}", target_id
+            )
+
+        # Fall back to treating target_id as a raw session-id.
+        if session_id is None:
+            # Check running agents to see if this session exists.
+            try:
+                project_id = self.client.active_project_id
+                rows = await self.client.list_running_agents(project_id=project_id)
+                matched_row = next(
+                    (
+                        r
+                        for r in rows
+                        if r.session_id == target_id or r.session_id.startswith(target_id)
+                    ),
+                    None,
+                )
+                if matched_row is not None:
+                    session_id = matched_row.session_id
+                    agent_role = matched_row.agent_role
+            except Exception:
+                logger.opt(exception=True).warning(
+                    "_attach_agent: session lookup failed for {}", target_id
+                )
+
+        if session_id is None:
+            _console.print(f"[red]Unknown task or session: {target_id}[/red]")
+            return
+
+        try:
+            await self.client.attach_chat(self._chat_session_id, session_id, agent_role=agent_role)
+        except Exception as exc:
+            logger.opt(exception=True).warning("_attach_agent: attach_chat failed")
+            _console.print(f"[red]Attach failed: {exc}[/red]")
+            return
+
+        role_label = (agent_role or "worker").capitalize()
+        _console.print(f"[green]Attached:[/green] {role_label} · {session_id[:8]}")
+        _console.print("[dim]Attached to agent: read-only — /detach to return.[/dim]")
+
+    async def _detach_agent(self) -> None:
+        """Detach the current chat session from any agent, returning to orchestrator."""
+        if self._chat_session_id is None:
+            _console.print("[dim]No active chat session.[/dim]")
+            return
+
+        try:
+            await self.client.attach_chat(self._chat_session_id, None)
+        except Exception as exc:
+            logger.opt(exception=True).warning("_detach_agent: attach_chat(None) failed")
+            _console.print(f"[red]Detach failed: {exc}[/red]")
+            return
+
+        _console.print("[green]Detached → Orchestrator[/green]")

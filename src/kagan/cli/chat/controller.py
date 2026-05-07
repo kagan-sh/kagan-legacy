@@ -933,7 +933,7 @@ class ChatController:
                 prompt_task: asyncio.Task[str] = asyncio.create_task(
                     session.prompt_async(
                         _build_prompt_message,
-                        placeholder=_build_prompt_placeholder(),
+                        placeholder=_build_prompt_placeholder,
                     ),
                     name="chat-repl-prompt",
                 )

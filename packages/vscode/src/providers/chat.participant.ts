@@ -8,7 +8,8 @@ import type { SSEStream } from "../api/sse.js";
 import { SSE_TYPE, CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
 import { formatToolName, renderEvent, type RenderableEvent } from "@kagan/shared-api-client";
 import type { ChatStreamEvent, ChatWatchEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "@kagan/shared-api-client";
-import { pickReusableChatSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
+import { parseAttachPrompt, pickReusableChatSessionId, resolveAgentSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
+import { attachState } from "./attach-state.js";
 
 // ── Participant state ──────────────────────────────────────────────────────
 // Collected in a single class so deactivate() can reset it cleanly via
@@ -18,6 +19,8 @@ class ChatParticipantState implements vscode.Disposable {
   activeChatSessionId: string | null = null;
   sessionCreating: Promise<string> | null = null;
   watchingTaskId: string | null = null;
+  /** Session currently attached via /attach or tree-view click. */
+  attachedSessionId: string | null = null;
 
   private watchUnsubscribe: (() => void) | null = null;
   private watchedSessionId: string | null = null;
@@ -79,6 +82,7 @@ class ChatParticipantState implements vscode.Disposable {
     this.activeChatSessionId = null;
     this.sessionCreating = null;
     this.watchingTaskId = null;
+    this.attachedSessionId = null;
   }
 
   dispose(): void {
@@ -103,22 +107,50 @@ export function registerChatParticipant(
 
   participant.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "kagan.svg");
 
-  // Command to open chat pre-filled for a specific task.
-  // Accepts either a raw string or a board tree item { kind: "task", task: WireTask }.
+  // Command to open chat pre-filled for a specific task or session.
+  // Accepts either a raw string or a structured object { kind, ... }.
   const openChat = vscode.commands.registerCommand("kagan.chat.open", (arg?: unknown) => {
     let query = "@kagan";
     if (typeof arg === "string") {
       query = `@kagan /watch ${arg}`;
     } else if (typeof arg === "object" && arg !== null && "kind" in arg) {
-      const item = arg as { kind: string; task?: { id?: string; title?: string } };
-      if (item.kind === "task" && (item.task?.id || item.task?.title)) {
+      const item = arg as {
+        kind: string;
+        task?: { id?: string; title?: string };
+        sessionId?: string;
+        taskTitle?: string;
+      };
+      if (item.kind === "attach" && item.sessionId) {
+        attachState.setGlobal({ sessionId: item.sessionId, taskTitle: item.taskTitle ?? "" });
+        query = `@kagan /attach ${item.sessionId}`;
+      } else if (item.kind === "task" && (item.task?.id || item.task?.title)) {
         query = `@kagan /watch ${item.task.id ?? item.task.title}`;
       }
     }
     vscode.commands.executeCommand("workbench.action.chat.open", { query });
   });
 
-  context.subscriptions.push(participant, openChat, state);
+  // kagan.attachToSession — invoked by tree-view node clicks and the command palette.
+  const attachToSession = vscode.commands.registerCommand(
+    "kagan.attachToSession",
+    (sessionId: string, taskTitle?: string) => {
+      attachState.setGlobal({ sessionId, taskTitle: taskTitle ?? "" });
+      vscode.commands.executeCommand("workbench.action.chat.open", {
+        query: `@kagan /attach ${sessionId}`,
+      });
+    },
+  );
+
+  // kagan.detachFromSession — command palette + tree-node context menu.
+  const detachFromSession = vscode.commands.registerCommand("kagan.detachFromSession", () => {
+    attachState.clearGlobal();
+    state.attachedSessionId = null;
+    vscode.commands.executeCommand("workbench.action.chat.open", {
+      query: `@kagan /detach`,
+    });
+  });
+
+  context.subscriptions.push(participant, openChat, attachToSession, detachFromSession, state);
 }
 
 // ── Request handler ────────────────────────────────────────────────────────
@@ -138,6 +170,14 @@ async function handleRequest(
   );
   state.activeChatSessionId = next.activeChatSessionId;
   state.watchingTaskId = next.watchingTaskId;
+  // Preserve attachedSessionId across turns — detach is explicit only.
+  // But on a brand-new conversation, also check global attach state.
+  if (!state.attachedSessionId) {
+    const global = attachState.get("global");
+    if (global) {
+      state.attachedSessionId = global.sessionId;
+    }
+  }
 
   switch (request.command) {
     case "status":
@@ -146,7 +186,18 @@ async function handleRequest(
     case "watch":
       await handleWatch(state, client, sse, request.prompt, stream, token);
       return;
+    case "attach":
+      await handleAttach(state, client, request.prompt, stream, token);
+      return;
+    case "detach":
+      await handleDetach(state, stream);
+      return;
     default:
+      // If attached to a session, stream the session tail
+      if (state.attachedSessionId) {
+        await handleAttachedTurn(state, client, stream, token);
+        return;
+      }
       // If watching a task, send follow-up instead of orchestrator chat
       if (state.watchingTaskId && request.prompt.trim()) {
         await handleFollowUp(state, client, state.watchingTaskId, request.prompt.trim(), stream);
@@ -321,6 +372,195 @@ async function getOrCreateSession(
   });
 
   return state.sessionCreating;
+}
+
+// ── /attach ────────────────────────────────────────────────────────────────
+
+/**
+ * Handle `/attach <id>`.
+ *
+ * Resolution order:
+ *  1. Parse the prompt as a UUID or 8-char prefix.
+ *  2. Look up running agents to resolve task-id → session-id.
+ *  3. If the token is already a session-id-shaped string, try it directly via
+ *     getSessionReplay to verify the session exists.
+ *  4. On success: store session in state, render replay tail, button to detach.
+ *  5. On failure: render an error message.
+ */
+async function handleAttach(
+  state: ChatParticipantState,
+  client: KaganClient,
+  prompt: string,
+  stream: vscode.ChatResponseStream,
+  token: vscode.CancellationToken,
+): Promise<void> {
+  const parsed = parseAttachPrompt(prompt);
+  if (!parsed) {
+    stream.markdown(`**Unknown task or session:** \`${prompt.trim() || "(empty)"}\`\n\nProvide a full session/task UUID or an 8-character prefix.\n`);
+    stream.button({ command: "kagan.detachFromSession", title: "Back to orchestrator" });
+    return;
+  }
+
+  stream.progress("Resolving session...");
+
+  let resolvedSessionId: string | null = null;
+  let sessionTitle = parsed.id;
+
+  try {
+    const running = await client.getRunningAgents();
+    const found = resolveAgentSessionId(parsed.id, running.agents);
+    if (found) {
+      resolvedSessionId = found;
+      const row = running.agents.find((a) => a.session_id === found);
+      if (row) sessionTitle = row.task_title;
+    }
+  } catch {
+    // Best-effort — fall through to direct session lookup
+  }
+
+  if (!resolvedSessionId) {
+    // Attempt to verify the id directly as a session id
+    try {
+      await client.getSessionReplay(parsed.id, { limit: 1 });
+      resolvedSessionId = parsed.id;
+    } catch {
+      stream.markdown(`**Unknown task or session:** \`${parsed.id}\`\n`);
+      return;
+    }
+  }
+
+  state.attachedSessionId = resolvedSessionId;
+  attachState.setGlobal({ sessionId: resolvedSessionId, taskTitle: sessionTitle });
+
+  stream.markdown(`**Attached to session** \`${resolvedSessionId.slice(0, 8)}\` — ${sessionTitle}\n\n`);
+
+  // Fetch replay tail (last 200 events)
+  stream.progress("Fetching session replay...");
+  try {
+    const replay = await client.getSessionReplay(resolvedSessionId, {
+      limit: 200,
+      direction: "backward",
+    });
+    if (replay.events.length > 0) {
+      const wireEvents: WireEvent[] = replay.events.map((e) => ({
+        id: e.id,
+        type: e.event_type,
+        session_id: e.session_id ?? resolvedSessionId,
+        payload: e.payload ?? {},
+        created_at: e.created_at,
+        task_id: "",
+      }));
+      renderHistory(wireEvents, stream);
+      stream.markdown("\n\n---\n\n");
+    } else {
+      stream.markdown("*No events in replay yet.*\n\n");
+    }
+  } catch {
+    stream.markdown("*Could not load session replay.*\n\n");
+  }
+
+  stream.button({ command: "kagan.detachFromSession", title: "Detach" });
+
+  // Subscribe to live tail
+  if (!token.isCancellationRequested) {
+    stream.progress("Live...");
+    await streamSessionLive(resolvedSessionId, client, stream, token);
+  }
+}
+
+// ── /detach ─────────────────────────────────────────────────────────────────
+
+async function handleDetach(
+  state: ChatParticipantState,
+  stream: vscode.ChatResponseStream,
+): Promise<void> {
+  if (!state.attachedSessionId) {
+    stream.markdown("Not currently attached to any session.\n");
+    return;
+  }
+  const prev = state.attachedSessionId;
+  state.attachedSessionId = null;
+  attachState.clearGlobal();
+  stream.markdown(`Detached from session \`${prev.slice(0, 8)}\`. Back in orchestrator mode.\n`);
+  stream.button({ command: "kagan.board.refresh", title: "Refresh Board" });
+}
+
+// ── attached turn (default when state.attachedSessionId is set) ────────────
+
+async function handleAttachedTurn(
+  state: ChatParticipantState,
+  client: KaganClient,
+  stream: vscode.ChatResponseStream,
+  token: vscode.CancellationToken,
+): Promise<void> {
+  const sessionId = state.attachedSessionId!;
+  stream.markdown(`*Attached to \`${sessionId.slice(0, 8)}\` — streaming live tail.*\n\n`);
+  stream.button({ command: "kagan.detachFromSession", title: "Detach" });
+  await streamSessionLive(sessionId, client, stream, token);
+}
+
+// ── Session live tail via SSE ──────────────────────────────────────────────
+
+/**
+ * Stream live events from a worker/reviewer session via
+ * GET /api/v1/sessions/{id}/events?since=.
+ *
+ * Currently implemented via getSessionReplay polling (SSE for per-session
+ * events is a future work item — the global SSE doesn't expose per-session
+ * events in a way that's consumable here without filtering on session_id).
+ * The poll resolves when the session ends or the cancellation token fires.
+ */
+async function streamSessionLive(
+  sessionId: string,
+  client: KaganClient,
+  stream: vscode.ChatResponseStream,
+  token: vscode.CancellationToken,
+): Promise<void> {
+  // Poll for new events every 3 s until session ends or cancelled.
+  let cursor: string | undefined;
+  let sessionActive = true;
+
+  while (!token.isCancellationRequested && sessionActive) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 3_000));
+    if (token.isCancellationRequested) break;
+
+    try {
+      const page = await client.getSessionReplay(sessionId, {
+        cursor,
+        limit: 50,
+        direction: "forward",
+      });
+
+      if (page.events.length > 0) {
+        cursor = page.events[page.events.length - 1]?.id;
+        const wireEvents: WireEvent[] = page.events.map((e) => ({
+          id: e.id,
+          type: e.event_type,
+          session_id: e.session_id ?? sessionId,
+          payload: e.payload ?? {},
+          created_at: e.created_at,
+          task_id: "",
+        }));
+        renderHistory(wireEvents, stream);
+      }
+
+      // Check if session ended
+      if (!page.has_more && page.events.some((e) => isTerminalEvent(e.event_type))) {
+        sessionActive = false;
+      }
+    } catch {
+      // Server unreachable — stop polling
+      sessionActive = false;
+    }
+  }
+}
+
+function isTerminalEvent(eventType: string): boolean {
+  return (
+    eventType === "AGENT_COMPLETED" ||
+    eventType === "AGENT_FAILED" ||
+    eventType === "AGENT_CANCELLED"
+  );
 }
 
 // ── /watch ─────────────────────────────────────────────────────────────────

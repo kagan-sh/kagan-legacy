@@ -15,6 +15,7 @@ import {
 import { ReviewCommentProvider, ReviewDocumentProvider } from "./providers/review.comments.js";
 import { AgentTerminalProvider } from "./providers/tasks.terminal.js";
 import { registerChatParticipant } from "./providers/chat.participant.js";
+import { RunningAgentsTreeProvider } from "./providers/running-agents.tree.js";
 import { DoctorStatusProvider } from "./providers/doctor.status.js";
 import { MentionCompletionProvider } from "./providers/mention-completion-provider.js";
 import { MentionLinkProvider } from "./providers/mention-link-provider.js";
@@ -53,9 +54,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const serverSupervisor = new LocalServerSupervisor(serverLog);
   activeServerSupervisor = serverSupervisor;
 
+  const runningAgentsProvider = new RunningAgentsTreeProvider(client);
+
   const boardView = vscode.window.createTreeView("kagan.board", {
     treeDataProvider: boardProvider,
     showCollapseAll: true,
+  });
+
+  const agentsView = vscode.window.createTreeView("kagan.agents", {
+    treeDataProvider: runningAgentsProvider,
+    showCollapseAll: false,
   });
 
   const diffRegistration = vscode.workspace.registerTextDocumentContentProvider(
@@ -141,6 +149,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     if (message.type === SSE_TYPE.TASK_UPDATED) {
       void refreshCounts(client, statusBar);
+      runningAgentsProvider.refresh();
     }
   });
 
@@ -183,6 +192,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     boardView,
+    agentsView,
+    runningAgentsProvider,
     diffRegistration,
     reviewRegistration,
     openInstallDocsCommand,

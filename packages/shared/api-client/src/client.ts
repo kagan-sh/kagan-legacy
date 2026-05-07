@@ -32,8 +32,10 @@ import type {
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
+  RunningAgentsResponse,
   RunTaskInput,
   SearchMentionsInput,
+  SessionReplayPage,
   SessionTimelineEntry,
   SettingsResponse,
   TaskCommitsResponse,
@@ -822,6 +824,32 @@ export class KaganApiClient {
    */
   async verifyApi(): Promise<void> {
     await this.getSettings();
+  }
+
+  // -- Running agents -------------------------------------------------------
+
+  /** GET /api/v1/agents/running?project_id=… */
+  getRunningAgents(projectId?: string): Promise<RunningAgentsResponse> {
+    const params = new URLSearchParams();
+    if (projectId) params.set("project_id", projectId);
+    return this.get<RunningAgentsResponse>(`/api/v1/agents/running${withQuery(params)}`);
+  }
+
+  // -- Session replay -------------------------------------------------------
+
+  /**
+   * GET /api/v1/sessions/:sessionId/replay
+   * Cursor-based pagination for agent session events.
+   */
+  getSessionReplay(
+    sessionId: string,
+    opts: { cursor?: string; limit?: number; direction?: "forward" | "backward" } = {},
+  ): Promise<SessionReplayPage> {
+    const params = new URLSearchParams();
+    if (opts.cursor) params.set("cursor", opts.cursor);
+    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts.direction) params.set("direction", opts.direction);
+    return this.get<SessionReplayPage>(`/api/v1/sessions/${sessionId}/replay${withQuery(params)}`);
   }
 }
 

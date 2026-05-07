@@ -57,6 +57,14 @@
           {
             "name": "status",
             "description": "Show board status and running tasks"
+          },
+          {
+            "name": "attach",
+            "description": "Attach chat panel to a running worker or reviewer session"
+          },
+          {
+            "name": "detach",
+            "description": "Return chat panel to orchestrator mode"
           }
         ]
       }
@@ -75,6 +83,10 @@
         {
           "id": "kagan.board",
           "name": "Board"
+        },
+        {
+          "id": "kagan.agents",
+          "name": "Running Agents"
         }
       ]
     },
@@ -213,6 +225,18 @@
         "title": "Install Kagan CLI",
         "category": "Kagan",
         "icon": "$(question)"
+      },
+      {
+        "command": "kagan.attachToSession",
+        "title": "Attach Chat to Session",
+        "category": "Kagan",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "kagan.detachFromSession",
+        "title": "Detach from Session",
+        "category": "Kagan",
+        "icon": "$(debug-disconnect)"
       }
     ],
     "menus": {
@@ -293,6 +317,16 @@
           "command": "kagan.terminal.attach",
           "when": "view == kagan.board && viewItem == task.IN_PROGRESS",
           "group": "3_observe"
+        },
+        {
+          "command": "kagan.attachToSession",
+          "when": "view == kagan.agents && viewItem =~ /^runningAgent\\./",
+          "group": "inline@1"
+        },
+        {
+          "command": "kagan.detachFromSession",
+          "when": "view == kagan.agents && viewItem =~ /^runningAgent\\./",
+          "group": "1_session"
         }
       ],
       "commandPalette": [
@@ -353,6 +387,14 @@
         },
         {
           "command": "kagan.openInstallDocs"
+        },
+        {
+          "command": "kagan.attachToSession",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.detachFromSession",
+          "when": "kagan.connected"
         }
       ]
     },

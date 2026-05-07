@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { WireChatSessionSummary } from "@kagan/shared-api-client";
+import type { ActiveAgentRowResponse, WireChatSessionSummary } from "@kagan/shared-api-client";
 import {
   isTaskSession,
+  parseAttachPrompt,
   pickReusableChatSessionId,
+  resolveAgentSessionId,
   resetStickyChatStateIfNewConversation,
 } from "./chat.participant.helpers.js";
 
@@ -63,5 +65,99 @@ describe("chat participant helpers", () => {
     });
 
     expect(nextState).toEqual(state);
+  });
+});
+
+// ── /attach helpers ────────────────────────────────────────────────────────
+
+function makeAgent(overrides: Partial<ActiveAgentRowResponse> = {}): ActiveAgentRowResponse {
+  return {
+    task_id: "aaaa0000-bbbb-cccc-dddd-000000000001",
+    task_title: "Implement feature X",
+    task_status: "IN_PROGRESS",
+    session_id: "11110000-2222-3333-4444-555555555555",
+    agent_role: "worker",
+    agent_backend: "claude-code",
+    session_status: "RUNNING",
+    started_at: "2026-05-07T10:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("parseAttachPrompt", () => {
+  it("returns null for blank input", () => {
+    expect(parseAttachPrompt("")).toBeNull();
+    expect(parseAttachPrompt("   ")).toBeNull();
+  });
+
+  it("returns null for non-UUID tokens", () => {
+    expect(parseAttachPrompt("my-task")).toBeNull();
+    expect(parseAttachPrompt("12345")).toBeNull();
+    expect(parseAttachPrompt("implement feature x")).toBeNull();
+  });
+
+  it("parses an 8-char hex prefix as uuid-prefix", () => {
+    const result = parseAttachPrompt("aabb1111");
+    expect(result).toEqual({ id: "aabb1111", kind: "uuid-prefix" });
+  });
+
+  it("parses a full UUID as full-uuid", () => {
+    const full = "aabb1111-2222-3333-4444-555555555555";
+    const result = parseAttachPrompt(full);
+    expect(result).toEqual({ id: full, kind: "full-uuid" });
+  });
+
+  it("trims leading/trailing whitespace before parsing", () => {
+    const result = parseAttachPrompt("  aabb1111  ");
+    expect(result).toEqual({ id: "aabb1111", kind: "uuid-prefix" });
+  });
+});
+
+describe("resolveAgentSessionId", () => {
+  const agents = [
+    makeAgent({
+      task_id: "aaaa0000-bbbb-cccc-dddd-000000000001",
+      session_id: "11110000-2222-3333-4444-555555555555",
+    }),
+    makeAgent({
+      task_id: "eeee0000-ffff-0000-1111-000000000002",
+      session_id: "55550000-6666-7777-8888-000000000002",
+      agent_role: "reviewer",
+    }),
+  ];
+
+  it("resolves by exact session id", () => {
+    expect(resolveAgentSessionId("11110000-2222-3333-4444-555555555555", agents)).toBe(
+      "11110000-2222-3333-4444-555555555555",
+    );
+  });
+
+  it("resolves by session id prefix", () => {
+    expect(resolveAgentSessionId("55550000", agents)).toBe(
+      "55550000-6666-7777-8888-000000000002",
+    );
+  });
+
+  it("resolves by exact task id to session id", () => {
+    expect(resolveAgentSessionId("aaaa0000-bbbb-cccc-dddd-000000000001", agents)).toBe(
+      "11110000-2222-3333-4444-555555555555",
+    );
+  });
+
+  it("resolves by task id prefix to session id", () => {
+    expect(resolveAgentSessionId("eeee0000", agents)).toBe(
+      "55550000-6666-7777-8888-000000000002",
+    );
+  });
+
+  it("returns null when nothing matches", () => {
+    expect(resolveAgentSessionId("nonexistent", agents)).toBeNull();
+    expect(resolveAgentSessionId("zzzzzzzz", agents)).toBeNull();
+  });
+
+  it("is case-insensitive", () => {
+    expect(resolveAgentSessionId("AAAA0000-BBBB-CCCC-DDDD-000000000001", agents)).toBe(
+      "11110000-2222-3333-4444-555555555555",
+    );
   });
 });

@@ -74,15 +74,9 @@ export class RunningAgentsTreeProvider
       role === "reviewer" ? "eye" : "play",
     );
     item.command = {
-      command: "kagan.chat.open",
+      command: "kagan.attachToSession",
       title: "Attach to Agent",
-      arguments: [
-        {
-          kind: "attach",
-          sessionId: agent.session_id,
-          taskTitle: agent.task_title,
-        },
-      ],
+      arguments: [agent.session_id, agent.task_title],
     };
     return item;
   }

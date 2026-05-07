@@ -135,6 +135,7 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
                             classes="ts-detail-criteria-status",
                         )
 
+            yield Static("Press o · AI Overlay", id="ts-chat-hint", classes="ts-chat-hint")
             yield ChatPanel(id="ts-chat-overlay", classes="chat-overlay")
 
         yield TaskActionBar(id="ts-actions")
@@ -180,6 +181,12 @@ class TaskScreen(_TaskReviewMixin, _TaskStreamMixin, _TaskChatMixin, Screen[None
             self._running = True
             self.call_after_refresh(
                 lambda: self.run_worker(self.action_open_task_overlay(), exit_on_error=False)
+            )
+        elif self._task_model is not None and self._task_model.status is TaskStatus.BACKLOG:
+            from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
+
+            self.call_after_refresh(
+                lambda: self.app.push_screen(OrchestratorOverlay(task_id=self._task_id))
             )
         self._sync_stream_source_indicator()
         self._runtime_poll_timer = self.set_interval(1.0, self._schedule_runtime_refresh)

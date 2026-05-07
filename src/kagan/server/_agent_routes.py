@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 from sqlmodel import asc, desc, or_, select
 
-from kagan.core._db_helpers import _db_async, _sa_col
-from kagan.core._sessions_query import list_running_agents
+from kagan.core import db_async as _db_async
+from kagan.core import list_running_agents
+from kagan.core import sa_col as _sa_col
 from kagan.core.enums import SessionStatus
 from kagan.core.models import Session, SessionEvent
 from kagan.server._access import AccessTier

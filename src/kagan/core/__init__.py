@@ -74,6 +74,7 @@ from kagan.core._compaction import COMPACTION_THRESHOLD, ContextCompactor
 from kagan.core._db import create_db_engine, default_db_path
 from kagan.core._db_helpers import _db_async as db_async
 from kagan.core._db_helpers import _db_sync as db_sync
+from kagan.core._db_helpers import _sa_col as sa_col
 from kagan.core._environment_checks import (
     EnvCheckResult,
     collect_environment_checks,
@@ -154,6 +155,7 @@ from kagan.core._sessions import (
     list_task_sessions,
     resolve_session_binding,
 )
+from kagan.core._sessions_query import list_running_agents
 from kagan.core._settings import get_settings, set_settings
 from kagan.core._subprocess import resolve_spawn_command
 from kagan.core._task_classification import classify_task
@@ -365,6 +367,7 @@ __all__ = [
     "list_checkpoints",
     "list_projects",
     "list_repos",
+    "list_running_agents",
     "list_task_sessions",
     "load_persona_definitions",
     "merge_task",
@@ -386,6 +389,7 @@ __all__ = [
     "resolve_spawn_command",
     "resolve_task_prompt",
     "rewind_to_checkpoint",
+    "sa_col",
     "scan_text_for_injection",
     "serialize_persona_definitions",
     "set_criterion_verdict",

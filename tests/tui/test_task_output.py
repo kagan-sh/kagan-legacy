@@ -21,9 +21,15 @@ async def _open_inspector(pilot) -> None:
 
 
 async def _open_task_screen_for_selected_detached_task(pilot) -> None:
+    from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
+
     await _enter_project(pilot)
     await _open_inspector(pilot)
     await _open_task_screen(pilot)
+    # BACKLOG tasks auto-push OrchestratorOverlay; dismiss it to reach TaskScreen
+    if isinstance(pilot.app.screen, OrchestratorOverlay):
+        await pilot.press("escape")
+        await pilot.pause()
 
 
 async def _open_task_screen(pilot) -> None:
@@ -35,6 +41,7 @@ async def test_enter_on_detached_task_opens_task_screen(board_with_task: KaganDr
     from textual.widgets import TabbedContent
 
     from kagan.tui import KaganApp
+    from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
     from kagan.tui.widgets.task_inspector import TaskInspector
 
     app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
@@ -47,6 +54,10 @@ async def test_enter_on_detached_task_opens_task_screen(board_with_task: KaganDr
         assert inspector.display
         assert inspector.has_class("is-open")
         await _open_task_screen(pilot)
+        # BACKLOG tasks auto-push OrchestratorOverlay; dismiss to reach TaskScreen
+        if isinstance(app.screen, OrchestratorOverlay):
+            await pilot.press("escape")
+            await pilot.pause()
         assert app.screen.id == "task-screen"
         tabs = app.screen.query_one("#ts-tabs", TabbedContent)
         assert tabs.active == "overview"
@@ -75,6 +86,7 @@ async def test_enter_requires_open_inspector_before_task_screen(
     board_with_task: KaganDriver,
 ) -> None:
     from kagan.tui import KaganApp
+    from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
     from kagan.tui.widgets.task_inspector import TaskInspector
 
     app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
@@ -92,6 +104,10 @@ async def test_enter_requires_open_inspector_before_task_screen(
         assert inspector.is_open
 
         await _open_task_screen(pilot)
+        # BACKLOG tasks auto-push OrchestratorOverlay; dismiss it to confirm task-screen
+        if isinstance(app.screen, OrchestratorOverlay):
+            await pilot.press("escape")
+            await pilot.pause()
         assert app.screen.id == "task-screen"
 
 
@@ -100,7 +116,9 @@ async def test_escape_from_task_screen_returns_to_kanban(board_with_task: KaganD
 
     app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
+        # _open_task_screen_for_selected_detached_task already dismisses the auto-pushed overlay
         await _open_task_screen_for_selected_detached_task(pilot)
+        assert app.screen.id == "task-screen"
         await pilot.press("escape")
         await pilot.pause()
         assert app.screen.id == "kanban-screen"

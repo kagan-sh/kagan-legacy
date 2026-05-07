@@ -49,6 +49,7 @@ async def empty_board(tmp_path):
 async def test_task_screen_opens_without_app_active_task_id(board: KaganDriver) -> None:
     """TaskScreen receives task_id via constructor; no _active_task_id fallback needed."""
     from kagan.tui import KaganApp
+    from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
     from kagan.tui.screens.task_screen import TaskScreen
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
@@ -58,6 +59,10 @@ async def test_task_screen_opens_without_app_active_task_id(board: KaganDriver) 
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
+        # BACKLOG tasks auto-push OrchestratorOverlay; dismiss it to reach TaskScreen
+        if isinstance(app.screen, OrchestratorOverlay):
+            await pilot.press("escape")
+            await pilot.pause()
         assert isinstance(app.screen, TaskScreen)
         assert app.screen._task_id is not None
         assert not hasattr(app, "_active_task_id")

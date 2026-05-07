@@ -22,6 +22,7 @@ from kagan.tui.screens.doctor_modal import DoctorModal, emit_doctor_warned_telem
 from kagan.tui.screens.gateway import AttachedInstructionsModal  # noqa: F401
 from kagan.tui.screens.help import HelpModal
 from kagan.tui.screens.kanban import KanbanScreen
+from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 from kagan.tui.screens.repo_picker import RepoPickerModal
 from kagan.tui.screens.session_dashboard import SessionDashboardScreen
 from kagan.tui.screens.settings import SettingsModal
@@ -70,6 +71,7 @@ class KaganApp(App[None]):
 
     SCREENS = {
         "kanban-screen": KanbanScreen,
+        "orchestrator-overlay": OrchestratorOverlay,
         "session-dashboard-screen": SessionDashboardScreen,
         "repo-picker-modal": RepoPickerModal,
         "agent-picker-modal": AgentPickerModal,
@@ -308,6 +310,12 @@ class KaganApp(App[None]):
             result: Any = handler()
             if inspect.isawaitable(result):
                 await result
+
+    def action_open_orchestrator(self) -> None:
+        if isinstance(self.screen, OrchestratorOverlay):
+            self.screen._focus_input()
+            return
+        self.push_screen(OrchestratorOverlay())
 
     async def action_open_task_chat(self) -> None:
         handler = getattr(self.screen, "action_open_task_chat", None)

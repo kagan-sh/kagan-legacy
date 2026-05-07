@@ -22,11 +22,13 @@ __all__ = [
     "HELP_BINDINGS",
     "KANBAN_BINDINGS",
     "MESSAGE_ACTIONS_BINDINGS",
+    "ORCHESTRATOR_OVERLAY_BINDINGS",
     "PERMISSION_BINDINGS",
     "REJECTION_BINDINGS",
     "REJECTION_INPUT_BINDINGS",
     "REPO_PICKER_BINDINGS",
     "REVIEW_NO_CRITERIA_BINDINGS",
+    "RUNNING_AGENTS_BAR_BINDINGS",
     "SESSION_DASHBOARD_BINDINGS",
     "SESSION_PICKER_BINDINGS",
     "SETTINGS_BINDINGS",
@@ -58,6 +60,17 @@ APP_BINDINGS: list[BindingType] = [
     Binding("ctrl+r", "open_repo_selector", "Repos", key_display="Ctrl+R"),
     Binding("ctrl+comma", "open_settings", "Settings", key_display="Ctrl+,"),
     Binding("ctrl+q", "quit", "Quit", key_display="Ctrl+Q"),
+    Binding("o", "open_orchestrator", "AI Overlay", key_display="o"),
+    Binding("ctrl+space", "open_orchestrator", "", show=False),
+]
+
+ORCHESTRATOR_OVERLAY_BINDINGS: list[BindingType] = [
+    Binding("escape", "handle_esc", "Back / Close", priority=True),
+    Binding("ctrl+space", "handle_esc", "", show=False, priority=True),
+]
+
+RUNNING_AGENTS_BAR_BINDINGS: list[BindingType] = [
+    Binding("escape", "return_focus", "Back to input", show=False, priority=True),
 ]
 
 CHECK_ROW_BINDINGS: list[BindingType] = [

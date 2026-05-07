@@ -486,9 +486,7 @@ def _map_decision_from_approval(
       4 -> deny_feedback (or deny if feedback is empty)
     """
     slot = min(selected_index, 4)
-    if slot in (0, 2):
-        # 2 is intercepted upstream; if it ever reaches here, honour the
-        # docstring contract instead of denying the call.
+    if slot == 0:
         return _DecisionTuple(outcome="allow_once")
     if slot == 1:
         _session_approvals.grant(action_key)

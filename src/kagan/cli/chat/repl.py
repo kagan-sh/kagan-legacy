@@ -548,6 +548,8 @@ def _build_environment_summary(project_root: Path | None, *, agent_backend: str 
 
 
 def _build_prompt_placeholder() -> FormattedText:
+    if _TOOLBAR_STATE.is_streaming:
+        return FormattedText([])
     if _supports_truecolor_terminal():
         muted_style = f"fg:{_REPL_COLORS['text_muted']}"
         accent_style = f"fg:{_REPL_COLORS['accent']} bold"
@@ -716,10 +718,10 @@ def _build_prompt_message() -> FormattedText:
     if not truecolor:
         return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_FALLBACK)])
 
+    if _TOOLBAR_STATE.is_streaming:
+        return FormattedText([])
     if _TOOLBAR_STATE.plan_mode:
         return FormattedText([(f"bold {plan}", _PROMPT_GLYPH_PLAN)])
-    if _TOOLBAR_STATE.is_streaming:
-        return FormattedText([(f"bold {thinking}", _streaming_glyph_frame())])
     return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_IDLE)])
 
 

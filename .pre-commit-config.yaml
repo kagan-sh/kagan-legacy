@@ -23,7 +23,10 @@ repos:
           - id: trailing-whitespace
             exclude: ^(tests/snapshots/__snapshots__/|.*\.svg$)
           - id: check-yaml
-            exclude: ^(mkdocs\.yml$|.*\.svg$)
+            # --unsafe permits mkdocs-material's !!python/name: emoji tags
+            # while still validating YAML structure.
+            args: [--unsafe]
+            exclude: ^.*\.svg$
           - id: check-merge-conflict
           - id: mixed-line-ending
             args: [--fix=lf]

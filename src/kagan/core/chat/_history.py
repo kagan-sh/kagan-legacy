@@ -14,16 +14,19 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
+from loguru import logger
 from platformdirs import user_data_dir
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _MAX_ENTRIES: Final[int] = 500
 _KAGAN_HISTORY_DIR_ENV: Final[str] = "KAGAN_DATA_DIR"
 
 
 def _history_dir() -> Path:
-    """Return the base directory for history files, respecting KAGAN_DATA_DIR."""
     data_root = os.environ.get(_KAGAN_HISTORY_DIR_ENV)
     if data_root:
         return Path(data_root) / "history"
@@ -35,11 +38,6 @@ def _history_path(project_id: str) -> Path:
 
 
 def load_history(project_id: str) -> list[str]:
-    """Load history entries from disk for *project_id*.
-
-    Returns an empty list if the file does not exist or cannot be read.
-    Only the last ``_MAX_ENTRIES`` entries are kept in memory.
-    """
     path = _history_path(project_id)
     if not path.exists():
         return []
@@ -63,11 +61,6 @@ def load_history(project_id: str) -> list[str]:
 
 
 def save_entry(project_id: str, text: str) -> None:
-    """Append *text* to the history file for *project_id*.
-
-    Consecutive duplicate entries are skipped.  The file is capped at
-    ``_MAX_ENTRIES`` lines by rewriting when it grows beyond the limit.
-    """
     if not text:
         return
     path = _history_path(project_id)
@@ -79,7 +72,6 @@ def save_entry(project_id: str, text: str) -> None:
         existing.append(text)
         if len(existing) > _MAX_ENTRIES:
             existing = existing[-_MAX_ENTRIES:]
-            # Rewrite the whole file when trimming
             with path.open("w", encoding="utf-8") as fh:
                 for entry in existing:
                     fh.write(json.dumps({"text": entry}) + "\n")
@@ -92,29 +84,16 @@ def save_entry(project_id: str, text: str) -> None:
 
 @dataclass(slots=True)
 class _HistoryCursor:
-    """Track cursor position inside a history list plus an unsaved working draft.
-
-    Usage pattern:
-    - Call :meth:`cycle_up` / :meth:`cycle_down` to walk through history.
-    - When the user types new text between navigation calls :meth:`reset` is
-      used to clear the cursor so the next Up starts from the most-recent end.
-    - A *working draft* (text the user had started typing before pressing Up)
-      is saved the first time :meth:`cycle_up` is called and restored when
-      :meth:`cycle_down` reaches the end of the history list.
-    """
-
     _history: list[str] = field(default_factory=list)
     _index: int | None = None
     _working_draft: str = ""
 
     def replace_history(self, entries: list[str]) -> None:
-        """Replace the underlying list (e.g. after loading from disk)."""
         self._history = list(entries)
         self._index = None
         self._working_draft = ""
 
     def append(self, text: str) -> None:
-        """Append *text* skipping consecutive duplicates; resets cursor."""
         if not text:
             return
         if self._history and self._history[-1] == text:
@@ -127,19 +106,12 @@ class _HistoryCursor:
         self._working_draft = ""
 
     def reset(self) -> None:
-        """Reset cursor to end-of-history (no active navigation)."""
         self._index = None
 
     def cycle_up(self, current_input: str) -> str | None:
-        """Navigate to the previous (older) history entry.
-
-        Returns the entry text or ``None`` when history is empty.
-        Saves *current_input* as the working draft on the first call.
-        """
         if not self._history:
             return None
         if self._index is None:
-            # Save current input as draft before we start navigating
             self._working_draft = current_input
             self._index = len(self._history) - 1
         else:
@@ -147,16 +119,9 @@ class _HistoryCursor:
         return self._history[self._index]
 
     def cycle_down(self, current_input: str) -> str | None:
-        """Navigate to the next (more-recent) history entry.
-
-        Returns the entry text, or the saved working draft when the cursor
-        moves past the end of the history list.  Returns ``None`` when not
-        actively navigating.
-        """
         if self._index is None:
             return None
         if self._index >= len(self._history) - 1:
-            # Restore the working draft and exit navigation mode
             self._index = None
             return self._working_draft
         self._index += 1
@@ -171,10 +136,14 @@ class _HistoryCursor:
 
 
 class KaganFileHistory:
-    """File-backed history store shared between TUI and CLI chat for a project.
+    """File-backed history shared between TUI and CLI chat for a project.
 
-    ``persist`` maps to the ``persist_input_history`` settings flag.  When
-    ``False`` the history is kept in-memory only (no disk I/O).
+    Satisfies prompt_toolkit's duck-typed ``History`` protocol via
+    ``append_string`` / ``get_strings``, so it can be passed directly to
+    ``PromptSession(history=...)``.  Also exposes ``cycle_up`` / ``cycle_down``
+    for manual cursor navigation used by the TUI.
+
+    ``persist`` maps to the ``persist_input_history`` settings flag.
     """
 
     def __init__(self, project_id: str, *, persist: bool = True) -> None:
@@ -182,14 +151,25 @@ class KaganFileHistory:
         self._persist = persist
         self._cursor = _HistoryCursor()
         if persist:
-            loaded = load_history(project_id)
-            self._cursor.replace_history(loaded)
+            self._cursor.replace_history(load_history(project_id))
+
+    # --- shared write path ---------------------------------------------------
 
     def push(self, text: str) -> None:
-        """Record *text* into history and persist to disk when enabled."""
+        """Record *text* and persist to disk when enabled."""
         self._cursor.append(text)
         if self._persist:
             save_entry(self._project_id, text)
+
+    # --- prompt_toolkit History protocol (duck-typed) ------------------------
+
+    def append_string(self, string: str) -> None:
+        self.push(string)
+
+    def get_strings(self) -> list[str]:
+        return self._cursor.entries
+
+    # --- TUI cursor navigation -----------------------------------------------
 
     def cycle_up(self, current_input: str) -> str | None:
         return self._cursor.cycle_up(current_input)
@@ -206,3 +186,29 @@ class KaganFileHistory:
     @property
     def entries(self) -> list[str]:
         return self._cursor.entries
+
+
+def build_history(
+    project_id: str,
+    *,
+    settings_getter: Callable[[], dict[str, object]] | None = None,
+) -> KaganFileHistory | object:
+    """Return a ``KaganFileHistory`` or an in-memory fallback per settings.
+
+    Args:
+        project_id: Identifier for the current project.
+        settings_getter: Zero-arg callable returning the current settings dict.
+            When ``None`` or the call fails, file-backed history is used.
+    """
+    from prompt_toolkit.history import InMemoryHistory
+
+    if settings_getter is not None:
+        try:
+            settings = settings_getter()
+            raw = settings.get("persist_input_history", "true")
+            if isinstance(raw, str) and raw.strip().lower() in {"0", "false", "no", "off"}:
+                return InMemoryHistory()
+        except Exception as exc:
+            logger.warning("Could not read persist_input_history setting: {}", exc)
+
+    return KaganFileHistory(project_id)

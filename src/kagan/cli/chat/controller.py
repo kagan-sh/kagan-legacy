@@ -196,8 +196,23 @@ class ChatController:
     # Session management
     # ------------------------------------------------------------------
 
-    async def hydrate_persistent_session(self, *, explicit_session_id: str | None = None) -> None:
-        selected = await self._resolve_initial_session(explicit_session_id)
+    async def hydrate_persistent_session(
+        self,
+        *,
+        explicit_session_id: str | None = None,
+        resume: bool = False,
+    ) -> None:
+        """Resolve or create the initial chat session.
+
+        Behaviour:
+        - ``explicit_session_id`` (``--session <id>``): resume that specific session.
+        - ``resume=True`` (``--resume``): resume the most-recent session for this project.
+        - Otherwise: always create a fresh session immediately (no picker at launch).
+        """
+        selected = await self._resolve_initial_session(
+            explicit_session_id,
+            resume=resume,
+        )
         if selected is None:
             row = await self.client.chat_sessions.create(
                 source="repl",
@@ -209,30 +224,47 @@ class ChatController:
         await self._attach_session(selected, switching=False)
 
     async def _resolve_initial_session(
-        self, explicit_session_id: str | None
+        self,
+        explicit_session_id: str | None,
+        *,
+        resume: bool = False,
     ) -> ChatSessionView | None:
-        if not explicit_session_id:
-            return None
-        cs = self.client.chat_sessions
-        pair = await cs.get_with_history(explicit_session_id)
-        if pair is not None:
-            row, msgs = pair
-            return chat_session_to_view(row, msgs)
-        binding = await cs.resolve_task_binding(explicit_session_id)
-        if binding is None:
-            return None
-        return ChatSessionView(
-            id=binding.id,
-            label=binding.label,
-            source=binding.source,
-            agent_backend=binding.agent_backend,
-            project_id=None,
-            orchestrator_history=[],
-            messages_rendered=[
-                f"System: Attached to task session {binding.id} (status: {binding.status})."
-            ],
-            updated_at="",
-        )
+        # Explicit session ID takes priority
+        if explicit_session_id:
+            cs = self.client.chat_sessions
+            pair = await cs.get_with_history(explicit_session_id)
+            if pair is not None:
+                row, msgs = pair
+                return chat_session_to_view(row, msgs)
+            binding = await cs.resolve_task_binding(explicit_session_id)
+            if binding is None:
+                return None
+            return ChatSessionView(
+                id=binding.id,
+                label=binding.label,
+                source=binding.source,
+                agent_backend=binding.agent_backend,
+                project_id=None,
+                orchestrator_history=[],
+                messages_rendered=[
+                    f"System: Attached to task session {binding.id} (status: {binding.status})."
+                ],
+                updated_at="",
+            )
+
+        # --resume: pick the most-recently-updated session for this project
+        if resume:
+            pairs = await self.client.chat_sessions.list_with_history(
+                project_id=self.client.active_project_id
+            )
+            if pairs:
+                # list_with_history returns pairs; sort by updated_at descending
+                sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
+                most_recent = max(sessions, key=lambda s: s.updated_at or "")
+                return most_recent
+
+        # Default: always start fresh (no picker)
+        return None
 
     async def _attach_session(self, session: ChatSessionView, *, switching: bool) -> bool:
         previous_session_id = self._chat_session_id
@@ -892,50 +924,70 @@ class ChatController:
         except Exception:
             logger.opt(exception=True).warning("Event watcher stopped unexpectedly")
 
+    async def _handle_repl_message(
+        self,
+        stripped: str,
+        drain_pending: asyncio.Queue[str],
+    ) -> bool:
+        """Process one user message in the REPL loop.
+
+        Returns True if the REPL loop should exit (e.g. ``/close`` issued).
+        On cancel, empties *drain_pending* and updates the toolbar counter.
+        """
+        rotate_tip_on_submit()
+        if stripped.startswith("/"):
+            return await self._handle_slash(stripped)
+        try:
+            result = await self._send(stripped)
+        except KeyboardInterrupt:
+            return False
+        except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
+            logger.exception("Chat send failed")
+            _console.print(f"[red]Error:[/red] {exc}")
+            return False
+        if result.was_cancelled:
+            # Clear pending queue on cancel — user pressed Esc
+            while not drain_pending.empty():
+                with contextlib.suppress(asyncio.QueueEmpty):
+                    drain_pending.get_nowait()
+            _TOOLBAR_STATE.queued_count = 0
+        return False
+
     async def _repl_loop(self) -> None:
         _console.print(
             "[dim]Press [bold]/help[/bold] for commands, "
             "[bold]Ctrl-C[/bold] clear · [bold]Ctrl-D[/bold] exit.[/dim]\n"
         )
         submit_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        # Holds messages typed while a send is in progress (multi-turn queue).
+        drain_pending: asyncio.Queue[str] = asyncio.Queue()
         session = _get_prompt_session(submit_queue)
         watcher_task = asyncio.create_task(self._event_watcher())
-        last_sent = ""
         done = False
 
         async def _pump_queue() -> None:
-            nonlocal last_sent, done
+            nonlocal done
             while not done:
-                text = await submit_queue.get()
+                if await self._drain_pending_messages(drain_pending):
+                    done = True
+                    return
+                try:
+                    text = await asyncio.wait_for(submit_queue.get(), timeout=0.05)
+                except TimeoutError:
+                    continue
                 if text is None:
                     done = True
                     return
                 stripped = text.strip()
                 if not stripped:
                     continue
-                rotate_tip_on_submit()
-                if stripped.startswith("/"):
-                    if await self._handle_slash(stripped):
-                        done = True
-                        return
+                if _TOOLBAR_STATE.is_streaming:
+                    await drain_pending.put(stripped)
+                    _TOOLBAR_STATE.queued_count = drain_pending.qsize()
                     continue
-                last_sent = stripped
-                try:
-                    result = await self._send(stripped)
-                except KeyboardInterrupt:
-                    continue
-                except (
-                    acp.RequestError,
-                    TimeoutError,
-                    OSError,
-                    RuntimeError,
-                    ValueError,
-                ) as exc:
-                    logger.exception("Chat send failed")
-                    _console.print(f"[red]Error:[/red] {exc}")
-                    continue
-                if result.was_cancelled:
-                    await submit_queue.put(last_sent)
+                if await self._handle_repl_message(stripped, drain_pending):
+                    done = True
+                    return
 
         try:
             with patch_stdout(raw=True):
@@ -955,6 +1007,10 @@ class ChatController:
                 finally:
                     done = True
                     submit_queue.put_nowait(None)
+                    while not drain_pending.empty():
+                        with contextlib.suppress(asyncio.QueueEmpty):
+                            drain_pending.get_nowait()
+                    _TOOLBAR_STATE.queued_count = 0
                     for task in (pump_task, prompt_task):
                         if not task.done():
                             task.cancel()
@@ -967,6 +1023,24 @@ class ChatController:
             _release_prompt_session()
             if not self._restart_requested:
                 _console.print("\n[dim]Session ended.[/dim]")
+
+    async def _drain_pending_messages(
+        self,
+        drain_pending: asyncio.Queue[str],
+    ) -> bool:
+        """Drain pre-queued messages accumulated while streaming was active.
+
+        Returns True if the REPL loop should exit.
+        """
+        while not drain_pending.empty():
+            try:
+                queued_text = drain_pending.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            _TOOLBAR_STATE.queued_count = drain_pending.qsize()
+            if await self._handle_repl_message(queued_text, drain_pending):
+                return True
+        return False
 
     async def _handle_slash(self, text: str) -> bool:
         result = resolve_slash_input(

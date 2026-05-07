@@ -18,6 +18,8 @@ from prompt_toolkit.application.current import get_app
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import HSplit, Layout, Window
+from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from rich import box
 from rich.console import Console, Group, RenderableType
@@ -64,6 +66,7 @@ class _SlashCompleter(Completer):
 class ToolbarState:
     agent_backend: str = ""
     project_name: str = ""
+    project_id: str = ""
     turn_count: int = 0
     session_label: str = "orchestrator"
     context_pct: float | None = None
@@ -73,6 +76,7 @@ class ToolbarState:
     current_tool: str = ""
     token_used_k: float | None = None
     plan_mode: bool = False
+    queued_count: int = 0
 
 
 _TOOLBAR_STATE = ToolbarState()
@@ -702,6 +706,8 @@ def _toolbar_status_segments() -> tuple[str, str, str, str]:
         status_right_parts.append(f"~{_TOOLBAR_STATE.token_used_k:.0f}k tok")
     elif _TOOLBAR_STATE.context_pct is not None:
         status_right_parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
+    if _TOOLBAR_STATE.queued_count > 0:
+        status_right_parts.append(f"↓ {_TOOLBAR_STATE.queued_count} queued")
     msg_word = "msg" if _TOOLBAR_STATE.turn_count == 1 else "msgs"
     status_right_parts.append(f"{_TOOLBAR_STATE.turn_count} {msg_word}")
     status_right = " · ".join(status_right_parts)
@@ -710,6 +716,50 @@ def _toolbar_status_segments() -> tuple[str, str, str, str]:
     tip_right = f"session: {_TOOLBAR_STATE.session_label}"
 
     return status_left, status_right, tip_left, tip_right
+
+
+def _build_status_text() -> FormattedText:
+    """Build the FormattedText for the always-on status bar.
+
+    Shares content with ``_bottom_toolbar`` but is rendered via a permanent
+    prompt_toolkit ``Window`` rather than the transient bottom_toolbar callback.
+    This ensures the status bar stays visible even during Rich ``Live`` regions.
+    """
+    _TIP_ROTATOR.maybe_rotate()
+    cols = shutil.get_terminal_size().columns
+    status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
+    rule = "─" * max(cols, 1)
+    return FormattedText(
+        [
+            ("class:bottom-toolbar.rule", rule),
+            ("", "\n"),
+            (
+                "class:bottom-toolbar.status",
+                _compose_toolbar_line(status_left, status_right, cols),
+            ),
+            ("", "\n"),
+            (
+                "class:bottom-toolbar.tip",
+                _compose_toolbar_line(tip_left, tip_right, cols),
+            ),
+        ]
+    )
+
+
+def _build_prompt_layout(session: "PromptSession[str]") -> "Layout":
+    """Wrap the default PromptSession layout with a permanent status Window.
+
+    The status Window (height=3 rows: rule + status + tip) is appended below
+    the existing layout container so it is always rendered regardless of
+    streaming state.
+    """
+    existing_container = session.layout.container
+    status_window = Window(
+        content=FormattedTextControl(_build_status_text),
+        height=3,
+    )
+    new_container = HSplit([existing_container, status_window])
+    return Layout(new_container, focused_element=session.default_buffer)
 
 
 _PROMPT_GLYPH_IDLE: Final[str] = "❯ "  # noqa: RUF001
@@ -791,6 +841,7 @@ _console = Console(highlight=False)
 _prompt_style = Style.from_dict(_PROMPT_STYLE_RULES)
 _prompt_session: PromptSession[str] | None = None
 _submit_queue: "asyncio.Queue[str | None] | None" = None
+_settings_cache: dict[str, str] | None = None
 
 
 def _build_repl_key_bindings(submit_queue: "asyncio.Queue[str | None]") -> KeyBindings:
@@ -906,6 +957,8 @@ def _get_prompt_session(
     REPL loop has cached its queue-bound session never returns the queue-bound
     session by accident, which would silently swallow input.
     """
+    from kagan.core.chat._history import build_history
+
     global _prompt_session, _submit_queue
     if submit_queue is None:
         # One-shot session for bootstrap / ad-hoc prompts. Never cached so
@@ -922,14 +975,33 @@ def _get_prompt_session(
         _prompt_session = None
         _submit_queue = submit_queue
     if _prompt_session is None:
+        project_id = _TOOLBAR_STATE.project_id or _TOOLBAR_STATE.project_name or "default"
+        cached = _settings_cache
+
+        def _get_cached_settings() -> dict[str, str]:
+            return dict(cached) if cached is not None else {}
+
+        history = build_history(
+            project_id,
+            settings_getter=_get_cached_settings,
+        )
         _prompt_session = PromptSession(
             style=_prompt_style,
             completer=_SlashCompleter(),
             key_bindings=_build_repl_key_bindings(submit_queue),
-            bottom_toolbar=_bottom_toolbar,
+            history=history,
             refresh_interval=0.25,
             mouse_support=False,
         )
+        # Replace the default layout with the always-on custom layout.
+        # This must happen after PromptSession construction so that
+        # _build_prompt_layout can wrap the fully-initialised container.
+        try:
+            _prompt_session.layout = _build_prompt_layout(_prompt_session)
+        except Exception:
+            # Graceful fallback: if layout override fails (e.g. in tests),
+            # attach the bottom_toolbar callback instead.
+            _prompt_session.bottom_toolbar = _bottom_toolbar  # type: ignore[assignment]
     return _prompt_session
 
 
@@ -1055,14 +1127,18 @@ async def run_chat_async(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
+    resume: bool = False,
 ) -> str | None:
     from kagan.cli.chat.controller import ChatController
     from kagan.core import KaganCore, resolve_default_agent_backend
 
+    global _settings_cache
+
     async with KaganCore() as client:
         backend = agent
+        settings = await client.settings.get()
+        _settings_cache = dict(settings)
         if not backend:
-            settings = await client.settings.get()
             backend = resolve_default_agent_backend(settings)
 
         controller = ChatController(
@@ -1075,10 +1151,14 @@ async def run_chat_async(
         if not await controller.ensure_project():
             return None
 
-        await controller.hydrate_persistent_session(explicit_session_id=session_id)
+        await controller.hydrate_persistent_session(
+            explicit_session_id=session_id,
+            resume=resume,
+        )
 
         _set_workspace_context(Path.cwd())
         _TOOLBAR_STATE.agent_backend = controller.agent_backend
+        _TOOLBAR_STATE.project_id = client.active_project_id or ""
         _TOOLBAR_STATE.turn_count = controller._turn_count
         _TOOLBAR_STATE.context_pct = None
 
@@ -1097,5 +1177,13 @@ def run_chat(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
+    resume: bool = False,
 ) -> str | None:
-    return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent))
+    return asyncio.run(
+        run_chat_async(
+            prompt=prompt,
+            session_id=session_id,
+            agent=agent,
+            resume=resume,
+        )
+    )

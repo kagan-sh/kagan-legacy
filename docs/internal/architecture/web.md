@@ -101,6 +101,35 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+## Orchestrator Overlay
+
+The right-rail dock used to ship as a split `ChatSidePanel` +
+`OrchestratorChatPanel`. It is now a single mode-aware overlay that mirrors the
+TUI / VS Code experience.
+
+- `packages/web/src/components/session/orchestrator-overlay.tsx` is the unified
+  rail with three modes — `orchestrator`, `worker`, `reviewer` — and a
+  breadcrumb header (`Orchestrator` or `Worker · running · 23s · ↑12k ↓3k`).
+- `packages/web/src/components/session/running-agents-bar.tsx` lists the active
+  worker / reviewer sessions polled from `GET /api/v1/agents/running` and
+  attaches the overlay on click.
+- `packages/web/src/lib/atoms/chat-attach.ts` exposes `chatAttachAtom`
+  (`null` = orchestrator, `{attachedSessionId, role, …}` = attached) and the
+  `attachChatSessionAtom` / `detachChatSessionAtom` write atoms.
+- `packages/web/src/lib/atoms/running-agents.ts` exposes `runningAgentsAtom`
+  plus loading / refresh write atoms.
+
+`Cmd/Ctrl+K` toggles the rail (handled by app-layout dock-mode). `Esc`
+detaches back to orchestrator mode while attached, and closes the rail when
+already in orchestrator mode. The URL query param
+`?chat=task:<taskId>:<sessionId>` is the external source of truth on page
+load — the app-layout reads it and calls `attachChatSessionAtom`.
+
+`ChatSidePanel` is preserved for the task-detail "Open chat" entry point but
+no longer drives the global rail.
+
+______________________________________________________________________
+
 ## Hooks
 
 Custom hooks in `src/lib/hooks/`:

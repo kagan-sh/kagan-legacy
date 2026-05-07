@@ -102,6 +102,32 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+## 8a. Orchestrator Overlay
+
+- the right-rail dock is a single mode-aware overlay
+  (`components/session/orchestrator-overlay.tsx`) with three modes:
+  orchestrator, worker, reviewer
+- a breadcrumb header shows the active mode (`Orchestrator` /
+  `Worker · running · 23s · ↑12k ↓3k`)
+- `RunningAgentsBar` (`components/session/running-agents-bar.tsx`) lists
+  active worker / reviewer sessions polled from `GET /api/v1/agents/running`
+  and attaches the rail on click
+- attach state lives in `lib/atoms/chat-attach.ts` (`chatAttachAtom` plus
+  `attachChatSessionAtom` / `detachChatSessionAtom`); running-agents data
+  lives in `lib/atoms/running-agents.ts`
+- `Cmd/Ctrl+K` toggles the rail; `Esc` while attached detaches back to
+  orchestrator mode and `Esc` from orchestrator closes the rail
+- the URL query param `?chat=task:<taskId>:<sessionId>` deep-links into the
+  attached state
+- `ChatSidePanel` is preserved for the task-detail "Open chat" entry point but
+  no longer drives the global rail
+
+*Tests:* `packages/web/src/components/__tests__/OrchestratorOverlay.test.tsx`,
+`packages/web/src/components/__tests__/RunningAgentsBar.test.tsx`,
+`packages/web/src/lib/atoms/__tests__/chat-attach.test.ts`.
+
+______________________________________________________________________
+
 ## 9. Interactive Session Launch
 
 - when launching an interactive session, a guidance dialog appears before the session launches

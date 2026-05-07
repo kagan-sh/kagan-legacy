@@ -491,6 +491,103 @@ Frontend → KaganCore → Launcher (tmux/IDE/nvim)
    │◄─ events via MCP ───────│── agent uses kagan MCP
 ```
 
+## Session Attach + Replay
+
+`kagan.core` exposes a small foundation for the orchestrator-chat overlay shipped
+across the TUI, web, VS Code, and CLI. The goal is for any frontend to (a) list
+the agents currently running across a project, (b) resolve "the most relevant"
+session for a task, (c) attach a chat to that session, and (d) replay or live-tail
+its event history.
+
+### `_sessions_query.resolve_active_session(sessions)`
+
+Pure, total function in `src/kagan/core/_sessions_query.py`. Takes the full
+session history for a single task and returns the session a UI should focus by
+default. Priority:
+
+1. Worker session whose status is in `{PENDING, RUNNING}` (most recent wins on ties)
+1. Reviewer session whose status is in `{PENDING, RUNNING}`
+1. Most-recent reviewer session (any status)
+1. Most-recent worker session (any status)
+1. Otherwise, the most-recent session regardless of role; `None` if the list is
+   empty.
+
+The function never raises. Frontends consume it via
+`client.resolve_active_session(task_id)`, which loads the history through
+`list_task_sessions` first.
+
+### `_sessions_query.list_running_agents(project_id=None)`
+
+Cross-task joined query that returns all sessions currently in
+`{PENDING, RUNNING}` paired with their owning task. Optionally scoped to a
+single project. Results are sorted by `started_at DESC`. Each row is an
+`ActiveAgentRow` (frozen `dataclass`):
+
+| Field                           | Type             |
+| ------------------------------- | ---------------- |
+| `task_id`, `task_title`         | `str`            |
+| `task_status`                   | `str`            |
+| `session_id`, `agent_backend`   | `str`            |
+| `agent_role`                    | `str \| None`    |
+| `session_status`                | `str`            |
+| `started_at`, `last_event_at`   | `datetime` (UTC) |
+| `input_tokens`, `output_tokens` | `int \| None`    |
+
+`ActiveAgentRow` is JSON-safe — server routes serialise it directly into
+`ActiveAgentRowResponse` (see `kagan.server.responses`).
+
+### `ChatSession.attached_session_id` / `attached_role`
+
+`models.ChatSession` gains two columns to record which agent session a chat is
+tracking:
+
+- `attached_session_id: str | None` — `None` means orchestrator mode (default).
+- `attached_role: str | None` — `"worker"` / `"reviewer"` / `None`.
+
+Migration `migrations/versions/25420575c1aa_chat_session_attach_target.py` adds
+the columns and the `attached_session_id` index. There is intentionally no
+SQLite FK constraint on `attached_session_id`: the `sessions` table is
+sometimes recreated via rename-and-recreate migrations, which corrupts SQLite's
+trigger-based FK enforcement. Referential integrity is enforced at the
+application layer.
+
+### `kagan.core.chat._attach`
+
+| Function                         | Purpose                                                                                                                                                                                   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attach_chat_to_session()`       | Set or clear `attached_session_id` / `attached_role` on a ChatSession; passing `session_id=None` detaches.                                                                                |
+| `inject_agent_notification()`    | Append a `system` `ChatMessage` whose body is a JSON-encoded `agent_started` / `agent_finished` / `agent_stopped` payload, so the orchestrator sees the lifecycle event on its next turn. |
+| `notify_project_chat_sessions()` | Iterate every chat session in a project and call `inject_agent_notification` on each one.                                                                                                 |
+
+### Lifecycle hook in `transitions.transition_session`
+
+After the DB commit succeeds, `transition_session` calls
+`_notify_chat_on_session_transition`. Notifications are best-effort — failures
+are logged at warning level and never block the transition. Fires:
+
+| Source → target                                 | Notification kind |
+| ----------------------------------------------- | ----------------- |
+| anything → `RUNNING` (when not already RUNNING) | `agent_started`   |
+| anything → `COMPLETED`                          | `agent_finished`  |
+| anything → `FAILED` / `CANCELLED`               | `agent_stopped`   |
+
+The summary string includes the task title and (when present) the agent role,
+e.g. `"Implement /attach (worker) finished"`.
+
+### Public `KaganCore` surface
+
+| Method                                                                  | Purpose                                                           |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `await client.list_running_agents(project_id=None)`                     | List active sessions across the project as `ActiveAgentRow` rows. |
+| `await client.resolve_active_session(task_id)`                          | Pick "the most relevant" session for `task_id` (or `None`).       |
+| `await client.attach_chat(chat_session_id, session_id, agent_role=...)` | Attach (or, with `session_id=None`, detach) a chat from an agent. |
+
+Internal cross-cutting helpers `db_async`, `db_sync`, `sa_col`, and
+`list_running_agents` are also re-exported from `kagan.core` so server route
+modules don't need to import private modules directly.
+
+______________________________________________________________________
+
 ## Logging
 
 All packages use [Loguru](https://github.com/Delgan/loguru). One sink, one file, one configuration point.

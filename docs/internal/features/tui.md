@@ -84,18 +84,41 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+## 7b. Orchestrator Overlay
+
+- `o` (or `Ctrl+Space`) opens `OrchestratorOverlay` from any screen; pressing
+  the chord again re-focuses the overlay's chat input.
+  *Tests:* `tests/tui/test_orchestrator_overlay.py`.
+- The overlay has two modes: orchestrator (talks to the project orchestrator
+  chat session) and attached (re-streams a worker / reviewer session via
+  `/api/v1/sessions/{id}/replay` + `/events`).
+- `Esc` from an attached stream detaches back to orchestrator; `Esc` from
+  orchestrator closes the overlay.
+- A `RunningAgentsBar` under the chat input lists active sessions; `↓` from
+  the input focuses the bar, `Enter` attaches, `Esc` returns focus to the
+  input. *Tests:* `tests/tui/test_running_agents_bar.py`.
+- `TaskScreen` auto-pushes the overlay for `BACKLOG` tasks and auto-attaches
+  to the resolved active session for in-progress tasks.
+  *Tests:* `tests/tui/test_task_screen_auto_attach.py`.
+- `TaskScreen` no longer embeds a chat panel — it is a header + Overview /
+  Changes / Review tabs + `#ts-chat-hint` widget.
+  *Tests:* `tests/tui/test_task_screen_no_embedded_chat.py`.
+
+______________________________________________________________________
+
 ## 8. Keybindings Snapshot
 
 ### Global
 
-| Key            | Action              |
-| -------------- | ------------------- |
-| `?` / `F1`     | Help                |
-| `Ctrl+Shift+P` | Quick Actions       |
-| `Ctrl+O`       | Project selector    |
-| `Ctrl+R`       | Repository selector |
-| `Ctrl+,`       | Settings            |
-| `Ctrl+Q`       | Quit                |
+| Key                | Action               |
+| ------------------ | -------------------- |
+| `?` / `F1`         | Help                 |
+| `Ctrl+Shift+P`     | Quick Actions        |
+| `Ctrl+O`           | Project selector     |
+| `Ctrl+R`           | Repository selector  |
+| `Ctrl+,`           | Settings             |
+| `Ctrl+Q`           | Quit                 |
+| `o` / `Ctrl+Space` | Orchestrator overlay |
 
 ### Kanban
 

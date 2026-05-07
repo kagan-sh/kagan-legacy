@@ -212,6 +212,55 @@ Full keybinding tables are in `docs/internal/features/tui.md`.
 
 ______________________________________________________________________
 
+## Orchestrator Overlay
+
+`OrchestratorOverlay` (`src/kagan/tui/screens/orchestrator_overlay.py`) is the
+global agent-stream switcher mounted via `app.SCREENS["orchestrator-overlay"]`
+and bound to `o` (and the hidden `Ctrl+Space` chord) on `APP_BINDINGS`. Pushing
+the overlay while it is already active simply re-focuses its input.
+
+Two modes:
+
+| Mode             | Behaviour                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator** | Sends messages to the project orchestrator chat session.                                                                          |
+| **Attached**     | Re-streams a worker or reviewer session: replay via `/api/v1/sessions/{id}/replay`, live tail via `/api/v1/sessions/{id}/events`. |
+
+`Esc` is layered: from an attached stream it detaches back to orchestrator
+mode; from orchestrator mode it closes the overlay. `Ctrl+Space` mirrors `Esc`.
+
+The overlay composes a breadcrumb header (`Orchestrator` /
+`Worker · running · …`), a `ChatPanel`, and a `RunningAgentsBar`
+(`src/kagan/tui/widgets/running_agents_bar.py`) under the chat input. The bar
+polls `client.list_running_agents()`, renders one row per active session, and
+on `Enter` posts an `AgentSelected` message carrying the target session id.
+From the chat input, `↓` focuses the bar; from the bar, `Esc` returns focus to
+the input. Keys are declared on `ORCHESTRATOR_OVERLAY_BINDINGS` /
+`RUNNING_AGENTS_BAR_BINDINGS` in `keybindings.py`.
+
+`TaskScreen` integrates with the overlay on show:
+
+- `BACKLOG` tasks push the overlay automatically so the user can talk to the
+  orchestrator about the task before launching an agent.
+- In-progress tasks call `client.resolve_active_session(task_id)` and
+  auto-attach to the resulting session when one exists.
+
+### Removed surfaces
+
+The overlay supersedes the embedded per-task chat:
+
+- `screens/_task_chat.py` and `screens/_task_stream.py` were deleted.
+- The embedded `ChatPanel` region inside `screens/_task_review.py` was removed.
+- `TaskScreen` is now a header + tabs (Overview / Changes / Review) and a
+  static `#ts-chat-hint` widget that points the user at the overlay.
+
+References to `action_open_task_chat`, `_task_chat` mixins, and the per-screen
+`ctrl+f` / `ctrl+.` chat bindings have been scrubbed across `app.py`,
+`kanban.py`, `session_dashboard.py`, `_chat_runner.py`, and the
+`task_event_handler` helpers.
+
+______________________________________________________________________
+
 ## Chat Integration
 
 ### ChatSession
@@ -284,11 +333,10 @@ src/kagan/tui/
 │   ├── setup.py             # OnboardingFlow (modal)
 │   ├── kanban.py            # KanbanScreen
 │   ├── _chat_runner.py      # ACP payload + stream chunk helpers (not a Screen class)
-│   ├── _task_chat.py        # Task chat helpers
 │   ├── _task_review.py      # Task review screen helpers
-│   ├── _task_stream.py      # Task streaming helpers
+│   ├── orchestrator_overlay.py  # OrchestratorOverlay ModalScreen — global agent stream switcher
 │   ├── workspace.py         # WorkspaceScreen
-│   ├── task_screen.py       # TaskScreen
+│   ├── task_screen.py       # TaskScreen (header + Overview/Changes/Review tabs + chat hint)
 │   ├── session_dashboard.py # SessionDashboardScreen
 │   ├── analytics.py         # AnalyticsModal
 │   ├── doctor_modal.py      # DoctorModal
@@ -319,6 +367,7 @@ src/kagan/tui/
 │   ├── task_inspector.py    # TaskInspector
 │   ├── task_diff_pane.py    # TaskDiffPane
 │   ├── chat.py              # ChatPanel, MessageList, ChatInput, SlashComplete
+│   ├── running_agents_bar.py # RunningAgentsBar — picker shown under the orchestrator overlay input
 │   ├── streaming.py         # StreamingOutput, OutputChunk, ToolCallView
 │   ├── diff.py              # DiffView, DiffStats
 │   ├── permission.py        # PermissionPrompt

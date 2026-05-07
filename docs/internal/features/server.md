@@ -200,6 +200,60 @@ curl -X POST "http://localhost:8765/api/integrations/{name}/sync?repo=owner/repo
 
 ______________________________________________________________________
 
+## Agent Stream Endpoints
+
+The orchestrator-chat overlay is driven by four versioned routes (registered
+in `src/kagan/server/_agent_routes.py`).
+
+### Listing running agents
+
+```bash
+curl http://localhost:8765/api/v1/agents/running
+curl "http://localhost:8765/api/v1/agents/running?project_id=<PROJECT_ID>"
+```
+
+Returns `RunningAgentsResponse` — an `agents` list of `ActiveAgentRowResponse`
+entries (task / session join with timing and token counters), sorted by
+`started_at` descending.
+
+*Tests:* `tests/server/test_running_agents_route.py`.
+
+### Live diff of running agents
+
+```bash
+curl -N http://localhost:8765/api/v1/agents/running/events
+```
+
+SSE stream that emits `joined`, `started`, `finished`, and `status_change`
+deltas as the running-agents list mutates. 25-second keepalive.
+
+### Replaying a session
+
+```bash
+curl "http://localhost:8765/api/v1/sessions/<SESSION_ID>/replay?limit=200&direction=forward"
+curl "http://localhost:8765/api/v1/sessions/<SESSION_ID>/replay?cursor=<CURSOR>&direction=backward"
+```
+
+Returns `SessionReplayPage` — an ordered `events` list, a `next_cursor`
+(format: `created_at|id`), and `has_more`. `direction` is `forward` (default)
+or `backward`; `limit` is bounded at 1000.
+
+*Tests:* `tests/server/test_session_replay_route.py`.
+
+### Live tailing one session
+
+```bash
+curl -N "http://localhost:8765/api/v1/sessions/<SESSION_ID>/events"
+curl -N "http://localhost:8765/api/v1/sessions/<SESSION_ID>/events?since=<EVENT_ID>"
+```
+
+SSE tail of `SessionEvent` rows for a single session. The optional `since`
+cursor lets clients reconcile with a `replay` snapshot before streaming.
+
+*Tests:* `tests/server/test_session_events_sse.py`.
+
+______________________________________________________________________
+
 ## Analytics Routes
 
 Registered in `src/kagan/server/_analytics_routes.py`. All endpoints require an active project context — if none is set, they return an empty list or object rather than erroring. Used by the web dashboard's analytics views and by agents deciding which backend to invoke.

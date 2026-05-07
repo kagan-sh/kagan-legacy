@@ -22,6 +22,7 @@ The `src/kagan/cli/chat/` module implements the chat REPL, the orchestrator chat
 | `_theme.py`          | Rich theme constants for chat output                                                                        |
 | `_completion.py`     | Input completion helpers                                                                                    |
 | `agents.py`          | Agent listing/resolution helpers (`/backend` command support)                                               |
+| `_agents_rail.py`    | Post-turn running-agents rail + `↓` picker helpers (`build_picker_rows`, `_resolve_picker_choice`)          |
 | `prompt.py`          | Input normalization utilities                                                                               |
 | `__init__.py`        | Public surface: `run_chat_session()` entrypoint                                                             |
 
@@ -62,6 +63,31 @@ CLI entrypoint (src/kagan/cli/)
 1. Add it to the `ChatEvent` union type
 1. Add a render branch in `StreamRenderer._render_event()` in `_streaming.py`
 1. Add a unit test in `tests/unit/test_event_rendering.py`
+
+## Attach Picker + Slash Commands
+
+`kagan chat` carries the same orchestrator-overlay model as the TUI and web —
+the user can talk to the orchestrator, jump into a running worker / reviewer
+stream, and detach back to orchestrator mode without leaving the REPL.
+
+- **Post-turn rail.** `cli/chat/_agents_rail.py` formats the running-agents
+  rail printed after each REPL turn (e.g. `● 3 local agents · ↓ to manage`,
+  followed by one detail line per agent). When there are no active agents the
+  rail is suppressed entirely — the REPL stays quiet.
+- **`↓` chord.** Pressing `↓` from the REPL prompt opens a one-shot picker
+  (Textual mount + exit) listing `main` (orchestrator / detach) plus every
+  active worker / reviewer. The picker is wired through
+  `_resolve_picker_choice(rows, idx)` — a pure helper kept in
+  `_agents_rail.py` and unit-tested directly without UI.
+- **`/attach <task-id|session-id>`** parses the argument in `commands.py`
+  (`SlashAction.ATTACH_AGENT`), then `controller.py` resolves it via
+  `client.resolve_active_session` / the running-agents listing and calls
+  `client.attach_chat`.
+- **`/detach`** clears the attach (`SlashAction.DETACH_AGENT` →
+  `client.attach_chat(..., session_id=None)`).
+- **Read-only banner.** While attached, the REPL renders a banner indicating
+  the session is being observed read-only; the write path back into the
+  attached agent is a follow-up.
 
 ## Relation to TUI chat
 

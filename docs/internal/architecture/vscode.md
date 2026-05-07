@@ -30,8 +30,10 @@ packages/vscode/src/
 │   ├── sse.ts                      # SSEStream — EventSource over fetch
 │   └── types.ts                    # Shared types, EVENT_TYPE / SSE_TYPE consts
 ├── providers/
-│   ├── chat.participant.ts         # @kagan chat participant (agent output)
+│   ├── chat.participant.ts         # @kagan chat participant (agent output, /attach, /detach)
+│   ├── attach-state.ts             # In-memory attach registry shared by chat + tree view
 │   ├── board.tree.ts               # Kanban board TreeView
+│   ├── running-agents.tree.ts      # "Running Agents" TreeView (polls /api/v1/agents/running)
 │   ├── events.output.ts            # Agent diagnostic log (OutputChannel)
 │   ├── review.comments.ts          # Review verdicts (Comments API)
 │   ├── tasks.scm.ts                # Task diffs (SCM / TextDocumentContentProvider)
@@ -118,6 +120,34 @@ Server event payloads nest ACP protocol data under `payload.acp`. Helper functio
 - Tool input: `payload.acp.rawInput`
 - Task transitions: `payload.from` / `payload.to`
 - Agent errors: `payload.error`
+
+______________________________________________________________________
+
+## Agent Attach
+
+The chat panel can attach to any running worker or reviewer session. State and
+plumbing:
+
+- `packages/vscode/src/providers/running-agents.tree.ts` registers a
+  `kagan.agents` tree view that polls `GET /api/v1/agents/running` every 5s
+  (and refreshes whenever the global SSE stream emits `TASK_UPDATED`). Each
+  node exposes `kagan.attachToSession` inline.
+- `packages/vscode/src/providers/attach-state.ts` is a small in-memory registry
+  keyed by VS Code chat conversation id (with a `"global"` sentinel). It is
+  intentionally extracted so the tree-view can trigger an attach without
+  importing the chat participant module.
+- `chat.participant.helpers.ts` adds `parseAttachPrompt` (UUID or 8-char prefix
+  validation) and `resolveAgentSessionId` (exact session id → session prefix →
+  exact task id → task prefix matching against the running-agents list).
+- `chat.participant.ts` handles `@kagan /attach <id>` and `@kagan /detach`,
+  remembers `attachedSessionId` on the participant state, and routes plain
+  follow-up turns through the attached session tail when a session is bound.
+- Commands `kagan.attachToSession` and `kagan.detachFromSession` are
+  registered in `extension.ts` and surfaced from the tree view, the command
+  palette, and the `kagan.chat.open` entry point (`{kind: "attach"}`).
+
+The legacy `attach_context.json` flow described below remains the entry point
+for IDE-launch auto-watch; explicit `/attach` is the new in-chat path.
 
 ______________________________________________________________________
 

@@ -151,6 +151,28 @@ Per-turn SSE connection. Streams chunks for a single chat turn:
 
 ______________________________________________________________________
 
+## Agent Stream Endpoints
+
+The orchestrator-chat overlay (TUI / web / VS Code / CLI) drives four
+versioned routes registered from `src/kagan/server/_agent_routes.py`. Wire
+shapes live in `kagan.server.responses` (`RunningAgentsResponse`,
+`ActiveAgentRowResponse`, `SessionReplayPage`, `SessionReplayEvent`) and are
+re-emitted as TypeScript via `scripts/generate_wire_types.py`.
+
+| Method | Path                            | Purpose                                                                                          |
+| ------ | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| GET    | `/api/v1/agents/running`        | Snapshot of running worker/reviewer sessions; optional `?project_id=`.                           |
+| GET    | `/api/v1/agents/running/events` | SSE diff of the running-agents list (joined / started / finished / status).                      |
+| GET    | `/api/v1/sessions/{id}/replay`  | Paginated `SessionEvent` history; `?cursor=`, `?limit=` (≤1000), `?direction=forward\|backward`. |
+| GET    | `/api/v1/sessions/{id}/events`  | SSE live tail of `SessionEvent` rows for one session; optional `?since=`.                        |
+
+The replay cursor is a stable `created_at|id` composite — it survives random
+hex IDs, and ascending vs descending traversal is selected via `direction`.
+SSE streams use the standard 25-second keepalive and are scoped behind
+`AccessTier.READ`.
+
+______________________________________________________________________
+
 ## Web UI Serving
 
 When `kagan web` is used, the API server starts in `web_ui=True` mode and mounts the bundled SPA.

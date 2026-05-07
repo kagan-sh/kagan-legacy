@@ -14,6 +14,8 @@ Open the VS Code Chat panel (`Cmd+Shift+I` or the chat icon in the sidebar), the
 
 - `@kagan /watch` or `@kagan /watch <task name>` -- Stream a task's live agent output. Shows brief recent history then streams in real-time until the agent completes. For non-running tasks, shows the most recent events. Plain follow-up messages in that same chat conversation are sent back to the watched task.
 - `@kagan /status` -- Board summary table + running tasks.
+- `@kagan /attach <session-id|task-id>` -- Attach the chat panel to a running worker or reviewer session. Accepts a full UUID or 8-char prefix.
+- `@kagan /detach` -- Return the chat panel to orchestrator mode.
 - `@kagan` with no message -- Shows board status.
 
 **Quick access from the board:** Click the chat icon ($(comment-discussion)) on any IN_PROGRESS or REVIEW task in the sidebar tree to open the Chat panel pre-filled with `/watch <task>`.
@@ -78,6 +80,35 @@ For running tasks, "Attach Terminal" opens the agent's working environment:
 
 - Supports launchers: tmux, nvim, vscode, cursor, windsurf, kiro, antigravity.
 - Opens the worktree directory and start prompt in a new terminal or editor window.
+
+______________________________________________________________________
+
+## Agent Attach
+
+The `@kagan` chat panel can attach to any running worker or reviewer session.
+
+- **Tree view.** A new "Running Agents" view (`kagan.agents`) sits alongside
+  the board tree. Each node shows a worker / reviewer session with role,
+  elapsed time, and token totals. Clicking a node runs
+  `kagan.attachToSession`.
+- **`@kagan /attach <id>`.** Accepts either a full UUID or an 8-char prefix,
+  matching by session id, session-id prefix, task id, or task-id prefix
+  (`resolveAgentSessionId`). Plain follow-up turns in the same conversation
+  are then routed through the attached session tail.
+- **`@kagan /detach`.** Clears the attach for the current conversation and
+  returns the panel to orchestrator mode.
+- **Commands.** `kagan.attachToSession` and `kagan.detachFromSession` are
+  available from the tree-view inline icons, the command palette (when
+  `kagan.connected`), and the `kagan.chat.open` entry point with
+  `{kind: "attach", sessionId, taskTitle}`.
+- **Shared state.** `providers/attach-state.ts` is a small in-memory registry
+  keyed by VS Code chat conversation id (with a `"global"` sentinel) so the
+  tree view and chat participant agree on which session is attached without
+  importing each other.
+
+*Tests:* `packages/vscode/src/providers/chat.participant.helpers.test.ts`
+(prompt parsing + session resolution), `packages/vscode/test/integration/chat-attach.test.ts`
+(end-to-end attach / detach through the chat participant).
 
 ______________________________________________________________________
 

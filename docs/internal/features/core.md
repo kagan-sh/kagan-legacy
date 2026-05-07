@@ -161,7 +161,28 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 14. GitHub Integration
+## 14. Orchestrator-chat Foundation
+
+- `client.resolve_active_session(task_id)` returns the most relevant session for
+  a task. Priority: active worker → active reviewer → most-recent reviewer →
+  most-recent worker → most-recent any → `None`. Pure, total — never raises.
+  *Tests:* `tests/unit/core/test_resolve_active_session.py`.
+- `client.list_running_agents(project_id=None)` returns active worker / reviewer
+  sessions joined with their owning task as `ActiveAgentRow` rows ordered by
+  `started_at DESC`; optionally scoped to a project.
+  *Tests:* `tests/core/test_running_agents_listing.py`.
+- `client.attach_chat(chat_session_id, session_id, agent_role=...)` writes
+  `attached_session_id` / `attached_role` on the ChatSession; `session_id=None`
+  detaches and clears the role. *Tests:* `tests/core/test_chat_attachment.py`.
+- `transition_session` injects an `agent_started` / `agent_finished` /
+  `agent_stopped` system message into every project chat session when a
+  session enters `RUNNING` or a terminal status. Failures are logged and
+  never block the transition.
+  *Tests:* `tests/core/test_session_transition_notifies_chat.py`.
+
+______________________________________________________________________
+
+## 15. GitHub Integration
 
 - Import open / closed / all GitHub issues into a project as kagan tasks; idempotent (re-runs skip already-imported issues, update existing ones with newer GitHub `updatedAt`)
 - Task ↔ issue link stored on `Task.github_issue` as `<owner>/<repo>#<number>`

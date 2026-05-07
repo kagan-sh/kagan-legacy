@@ -220,6 +220,7 @@ typecheck = "pyrefly check --project-excludes src/kagan/core/adapters/db/migrati
 deadcode = "vulture"
 check = ["lint", "typecheck", "deadcode", "check-boundaries", "test"]
 db-migrations-check = "pytest tests/core/test_db_migrations.py -n 0 -v"
+prompt-tokens = "python evals/tokens/measure.py"
 docs-dev = "mkdocs serve -f docs/mkdocs.local.yml"
 docs-build = "mkdocs build -f docs/mkdocs.yml"
 docs-check = "mkdocs build -f docs/mkdocs.yml"

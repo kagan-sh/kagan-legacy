@@ -240,7 +240,7 @@ def _handle_num_key(
     state["selected_option"] = idx
     if idx == 4:
         state["feedback_mode"] = True
-    elif idx == 5:
+    elif idx == 2 or idx == 5:
         from kagan.cli.chat._permission_ui import _session_approvals
 
         _session_approvals.grant_all()
@@ -314,7 +314,7 @@ async def _run_batch_interactive(
         opt = state["selected_option"]
         item_idx = state["focused_item"]
         fb = feedback_buffer.text.strip() if state["feedback_mode"] else state["feedback"]
-        if opt == 5:
+        if opt in (2, 5):
             from kagan.cli.chat._permission_ui import _session_approvals
 
             _session_approvals.grant_all()

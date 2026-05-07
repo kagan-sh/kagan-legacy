@@ -709,11 +709,9 @@ def _build_prompt_message() -> FormattedText:
     if truecolor:
         accent = _REPL_COLORS["accent"]
         plan = _REPL_COLORS["plan"]
-        thinking = _REPL_COLORS["thinking"]
     else:
         accent = _ANSI_REPL_COLORS["accent"]
         plan = "ansiblue"
-        thinking = "ansiyellow"
 
     if not truecolor:
         return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_FALLBACK)])

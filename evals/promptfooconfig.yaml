@@ -86,8 +86,10 @@ tests:
     assert:
       - type: icontains-any
         value: [task_get, acceptance criteria, retrieve the task]
+      # Accepts either the verdict-flow path or the no-criteria STOP path —
+      # the protocol mandates STOP when no acceptance criteria are present.
       - type: icontains-any
-        value: [review_decide, review_verdict, verdict, approve, reject]
+        value: [review_decide, review_verdict, verdict, approve, reject, manual human review]
 
   - description: "Per-criterion PASS/FAIL structure"
     vars:

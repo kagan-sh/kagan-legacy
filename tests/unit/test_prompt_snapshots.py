@@ -36,23 +36,20 @@ _GIT_COMMIT_LINE = (
 _SHARED_TAIL = "\n".join(
     [
         "COORDINATION (check before starting):",
-        "- Call task_list() to see other tasks in this project.",
-        "- If any are IN_PROGRESS, check for file overlap to avoid merge conflicts.",
-        "- Call task_get(task_id) on related tasks for full context.",
-        "- Call task_list(query=...) to find tasks by keyword.",
-        "- If overlap exists, coordinate: avoid shared files or sequence edits.",
+        "- `task_list()` for siblings; check IN_PROGRESS for file overlap.",
+        "- `task_get(task_id)` / `task_list(query=...)` for context.",
+        "- On overlap: avoid shared files or sequence edits.",
         "",
         "MUST DO:",
-        "- Commit ALL changes before signaling completion.",
-        "- Run the project's test/lint commands if they exist.",
-        "- Write a clear commit message explaining WHY, not just what.",
+        "- Commit ALL changes before signaling completion (WHY-focused message).",
+        "- Run project test/lint commands if present.",
         "",
-        "After changing files, run:",
+        "After edits:",
         "git add -A",
         _GIT_COMMIT_LINE,
         "",
         "MUST NOT DO:",
-        "- Do NOT modify files outside the scope of this task.",
+        "- Do NOT modify files outside this task's scope.",
         "- Do NOT delete or skip existing tests to make the build pass.",
         "- Do NOT suppress type errors or linter warnings.",
         "- Do NOT leave uncommitted changes.",
@@ -62,8 +59,8 @@ _SHARED_TAIL = "\n".join(
         "- [ ] Tests/lint pass (if applicable)",
         "- [ ] No uncommitted files left behind",
         "",
-        "Only signal completion after the checklist passes.",
-        "If blocked, explain the reason and signal blocked.",
+        "Signal completion only after the checklist passes. If blocked, "
+        "explain the reason and signal blocked.",
     ]
 )
 
@@ -154,22 +151,22 @@ def test_detached_run_prompt_key_phrases_present() -> None:
 
     required_phrases = [
         "COORDINATION (check before starting):",
-        "Call task_list() to see other tasks in this project.",
-        "If any are IN_PROGRESS, check for file overlap to avoid merge conflicts.",
+        "task_list()",
+        "IN_PROGRESS",
         "MUST DO:",
-        "Commit ALL changes before signaling completion.",
-        "Run the project's test/lint commands if they exist.",
-        "Write a clear commit message explaining WHY, not just what.",
+        "Commit ALL changes before signaling completion",
+        "test/lint",
+        "WHY-focused",
         "git add -A",
         "commit.gpgsign=false",
         "MUST NOT DO:",
-        "Do NOT modify files outside the scope of this task.",
+        "Do NOT modify files outside this task's scope.",
         "Do NOT delete or skip existing tests to make the build pass.",
         "Do NOT suppress type errors or linter warnings.",
         "PRE-COMPLETION CHECKLIST:",
         "All changes committed to git",
-        "Only signal completion after the checklist passes.",
-        "If blocked, explain the reason and signal blocked.",
+        "Signal completion only after the checklist passes",
+        "If blocked",
     ]
     for phrase in required_phrases:
         assert phrase in result, f"Missing required phrase: {phrase!r}"

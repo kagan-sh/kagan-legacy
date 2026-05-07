@@ -33,8 +33,8 @@ def test_format_user_request_block_includes_guidance_for_status_queries() -> Non
 
 
 def test_orchestrator_prompt_requires_parallel_waves_and_acceptance_criteria_quality() -> None:
-    assert "Execution Parallelism Policy" in _ORCHESTRATOR_SYSTEM_PROMPT
-    assert "run them concurrently" in _ORCHESTRATOR_SYSTEM_PROMPT
-    assert "If overlap is uncertain" in _ORCHESTRATOR_SYSTEM_PROMPT
-    assert "Create tasks with empty acceptance criteria" in _ORCHESTRATOR_SYSTEM_PROMPT
-    assert "2-6 verifiable outcomes" in _ORCHESTRATOR_SYSTEM_PROMPT
+    assert "Execution waves" in _ORCHESTRATOR_SYSTEM_PROMPT
+    assert "independent" in _ORCHESTRATOR_SYSTEM_PROMPT
+    assert "sequential" in _ORCHESTRATOR_SYSTEM_PROMPT.lower()
+    assert "non-empty testable acceptance_criteria" in _ORCHESTRATOR_SYSTEM_PROMPT
+    assert "2–6 verifiable outcomes" in _ORCHESTRATOR_SYSTEM_PROMPT

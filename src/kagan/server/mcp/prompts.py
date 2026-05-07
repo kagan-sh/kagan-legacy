@@ -33,25 +33,14 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         """Return a task-breakdown prompt for the given feature description."""
         return [
             UserMessage(
-                f"Break down the following feature into concrete tasks:\n\n{description}\n\n"
-                "For each task provide:\n"
-                "- A short title (\u2264 10 words)\n"
-                "- A one-sentence description\n"
-                "- Acceptance criteria (2-6 bullets, concrete and verifiable)\n"
-                "- Dependency notes (what must finish first, if anything)\n"
-                "- Parallelization notes (what can run concurrently safely)\n"
-                "- Estimated effort: small / medium / large\n"
-                "- Run preference recommendation (optional): managed or attached\n"
-                "  \u2022 managed (default): agent runs independently to completion. "
-                "Best for well-defined, self-contained tasks with clear acceptance criteria.\n"
-                "  \u2022 attached: agent runs interactively as co-pilot in a terminal session. "
-                "Best for exploratory work, complex debugging, or tasks needing user guidance.\n"
-                "Default to managed unless the task clearly benefits from interactive "
-                "collaboration.\n\n"
-                "Execution planning rules:\n"
-                "- Group independent, non-overlapping tasks into concurrent waves.\n"
-                "- If overlap is uncertain, run sequentially.\n"
-                "- Never schedule concurrent mutating work on the same workspace."
+                f"Break down this feature into concrete tasks:\n\n{description}\n\n"
+                "Per task: title (\u2264 10 words), 1-sentence description, "
+                "2-6 verifiable acceptance criteria, dependency + parallelization "
+                "notes, effort (small/medium/large), run preference "
+                "(managed default; attached for interactive/debug/exploratory).\n\n"
+                "Group independent non-overlapping tasks into concurrent waves; "
+                "if overlap is uncertain, sequence them. Never run concurrent "
+                "mutating work in the same workspace."
             )
         ]
 
@@ -60,11 +49,9 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         """Return a diagnostic prompt for a failed task."""
         return [
             UserMessage(
-                f"Task {task_id} failed with the following error:\n\n{failure_summary}\n\n"
-                "Please diagnose the root cause:\n"
-                "1. Identify the most likely cause of the failure.\n"
-                "2. Suggest concrete remediation steps.\n"
-                "3. Indicate whether the task should be retried or escalated."
+                f"Task {task_id} failed:\n\n{failure_summary}\n\n"
+                "Diagnose: (1) most likely root cause, (2) concrete remediation, "
+                "(3) retry or escalate."
             )
         ]
 
@@ -75,19 +62,14 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         """Return a read-only audit prompt for a persona preset repository."""
         return [
             UserMessage(
-                f"Audit persona preset source {repo} at path {path}.\n\n"
-                "You are a read-only security auditor.\n"
-                "MUST DO:\n"
-                "- Call persona_inspect first and quote findings exactly.\n"
-                "- Explicitly state whether repo is trusted by whitelist.\n"
-                "- Recommend next action: install, install with caution, or reject.\n"
-                "- Provide evidence bullets tied to audit output fields.\n\n"
-                "MUST NOT DO:\n"
-                "- Do not claim absolute safety.\n"
-                "- Do not perform writes or imports during audit.\n"
-                "- Do not omit due-diligence disclaimer.\n\n"
-                "Required disclaimer:\n"
-                "This audit is advisory and heuristic. "
+                f"Audit persona preset source {repo} at {path}. Read-only auditor.\n\n"
+                "DO: call `persona_inspect` first and quote findings verbatim; "
+                "state whether repo is whitelist-trusted; recommend "
+                "install / install-with-caution / reject; back every claim with "
+                "evidence bullets tied to audit-output fields.\n"
+                "DON'T: claim absolute safety; perform writes or imports; omit "
+                "the disclaimer.\n\n"
+                "Disclaimer (required): this audit is advisory and heuristic. "
                 "User must review repository source before import."
             )
         ]

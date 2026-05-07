@@ -740,11 +740,23 @@ class ChatController:
                         if isinstance(event, TurnError):
                             had_error = True
                 finally:
-                    # ``stream`` is an async generator — closing it propagates
-                    # ``GeneratorExit`` into the engine's cleanup branch.
                     with contextlib.suppress(BaseException):
                         await stream.aclose()
+
+            async def _refresh_clock() -> None:
+                # Drives spinner animation and elapsed-time label at 10 fps.
+                # Runs in the same asyncio event loop as prompt_toolkit so
+                # refresh calls are serialised with toolbar redraws — no
+                # byte-level interleaving with the threaded auto_refresh.
+                try:
+                    while True:
+                        await asyncio.sleep(0.1)
+                        _live.refresh()
+                except asyncio.CancelledError:
+                    pass
+
             self._renderer.start_turn(live_state=live_state)
+            refresh_task = asyncio.create_task(_refresh_clock(), name="chat-live-clock")
             consume_task = asyncio.create_task(_consume_stream(), name="chat-engine-consume")
             original_sigint = install_sigint_handler(consume_task)
             try:
@@ -753,10 +765,6 @@ class ChatController:
                 interrupted = True
                 with contextlib.suppress(BaseException):
                     await self.client.chat.cancel(self._chat_session_id)
-                # Drain remaining events (TurnCancelled / AssistantMessagePersisted)
-                # so the partial-on-cancel persist round-trip surfaces. The
-                # consume_task is already cancelled; the engine's own cancel path
-                # writes the partial via _sessions.append_message.
                 self._permission_ui.cancel_batch_queue()
             except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                 logger.exception("Chat engine consume failed")
@@ -767,6 +775,7 @@ class ChatController:
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
                 had_error = True
             finally:
+                refresh_task.cancel()
                 restore_sigint_handler(original_sigint)
                 _TOOLBAR_STATE.is_streaming = False
 

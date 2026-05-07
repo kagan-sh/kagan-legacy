@@ -1,11 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createStore } from "jotai";
 import { renderWithProviders } from "@/test/render";
 import { ChatInputBar } from "@/components/chat/chat-input-bar";
 import { sseConnectedAtom } from "@/lib/atoms/connection";
-import { isStreamingAtom } from "@/lib/atoms/chat";
+import { isStreamingAtom, pendingQueueAtom, type PendingMessage } from "@/lib/atoms/chat";
 
 function connectedStore(streaming: boolean = false) {
     const store = createStore();
@@ -13,6 +13,8 @@ function connectedStore(streaming: boolean = false) {
     store.set(isStreamingAtom, streaming);
     return store;
 }
+
+const TEST_PROJECT_ID = 'test-project-123';
 
 describe("ChatInputBar", () => {
     it("keeps send button disabled when input is empty", () => {
@@ -173,6 +175,103 @@ describe("ChatInputBar", () => {
 
             // After selection, the autocomplete list should be gone
             expect(screen.queryByRole("group")).toBeNull();
+        });
+    });
+
+    // ── History (Up/Down arrow) ───────────────────────────────────────────────
+
+    describe('input history', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+
+        it('up arrow cycles to most recent history entry', async () => {
+            const user = userEvent.setup();
+            const lsKey = `kagan:chat-history:${TEST_PROJECT_ID}`;
+            localStorage.setItem(lsKey, JSON.stringify(['old message']));
+
+            renderWithProviders(
+                <ChatInputBar onSend={vi.fn()} projectId={TEST_PROJECT_ID} />,
+                { store: connectedStore() },
+            );
+
+            const input = screen.getByPlaceholderText(
+                'Type a message or / for commands...',
+            );
+            await user.click(input);
+            await user.keyboard('{ArrowUp}');
+
+            expect(input).toHaveValue('old message');
+        });
+
+        it('submit appends to localStorage history', async () => {
+            const user = userEvent.setup();
+
+            renderWithProviders(
+                <ChatInputBar onSend={vi.fn()} projectId={TEST_PROJECT_ID} />,
+                { store: connectedStore() },
+            );
+
+            const input = screen.getByPlaceholderText(
+                'Type a message or / for commands...',
+            );
+            await user.type(input, 'my new message');
+            await user.keyboard('{Enter}');
+
+            const lsKey = `kagan:chat-history:${TEST_PROJECT_ID}`;
+            const stored = JSON.parse(localStorage.getItem(lsKey) ?? '[]') as string[];
+            expect(stored).toContain('my new message');
+        });
+    });
+
+    // ── Pending queue badge ───────────────────────────────────────────────────
+
+    describe('pending queue badge', () => {
+        it('input remains enabled during streaming', () => {
+            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, {
+                store: connectedStore(true),
+            });
+
+            const input = screen.getByPlaceholderText(
+                'Type a message or / for commands...',
+            );
+            // The textarea itself should not be disabled.
+            expect(input).not.toBeDisabled();
+        });
+
+        it('queued badge shows count when queue non-empty', () => {
+            const store = connectedStore(true);
+            const msgs: PendingMessage[] = [
+                { id: 'a', text: 'first' },
+                { id: 'b', text: 'second' },
+            ];
+            store.set(pendingQueueAtom, msgs);
+
+            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+
+            expect(screen.getByText(/2 queued/i)).toBeInTheDocument();
+        });
+
+        it('badge hidden when queue empty', () => {
+            const store = connectedStore(true);
+
+            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+
+            expect(screen.queryByText(/queued/i)).toBeNull();
+        });
+
+        it('badge clear button empties queue', async () => {
+            const user = userEvent.setup();
+            const store = connectedStore(true);
+            store.set(pendingQueueAtom, [{ id: 'a', text: 'msg' }]);
+
+            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+
+            const clearBtn = screen.getByRole('button', { name: /clear queue/i });
+            await user.click(clearBtn);
+
+            expect(store.get(pendingQueueAtom)).toHaveLength(0);
+            expect(screen.queryByText(/queued/i)).toBeNull();
         });
     });
 });

@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect, type KeyboardEvent, useMemo } from 'react';
 import { Send, Plus, Paperclip, X } from 'lucide-react';
-import { useAtomValue } from 'jotai';
-import { isStreamingAtom } from '@/lib/atoms/chat';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { toast } from 'sonner';
+import { isStreamingAtom, pendingQueueAtom, enqueuePendingAtom, clearPendingQueueAtom, PENDING_QUEUE_MAX } from '@/lib/atoms/chat';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,6 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
+import { ChatHistory, HistoryCursor } from '@/lib/chat-history';
 
 const SLASH_COMMANDS = [
   { command: '/help', description: 'Show available commands' },
@@ -46,6 +48,16 @@ interface ChatInputBarProps {
   externalPrefill?: string;
   /** Called after externalPrefill has been consumed. */
   onPrefillConsumed?: () => void;
+  /**
+   * Active project ID — scopes the localStorage history key.
+   * When omitted, history is kept in memory only for the session.
+   */
+  projectId?: string;
+  /**
+   * When false, input history is never persisted to localStorage (in-memory only).
+   * Defaults to true. Typically driven by the server `persist_input_history` setting.
+   */
+  persistHistory?: boolean;
 }
 
 export function ChatInputBar({
@@ -57,6 +69,8 @@ export function ChatInputBar({
   className,
   externalPrefill,
   onPrefillConsumed,
+  projectId,
+  persistHistory = true,
 }: ChatInputBarProps) {
   const [text, setText] = useState('');
   const [showCommands, setShowCommands] = useState(false);
@@ -64,15 +78,38 @@ export function ChatInputBar({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const isStreaming = useAtomValue(isStreamingAtom);
+  const pendingQueue = useAtomValue(pendingQueueAtom);
+  const enqueue = useSetAtom(enqueuePendingAtom);
+  const clearQueue = useSetAtom(clearPendingQueueAtom);
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isBusy = disableSend ?? isStreaming;
+
+  // The send button is disabled only when: no text/attachments OR disableSend prop.
+  // The textarea itself is NEVER disabled (even during streaming) to support queueing.
+  const isBusy = disableSend ?? false;
   const canSend = (text.trim().length > 0 || attachments.length > 0) && !isBusy;
+
+  // ── History ────────────────────────────────────────────────────────────────
+
+  const historyRef = useRef<ChatHistory | null>(null);
+  const cursorRef = useRef<HistoryCursor>(new HistoryCursor());
+
+  // (Re-)create the ChatHistory instance when projectId or persistHistory changes.
+  useEffect(() => {
+    const pid = projectId ?? '__default__';
+    const persist = persistHistory && pid !== '__default__';
+    historyRef.current = new ChatHistory(pid, persist);
+    cursorRef.current.reset();
+  }, [projectId, persistHistory]);
+
+  // ── External prefill ───────────────────────────────────────────────────────
 
   useEffect(() => {
     if (externalPrefill != null) {
       setText(externalPrefill);
       onPrefillConsumed?.();
+      cursorRef.current.reset();
       inputRef.current?.focus();
     }
   }, [externalPrefill, onPrefillConsumed]);
@@ -82,18 +119,38 @@ export function ChatInputBar({
     return SLASH_COMMANDS.filter((c) => c.command.startsWith(text.trim().toLowerCase()));
   }, [text]);
 
-  const handleSend = useCallback(() => {
-    if (!canSend) return;
-    const trimmed = text.trim();
+  // ── Send ───────────────────────────────────────────────────────────────────
+
+  const doSend = useCallback((txt: string, atts: Attachment[]) => {
+    const trimmed = txt.trim();
     if (trimmed.startsWith('/')) {
       onSlashCommand?.(trimmed);
     } else {
-      onSend(trimmed, attachments.length > 0 ? attachments : undefined);
+      onSend(trimmed, atts.length > 0 ? atts : undefined);
     }
+    historyRef.current?.push(trimmed);
+    cursorRef.current.reset();
     setText('');
     setAttachments([]);
     setShowCommands(false);
-  }, [text, canSend, onSend, onSlashCommand, attachments]);
+  }, [onSend, onSlashCommand]);
+
+  const handleSend = useCallback(() => {
+    if (!canSend) return;
+    // If the agent is currently streaming, queue the message instead.
+    if (isStreaming) {
+      const ok = enqueue(text.trim());
+      if (!ok) {
+        toast.error(`Queue full — max ${PENDING_QUEUE_MAX} messages`);
+        return;
+      }
+      setText('');
+      setAttachments([]);
+      setShowCommands(false);
+      return;
+    }
+    doSend(text, attachments);
+  }, [text, canSend, isStreaming, enqueue, doSend, attachments]);
 
   const handleSelectCommand = (command: string) => {
     setText(command + ' ');
@@ -123,13 +180,39 @@ export function ChatInputBar({
 
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (isBusy) {
+      // Clear pending queue on Escape.
+      if (pendingQueue.length > 0) {
+        clearQueue();
+      }
+      if (isStreaming) {
         e.stopPropagation();
         const pending = text.trim();
         onInterrupt?.({ pendingText: pending || null });
         if (pending) setText('');
       }
       return;
+    }
+
+    // Arrow key history navigation — only when the command menu is not open.
+    if (!showCommands || filteredCommands.length === 0) {
+      if (e.key === 'ArrowUp') {
+        const entries = historyRef.current?.getEntries() ?? [];
+        const entry = cursorRef.current.up(text, entries);
+        if (entry !== null) {
+          e.preventDefault();
+          setText(entry);
+        }
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        const entries = historyRef.current?.getEntries() ?? [];
+        const entry = cursorRef.current.down(entries);
+        if (entry !== null) {
+          e.preventDefault();
+          setText(entry);
+        }
+        return;
+      }
     }
 
     if (showCommands && filteredCommands.length > 0) {
@@ -261,7 +344,6 @@ export function ChatInputBar({
               <span className="max-w-24 truncate">{att.name}</span>
               <button
                 onClick={() => removeAttachment(att.id)}
-                disabled={isBusy}
                 className="ml-1 p-0.5 hover:bg-[var(--accent)]"
                 aria-label={`Remove ${att.name}`}
               >
@@ -309,6 +391,25 @@ export function ChatInputBar({
           rows={1}
           className="min-h-9 flex-1 resize-none py-2"
         />
+
+        {/* Pending queue badge — shown when messages are queued during streaming */}
+        {pendingQueue.length > 0 && (
+          <div className="flex shrink-0 items-center gap-1 self-center">
+            <span className="inline-flex items-center gap-1 border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-2 py-1 font-code text-[10px] text-[var(--muted-foreground)]">
+              <span>{pendingQueue.length} queued</span>
+            </span>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => clearQueue()}
+              aria-label="Clear queue"
+              className="size-6 shrink-0 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+            >
+              <X className="size-3" />
+            </Button>
+          </div>
+        )}
+
         <Button
           size="icon"
           onClick={handleSend}
@@ -321,7 +422,7 @@ export function ChatInputBar({
       </div>
 
       {/* Footer bar — wave animation + interrupt hint; space is always reserved to prevent layout shift */}
-      <div className={cn('mt-1.5 flex h-5 items-center gap-2.5 px-0.5', !isBusy && 'invisible')}>
+      <div className={cn('mt-1.5 flex h-5 items-center gap-2.5 px-0.5', !isStreaming && 'invisible')}>
         <TypingIndicator />
         <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
           <kbd className=" border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-1 py-0.5 font-code text-[9px]">esc</kbd>

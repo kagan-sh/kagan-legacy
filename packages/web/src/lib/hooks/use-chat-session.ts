@@ -25,6 +25,7 @@ import {
   resetStreamAtom,
   takeoverBannerAtom,
   turnConflictAtom,
+  dequeuePendingAtom,
   type ChatStreamEntry,
   type TurnConflict,
 } from '@/lib/atoms/chat';
@@ -83,6 +84,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   const resetStream = useSetAtom(resetStreamAtom);
   const [takeoverBanner, setTakeoverBanner] = useAtom(takeoverBannerAtom);
   const [turnConflict, setTurnConflict] = useAtom(turnConflictAtom);
+  const dequeue = useSetAtom(dequeuePendingAtom);
 
   // ── Local state ────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -99,6 +101,10 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   const localStreamingRef = useRef(false);
   // Track when the current thinking phase started (reset when composing begins).
   const thinkingStartRef = useRef<number | null>(null);
+
+  // Ref to `doSendStream` so that CHAT_DONE queue-drain can call the latest
+  // version without creating a circular dependency in useCallback deps.
+  const doSendStreamRef = useRef<((text: string, attachments?: Attachment[]) => void) | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null) as MutableRefObject<ReturnType<typeof setInterval> | null>;
 
@@ -245,6 +251,14 @@ export function useChatSession(id: string | undefined): ChatSessionState {
               .then((session) => setMessages(session.messages))
               .catch(() => {});
           }
+          // Drain the next queued message (if any) after a brief tick so that
+          // the CHAT_DONE state propagates before we kick off the next stream.
+          setTimeout(() => {
+            const next = dequeue();
+            if (next) {
+              doSendStreamRef.current?.(next.text);
+            }
+          }, 0);
           break;
         }
         case 'CHAT_SESSION_UPDATED': {
@@ -311,6 +325,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
       setMessages,
       setTakeoverBanner,
       setPermissionRequest,
+      dequeue,
     ],
   );
 
@@ -410,6 +425,9 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     },
     [id, setIsStreaming, setMessages, addError, setTurnConflict],
   );
+
+  // Keep the ref up-to-date so that CHAT_DONE's queue-drain sees the latest version.
+  doSendStreamRef.current = doSendStream;
 
   const onSend = useCallback(
     (text: string, attachments?: Attachment[]) => {

@@ -123,3 +123,51 @@ export interface TurnConflict {
 }
 
 export const turnConflictAtom = atom<TurnConflict | null>(null);
+
+// ---------------------------------------------------------------------------
+// Multi-turn message queue — messages submitted while the agent is streaming
+// ---------------------------------------------------------------------------
+
+/** Max messages allowed in the pending queue. */
+export const PENDING_QUEUE_MAX = 10;
+
+/** A single message waiting to be sent after the current stream completes. */
+export interface PendingMessage {
+  id: string;
+  text: string;
+}
+
+/** Queue of messages submitted while the agent was streaming. Drained FIFO. */
+export const pendingQueueAtom = atom<PendingMessage[]>([]);
+
+/** Derived read: number of items in the queue. */
+export const pendingQueueLengthAtom = atom((get) => get(pendingQueueAtom).length);
+
+/** Append a message to the queue. No-op if the queue is already at max depth. */
+export const enqueuePendingAtom = atom(
+  null,
+  (get, set, text: string): boolean => {
+    const queue = get(pendingQueueAtom);
+    if (queue.length >= PENDING_QUEUE_MAX) return false;
+    const id = `pq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    set(pendingQueueAtom, [...queue, { id, text }]);
+    return true;
+  },
+);
+
+/** Remove and return the first item from the queue, or null if empty. */
+export const dequeuePendingAtom = atom(
+  null,
+  (get, set): PendingMessage | null => {
+    const queue = get(pendingQueueAtom);
+    if (queue.length === 0) return null;
+    const [first, ...rest] = queue;
+    set(pendingQueueAtom, rest);
+    return first ?? null;
+  },
+);
+
+/** Clear the entire pending queue. */
+export const clearPendingQueueAtom = atom(null, (_get, set) => {
+  set(pendingQueueAtom, []);
+});

@@ -9,6 +9,12 @@ import {
   addStreamErrorAtom,
   addStreamNoteAtom,
   resetStreamAtom,
+  pendingQueueAtom,
+  pendingQueueLengthAtom,
+  enqueuePendingAtom,
+  dequeuePendingAtom,
+  clearPendingQueueAtom,
+  PENDING_QUEUE_MAX,
 } from '@/lib/atoms/chat';
 
 describe('isStreamingAtom', () => {
@@ -116,5 +122,57 @@ describe('resetStreamAtom', () => {
     store.set(resetStreamAtom);
     expect(store.get(streamEntriesAtom)).toHaveLength(0);
     expect(store.get(isStreamingAtom)).toBe(false);
+  });
+});
+
+// ── pendingQueueAtom ──────────────────────────────────────────────────────────
+
+describe('pendingQueueAtom', () => {
+  it('starts empty', () => {
+    const store = createStore();
+    expect(store.get(pendingQueueAtom)).toHaveLength(0);
+    expect(store.get(pendingQueueLengthAtom)).toBe(0);
+  });
+
+  it('enqueue appends a message', () => {
+    const store = createStore();
+    const ok = store.set(enqueuePendingAtom, 'hello');
+    expect(ok).toBe(true);
+    expect(store.get(pendingQueueAtom)).toHaveLength(1);
+    expect(store.get(pendingQueueAtom)[0]?.text).toBe('hello');
+  });
+
+  it('dequeue removes and returns the first message', () => {
+    const store = createStore();
+    store.set(enqueuePendingAtom, 'first');
+    store.set(enqueuePendingAtom, 'second');
+    const msg = store.set(dequeuePendingAtom);
+    expect(msg?.text).toBe('first');
+    expect(store.get(pendingQueueAtom)).toHaveLength(1);
+    expect(store.get(pendingQueueAtom)[0]?.text).toBe('second');
+  });
+
+  it('dequeue returns null when queue is empty', () => {
+    const store = createStore();
+    const msg = store.set(dequeuePendingAtom);
+    expect(msg).toBeNull();
+  });
+
+  it('clear empties the queue', () => {
+    const store = createStore();
+    store.set(enqueuePendingAtom, 'a');
+    store.set(enqueuePendingAtom, 'b');
+    store.set(clearPendingQueueAtom);
+    expect(store.get(pendingQueueAtom)).toHaveLength(0);
+  });
+
+  it(`rejects enqueue when queue exceeds max depth of ${PENDING_QUEUE_MAX}`, () => {
+    const store = createStore();
+    for (let i = 0; i < PENDING_QUEUE_MAX; i++) {
+      store.set(enqueuePendingAtom, `msg-${i}`);
+    }
+    const ok = store.set(enqueuePendingAtom, 'overflow');
+    expect(ok).toBe(false);
+    expect(store.get(pendingQueueAtom)).toHaveLength(PENDING_QUEUE_MAX);
   });
 });

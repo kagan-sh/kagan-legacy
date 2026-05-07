@@ -1,10 +1,7 @@
 import contextlib
 import shlex
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Final, Literal
-
-if TYPE_CHECKING:
-    from kagan.core.chat._turn_display import TurnPhaseTracker
+from typing import Any, Final, Literal
 
 from textual import on
 from textual.app import ComposeResult
@@ -26,6 +23,7 @@ from kagan.cli.chat import (
     parse_slash_invocation,
     resolve_slash_input,
 )
+from kagan.core.chat._history import KaganFileHistory
 from kagan.core.enums import SessionKind
 from kagan.tui.keybindings import CHAT_BINDINGS
 from kagan.tui.screens.file_picker import FilePickerModal
@@ -194,7 +192,13 @@ class ChatPanel(Vertical):
         # asynchronously via :meth:`_refresh_project_session_keys`. ``None``
         # means "not yet loaded / no filter" — the picker shows everything.
         self._project_session_keys_cache: dict[str, set[str]] = {}
-        self._turn_tracker: TurnPhaseTracker | None = None
+        # Multi-turn message queue: messages submitted while the agent is
+        # streaming are held here and drained after the turn completes.
+        self._pending_queue: list[str] = []
+        self._max_queue_depth: Final[int] = 10
+        # Persistent input history — initialised with no-op until a project
+        # id is available (set via :meth:`set_project_id`).
+        self._file_history: KaganFileHistory | None = None
 
     @contextlib.contextmanager
     def state_only_updates(self):
@@ -301,6 +305,14 @@ class ChatPanel(Vertical):
                         )
                         badge.tooltip = "Current session kind (Orchestrator/Agent)"
                         yield badge
+                    queue_badge = Static(
+                        "",
+                        id="chat-overlay-queue-badge",
+                        classes="chat-queue-badge",
+                    )
+                    queue_badge.display = False
+                    queue_badge.tooltip = "Messages queued for after the current turn"
+                    yield queue_badge
                 with ChatSessionMenu(id="chat-overlay-session-switcher"):
                     with Horizontal(id="chat-overlay-session-current-wrap"):
                         mode_badge = Static(
@@ -479,6 +491,14 @@ class ChatPanel(Vertical):
         self._status_hint_override = normalized or None
         self._refresh_status()
 
+    def set_project_id(self, project_id: str, *, persist: bool = True) -> None:
+        """Attach a file-backed history store for *project_id*.
+
+        Must be called after :meth:`on_mount` so the widget is in the DOM.
+        Replaces any previously loaded history.
+        """
+        self._file_history = KaganFileHistory(project_id, persist=persist)
+
     def set_first_boot(self, enabled: bool = True) -> None:
         self.set_class(enabled, "first-boot")
 
@@ -572,17 +592,11 @@ class ChatPanel(Vertical):
                 self._schedule_deferred_update()
             return
 
-    def request_permission(
-        self,
-        text: str,
-        *,
-        timeout_seconds: int = 30,
-        action_key: str | None = None,
-    ) -> None:
+    def request_permission(self, text: str, *, timeout_seconds: int = 30) -> None:
         state = self._current_state()
         state.decision_surface = (
             "permission",
-            {"text": text, "timeout_seconds": timeout_seconds, "action_key": action_key},
+            {"text": text, "timeout_seconds": timeout_seconds},
         )
         if self.is_mounted:
             self._render_decision_surface()
@@ -607,11 +621,17 @@ class ChatPanel(Vertical):
         return self._agent_hint
 
     def set_runtime_status(self, status: str) -> None:
+        previous = self._runtime_status
         self._runtime_status = status.strip().lower() or "ready"
         if self.is_mounted:
             status_bar = self._status_bar()
             if status_bar is not None:
                 status_bar.update_status(self._runtime_status)
+        # Drain the pending queue when the agent becomes idle
+        was_busy = previous in {"thinking", "initializing", "waiting"}
+        is_now_idle = self._runtime_status not in {"thinking", "initializing", "waiting"}
+        if was_busy and is_now_idle and self._pending_queue:
+            self.call_later(self._drain_pending_queue)
 
     def set_agent_backend(self, backend: str) -> None:
         if self.is_mounted:
@@ -647,6 +667,44 @@ class ChatPanel(Vertical):
         except NoMatches:
             pass
         return False
+
+    def pending_queue_size(self) -> int:
+        """Return the number of messages currently waiting in the queue."""
+        return len(self._pending_queue)
+
+    def clear_pending_queue(self) -> None:
+        """Clear all queued messages and hide the badge."""
+        self._pending_queue.clear()
+        self._update_queue_badge()
+
+    def _update_queue_badge(self) -> None:
+        with contextlib.suppress(NoMatches):
+            badge = self.query_one("#chat-overlay-queue-badge", Static)
+            count = len(self._pending_queue)
+            if count:
+                badge.update(f"↓ {count} queued")
+                badge.display = True
+            else:
+                badge.update("")
+                badge.display = False
+
+    def _drain_pending_queue(self) -> None:
+        """Submit the first item from the pending queue (if idle)."""
+        is_busy = self._runtime_status in {"thinking", "initializing", "waiting"}
+        if is_busy or not self._pending_queue:
+            return
+        text = self._pending_queue.pop(0)
+        self._update_queue_badge()
+        # Re-use the same submit path so history + UI are updated correctly
+        input_widget = self._input_widget()
+        if input_widget is not None:
+            self._history_programmatic_update = True
+            input_widget.value = text
+        self.post_message(self.SubmitRequested(text))
+        self.add_user_message(text)
+        if input_widget is not None:
+            input_widget.value = ""
+            self._current_state().draft = ""
 
     def hydrate_current_session_history(self, history: list[tuple[str, str]]) -> None:
         state = self._current_state()
@@ -718,17 +776,6 @@ class ChatPanel(Vertical):
     @on(PermissionPrompt.DecisionMade)
     def _on_permission_decision(self, event: PermissionPrompt.DecisionMade) -> None:
         state = self._current_state()
-        # Apply session grants so [s]/[A] don't just dismiss the prompt — the
-        # next identical tool call would re-prompt otherwise.
-        if event.decision in ("allow_session", "allow_all"):
-            from kagan.cli.chat._permission_ui import _session_approvals
-
-            payload = state.decision_surface[1] if state.decision_surface else {}
-            action_key = payload.get("action_key") if isinstance(payload, dict) else None
-            if event.decision == "allow_all":
-                _session_approvals.grant_all()
-            elif action_key:
-                _session_approvals.grant(action_key)
         state.decision_surface = None
         self.add_system_message(f"Permission {event.decision}")
         self._render_decision_surface()
@@ -891,6 +938,8 @@ class ChatPanel(Vertical):
                 self._current_state().draft = ""
             else:
                 self._pending_after_interrupt = None
+            # Escape during streaming also clears the message queue
+            self.clear_pending_queue()
             self.post_message(ChatPanel.InterruptRequested())
             return
         self._request_close()
@@ -986,6 +1035,23 @@ class ChatPanel(Vertical):
                 self._current_state().draft = ""
                 self._hide_overlays()
                 return
+
+        # If the agent is busy, queue the message instead of sending immediately.
+        is_busy = self._runtime_status in {"thinking", "initializing", "waiting"}
+        if is_busy and not text.startswith("/"):
+            if len(self._pending_queue) >= self._max_queue_depth:
+                self.app.notify(
+                    "Queue full (max 10). Message not added.",
+                    severity="warning",
+                )
+            else:
+                self._pending_queue.append(text)
+                self._update_queue_badge()
+            input_widget.value = ""
+            self._current_state().draft = ""
+            input_widget.focus()
+            self._hide_overlays()
+            return
 
         self._append_prompt_history(text)
         self._current_state().last_sent_text = text
@@ -1539,8 +1605,34 @@ class ChatPanel(Vertical):
             state.prompt_history.append(cleaned)
             state.prompt_history = state.prompt_history[-100:]
         state.history_index = None
+        # Also push to file-backed history when available
+        if self._file_history is not None:
+            self._file_history.push(cleaned)
 
     def _cycle_prompt_history(self, *, direction: Literal["up", "down"]) -> bool:
+        # When persistent file history is available use it for navigation so
+        # history is shared across TUI sessions and with ``kg chat``.
+        if self._file_history is not None:
+            input_widget = self._input_widget()
+            current = input_widget.value if input_widget is not None else ""
+            if direction == "up":
+                value = self._file_history.cycle_up(current)
+            else:
+                value = self._file_history.cycle_down(current)
+            if value is None and direction == "up":
+                # No history yet — fall through to in-session history
+                pass
+            elif value is not None:
+                self._history_programmatic_update = True
+                if input_widget is not None:
+                    input_widget.value = value
+                    input_widget.focus()
+                self._current_state().draft = value
+                return True
+            elif direction == "down" and not self._file_history.is_navigating():
+                # Down at end of navigation — nothing to do
+                return False
+
         state = self._current_state()
         if not state.prompt_history:
             return False

@@ -750,6 +750,19 @@ ChatPanel #chat-overlay-session-badge.session-kind-attached {
     color: $text;
 }
 
+ChatPanel #chat-overlay-queue-badge {
+    display: none;
+    width: auto;
+    height: 1;
+    margin-left: 1;
+    padding: 0 1;
+    border: none;
+    background: transparent;
+    color: $warning;
+    text-style: italic;
+    content-align: right middle;
+}
+
 ChatPanel #chat-overlay-command-line:focus-within {
     background: $surface;
     border: round $primary;

@@ -67,6 +67,7 @@ def _make_ctx(core: KaganCore) -> SimpleNamespace:
             ),
         ),
         opts=ServerOptions(),
+        bound_project_id=core.active_project_id,
     )
 
 
@@ -184,6 +185,7 @@ async def test_running_agents_project_filter_via_query_param(
                 ),
             ),
             opts=ServerOptions(),
+            bound_project_id=proj_a.id,
         )
         monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
 
@@ -196,5 +198,64 @@ async def test_running_agents_project_filter_via_query_param(
         agents = body["data"]["agents"]
         assert len(agents) == 1
         assert agents[0]["task_id"] == task_a
+    finally:
+        await core.aclose()
+
+
+@pytest.mark.asyncio
+async def test_running_agents_defaults_to_bound_project(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A project-bound server only returns agents for its bound project by default."""
+    core = KaganCore(db_path=tmp_path / "test3.db")
+    try:
+        proj_a = await core.projects.create("A")
+        proj_b = await core.projects.create("B")
+        await core.projects.set_active(proj_a.id)
+
+        task_a = await _seed_task(core.engine, "Task A", proj_a.id)
+        task_b = await _seed_task(core.engine, "Task B", proj_b.id)
+
+        await _seed_session(core.engine, task_a, status=SessionStatus.RUNNING)
+        await _seed_session(core.engine, task_b, status=SessionStatus.RUNNING)
+
+        mcp = make_api_server()
+        ctx = _make_ctx(core)
+        monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
+
+        endpoint = get_http_endpoint(mcp, "/api/v1/agents/running", "GET")
+        body = json_body(await endpoint(make_request("GET", "/api/v1/agents/running")))
+
+        assert body["ok"] is True
+        assert [agent["task_id"] for agent in body["data"]["agents"]] == [task_a]
+    finally:
+        await core.aclose()
+
+
+@pytest.mark.asyncio
+async def test_running_agents_rejects_other_project_for_bound_server(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A project-bound server cannot query another project's running agents."""
+    core = KaganCore(db_path=tmp_path / "test4.db")
+    try:
+        proj_a = await core.projects.create("A")
+        proj_b = await core.projects.create("B")
+        await core.projects.set_active(proj_a.id)
+
+        mcp = make_api_server()
+        ctx = _make_ctx(core)
+        monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
+
+        endpoint = get_http_endpoint(mcp, "/api/v1/agents/running", "GET")
+        response = await endpoint(
+            make_request("GET", f"/api/v1/agents/running?project_id={proj_b.id}")
+        )
+        body = json_body(response)
+
+        assert response.status_code == 403
+        assert body["ok"] is False
     finally:
         await core.aclose()

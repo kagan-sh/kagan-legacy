@@ -14,8 +14,8 @@ import pytest
 import kagan.server._helpers as server_helpers
 from kagan.core import KaganCore
 from kagan.core._db_helpers import _db_async
-from kagan.core.enums import SessionStatus
-from kagan.core.models import Session, SessionEvent
+from kagan.core.enums import SessionStatus, TaskStatus
+from kagan.core.models import Session, SessionEvent, Task
 from kagan.server.mcp.server import ServerOptions
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
@@ -30,6 +30,20 @@ async def _seed_session(engine, task_id: str) -> str:
         s.refresh(session)
         s.expunge(session)
         return session
+
+    result = await _db_async(engine, _w, commit=True)
+    return result.id
+
+
+async def _seed_task(engine, title: str, project_id: str) -> str:
+    task = Task(project_id=project_id, title=title, status=TaskStatus.IN_PROGRESS)
+
+    def _w(s) -> Task:
+        s.add(task)
+        s.flush()
+        s.refresh(task)
+        s.expunge(task)
+        return task
 
     result = await _db_async(engine, _w, commit=True)
     return result.id
@@ -80,6 +94,7 @@ def _make_ctx(core: KaganCore) -> SimpleNamespace:
             projects=SimpleNamespace(repos=lambda _: [], resolve_repo_path=lambda **_: None),
         ),
         opts=ServerOptions(),
+        bound_project_id=core.active_project_id,
     )
 
 
@@ -311,3 +326,37 @@ async def test_replay_limit_capped_at_max(
     # Should not error — silently caps
     assert body["ok"] is True
     assert len(body["data"]["events"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_replay_returns_404_for_session_outside_bound_project(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A project-bound server cannot replay another project's session."""
+    core = KaganCore(db_path=tmp_path / "test2.db")
+    project_a = await core.projects.create("A")
+    project_b = await core.projects.create("B")
+    await core.projects.set_active(project_a.id)
+    task_b = await _seed_task(core.engine, "Replay Task B", project_b.id)
+    session_id = await _seed_session(core.engine, task_b)
+    await _seed_event(core.engine, session_id, task_b, "output_chunk")
+
+    try:
+        mcp = make_api_server()
+        ctx = _make_ctx(core)
+        monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
+
+        endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
+        req = make_request(
+            "GET",
+            f"/api/v1/sessions/{session_id}/replay",
+            path_params={"session_id": session_id},
+        )
+        response = await endpoint(req)
+        body = json_body(response)
+
+        assert response.status_code == 404
+        assert body["ok"] is False
+    finally:
+        await core.aclose()

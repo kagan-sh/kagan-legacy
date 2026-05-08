@@ -20,7 +20,7 @@ from sqlmodel import desc, select
 
 from kagan.core._db_helpers import _db_async, _sa_col
 from kagan.core.enums import SessionStatus
-from kagan.core.models import Session, Task
+from kagan.core.models import Session, SessionEvent, Task
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -173,8 +173,28 @@ async def list_running_agents(
     return await _db_async(engine, _query)
 
 
+async def session_event_created_at(
+    engine: Engine,
+    *,
+    session_id: str,
+    event_id: str,
+) -> datetime | None:
+    """Return the cursor timestamp for an event in a session, if it exists."""
+
+    def _query(s) -> datetime | None:
+        stmt = select(SessionEvent).where(
+            _sa_col(SessionEvent.session_id) == session_id,
+            _sa_col(SessionEvent.id) == event_id,
+        )
+        event = s.exec(stmt).first()
+        return event.created_at if event is not None else None
+
+    return await _db_async(engine, _query)
+
+
 __all__ = [
     "ActiveAgentRow",
     "list_running_agents",
     "resolve_active_session",
+    "session_event_created_at",
 ]

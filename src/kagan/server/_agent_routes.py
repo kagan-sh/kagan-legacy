@@ -11,14 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from sqlmodel import asc, desc, or_, select
+from starlette.responses import JSONResponse
 
-from kagan.core import db_async as _db_async
-from kagan.core import list_running_agents
-from kagan.core import sa_col as _sa_col
-from kagan.core.models import Session, SessionEvent
+from kagan.core._sessions_query import list_running_agents, session_event_created_at
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
     _err,
@@ -37,8 +34,8 @@ from kagan.server.responses import (
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
-    from starlette.responses import JSONResponse
 
+    from kagan.core.models import SessionEvent
     from kagan.server.mcp.server import ServerContext
 
 _MAX_REPLAY_LIMIT = 1000
@@ -119,53 +116,76 @@ def _parse_replay_query(request: Request) -> _ReplayQuery:
     )
 
 
-def _apply_replay_cursor(stmt: Any, query: _ReplayQuery) -> Any:
-    cursor = query.cursor
-    if cursor.created_at is not None and cursor.event_id is not None:
-        created_at_col = _sa_col(SessionEvent.created_at)
-        id_col = _sa_col(SessionEvent.id)
-        if query.direction == "backward":
-            return stmt.where(
-                or_(
-                    created_at_col < cursor.created_at,
-                    (created_at_col == cursor.created_at) & (id_col < cursor.event_id),
-                )
-            )
-        return stmt.where(
-            or_(
-                created_at_col > cursor.created_at,
-                (created_at_col == cursor.created_at) & (id_col > cursor.event_id),
-            )
-        )
-
-    if cursor.event_id is None:
-        return stmt
-    if query.direction == "backward":
-        return stmt.where(_sa_col(SessionEvent.id) < cursor.event_id)
-    return stmt.where(_sa_col(SessionEvent.id) > cursor.event_id)
-
-
-def _order_replay_stmt(stmt: Any, direction: str) -> Any:
-    if direction == "backward":
-        return stmt.order_by(desc(_sa_col(SessionEvent.created_at)), desc(_sa_col(SessionEvent.id)))
-    return stmt.order_by(asc(_sa_col(SessionEvent.created_at)), asc(_sa_col(SessionEvent.id)))
-
-
-async def _session_exists(ctx: ServerContext, session_id: str) -> bool:
-    return await _db_async(ctx.client.engine, lambda s: s.get(Session, session_id) is not None)
-
-
 async def _query_session_replay_events(
     ctx: ServerContext, query: _ReplayQuery
 ) -> tuple[list[SessionEvent], bool]:
-    def _query(s) -> tuple[list[SessionEvent], bool]:
-        stmt = select(SessionEvent).where(_sa_col(SessionEvent.session_id) == query.session_id)
-        stmt = _apply_replay_cursor(stmt, query)
-        stmt = _order_replay_stmt(stmt, query.direction)
-        rows = list(s.exec(stmt.limit(query.limit + 1)).all())
-        return rows[: query.limit], len(rows) > query.limit
+    task_id, project_id = await ctx.client.tasks.sessions.resolve_binding(query.session_id)
+    bound_project_id = getattr(ctx, "bound_project_id", None)
+    if task_id is None or (bound_project_id is not None and project_id != bound_project_id):
+        return [], False
 
-    return await _db_async(ctx.client.engine, _query)
+    page_limit = query.limit + 1
+    if query.direction == "backward":
+        rows = await _query_backward_events(ctx, task_id, query, page_limit)
+    else:
+        rows = await _query_forward_events(ctx, task_id, query, page_limit)
+    return rows[: query.limit], len(rows) > query.limit
+
+
+async def _query_forward_events(
+    ctx: ServerContext, task_id: str, query: _ReplayQuery, page_limit: int
+) -> list[SessionEvent]:
+    cursor = await _resolve_replay_cursor(ctx, query)
+    if cursor.created_at is not None and cursor.event_id is not None:
+        return await ctx.client.tasks.events.list_after(
+            task_id,
+            after_ts=cursor.created_at.isoformat(),
+            after_id=cursor.event_id,
+            limit=page_limit,
+            session_id=query.session_id,
+        )
+    return await ctx.client.tasks.events.list(
+        task_id,
+        limit=page_limit,
+        session_id=query.session_id,
+    )
+
+
+async def _query_backward_events(
+    ctx: ServerContext, task_id: str, query: _ReplayQuery, page_limit: int
+) -> list[SessionEvent]:
+    cursor = await _resolve_replay_cursor(ctx, query)
+    if cursor.created_at is not None and cursor.event_id is not None:
+        rows = await ctx.client.tasks.events.list_before(
+            task_id,
+            before=cursor.created_at.isoformat(),
+            before_id=cursor.event_id,
+            limit=page_limit,
+            session_id=query.session_id,
+        )
+    else:
+        rows = await ctx.client.tasks.events.list_recent(
+            task_id,
+            limit=page_limit,
+            session_id=query.session_id,
+        )
+    rows.reverse()
+    return rows
+
+
+async def _resolve_replay_cursor(ctx: ServerContext, query: _ReplayQuery) -> _ReplayCursor:
+    cursor = query.cursor
+    if cursor.created_at is not None or cursor.event_id is None:
+        return cursor
+
+    created_at = await session_event_created_at(
+        ctx.client.engine,
+        session_id=query.session_id,
+        event_id=cursor.event_id,
+    )
+    if created_at is None:
+        return _ReplayCursor(created_at=None, event_id=None)
+    return _ReplayCursor(created_at=created_at, event_id=cursor.event_id)
 
 
 def _to_replay_event(row: SessionEvent) -> SessionReplayEvent:
@@ -182,12 +202,14 @@ def _next_replay_cursor(events: list[SessionReplayEvent], has_more: bool) -> str
     if not has_more or not events:
         return None
     last = events[-1]
-    return f"{last.created_at}|{last.id}"
+    return f"{last.created_at.replace('+00:00', 'Z')}|{last.id}"
 
 
 async def _session_replay_response(request: Request, ctx: ServerContext) -> JSONResponse:
     query = _parse_replay_query(request)
-    if not await _session_exists(ctx, query.session_id):
+    task_id, project_id = await ctx.client.tasks.sessions.resolve_binding(query.session_id)
+    bound_project_id = getattr(ctx, "bound_project_id", None)
+    if task_id is None or (bound_project_id is not None and project_id != bound_project_id):
         return _err(f"Session {query.session_id!r} not found", status=404)
 
     rows, has_more = await _query_session_replay_events(ctx, query)
@@ -217,7 +239,9 @@ def register_agent_routes(mcp: FastMCP) -> None:
         )
         if forbidden is not None:
             return forbidden
-        project_id = request.query_params.get("project_id") or None
+        project_id = _running_agents_project_id(request, ctx)
+        if isinstance(project_id, JSONResponse):
+            return project_id
         resp = await _fetch_agents_response(ctx, project_id)
         return _ok(resp.model_dump(mode="json"))
 
@@ -231,3 +255,13 @@ def register_agent_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return forbidden
         return await _session_replay_response(request, ctx)
+
+
+def _running_agents_project_id(request: Request, ctx: ServerContext) -> str | None | JSONResponse:
+    requested = request.query_params.get("project_id") or None
+    bound = getattr(ctx, "bound_project_id", None)
+    if bound is None:
+        return requested
+    if requested is not None and requested != bound:
+        return _err("Project is outside the current server binding", status=403)
+    return bound

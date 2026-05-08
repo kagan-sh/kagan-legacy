@@ -6,7 +6,7 @@ The `src/kagan/cli/chat/` module implements the chat REPL, the orchestrator chat
 
 | File                 | Role                                                                                                        |
 | -------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `commands.py`        | Slash command parsing (`/help`, `/mode`, `/backend`, `/clear`, etc.) — pure data, no I/O                    |
+| `commands.py`        | Slash command parsing (`/help`, `/agents`, `/sessions`, `/attach`, `/clear`, etc.) — pure data, no I/O      |
 | `controller.py`      | `ChatController` — stateful chat session: ties together commands, streaming, ACP, and the approval batch UI |
 | `acp.py`             | ACP client helpers: orchestrator warmup, turn execution, permission handling                                |
 | `_streaming.py`      | `StreamRenderer` — converts `ChatEvent` stream into Rich console output (TUI-free path)                     |
@@ -21,16 +21,15 @@ The `src/kagan/cli/chat/` module implements the chat REPL, the orchestrator chat
 | `_title.py`          | Dynamic title bar for the REPL                                                                              |
 | `_theme.py`          | Rich theme constants for chat output                                                                        |
 | `_completion.py`     | Input completion helpers                                                                                    |
-| `agents.py`          | Agent listing/resolution helpers (`/backend` command support)                                               |
-| `_agents_rail.py`    | Post-turn running-agents rail + `↓` picker helpers (`build_picker_rows`, `_resolve_picker_choice`)          |
+| `agents.py`          | Agent listing/resolution helpers (`/agents` command support)                                                |
 | `prompt.py`          | Input normalization utilities                                                                               |
-| `__init__.py`        | Public surface: `run_chat_session()` entrypoint                                                             |
+| `__init__.py`        | Public surface: `run_chat()` / `run_chat_async()` entrypoints                                               |
 
 ## Call flow
 
 ```
 CLI entrypoint (src/kagan/cli/)
-  └─ run_chat_session()            __init__.py
+  └─ run_chat_async()              __init__.py
        └─ ChatController           controller.py
             ├─ parse_slash_invocation()    commands.py  (for /slash commands)
             ├─ execute_turn()              acp.py       (for regular messages)
@@ -64,21 +63,15 @@ CLI entrypoint (src/kagan/cli/)
 1. Add a render branch in `StreamRenderer._render_event()` in `_streaming.py`
 1. Add a unit test in `tests/unit/test_event_rendering.py`
 
-## Attach Picker + Slash Commands
+## Session + Attach Slash Commands
 
 `kagan chat` carries the same orchestrator-overlay model as the TUI and web —
 the user can talk to the orchestrator, jump into a running worker / reviewer
 stream, and detach back to orchestrator mode without leaving the REPL.
 
-- **Post-turn rail.** `cli/chat/_agents_rail.py` formats the running-agents
-  rail printed after each REPL turn (e.g. `● 3 local agents · ↓ to manage`,
-  followed by one detail line per agent). When there are no active agents the
-  rail is suppressed entirely — the REPL stays quiet.
-- **`↓` chord.** Pressing `↓` from the REPL prompt opens a one-shot picker
-  (Textual mount + exit) listing `main` (orchestrator / detach) plus every
-  active worker / reviewer. The picker is wired through
-  `_resolve_picker_choice(rows, idx)` — a pure helper kept in
-  `_agents_rail.py` and unit-tested directly without UI.
+- **`/sessions [query]`** lists persisted chat sessions and can reattach the
+  REPL to a selected session. Interactive terminals use the searchable picker;
+  non-interactive terminals render a static table.
 - **`/attach <task-id|session-id>`** parses the argument in `commands.py`
   (`SlashAction.ATTACH_AGENT`), then `controller.py` resolves it via
   `client.resolve_active_session` / the running-agents listing and calls

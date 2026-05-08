@@ -2,7 +2,6 @@
 
 ``hydrate_persistent_session`` should:
 - Always create a fresh session when called with no flags.
-- Resume the most-recent session when ``resume=True``.
 - Resume a specific session when ``explicit_session_id`` is supplied.
 """
 
@@ -104,23 +103,6 @@ async def test_new_invocation_creates_fresh_session_even_when_sessions_exist() -
 
     client.chat_sessions.create.assert_awaited_once()
     assert ctrl._chat_session_id == "fresh"
-
-
-async def test_resume_flag_returns_most_recent_session() -> None:
-    """``resume=True`` picks the session with the latest ``updated_at``."""
-    older = _FakeRow("older-session", updated_at="2024-01-01T00:00:00")
-    newer = _FakeRow("newer-session", updated_at="2024-06-01T00:00:00")
-
-    client = _make_client()
-    # Ensure list_with_history returns correct pairs for the controller
-    client.chat_sessions.list_with_history = AsyncMock(return_value=[(older, []), (newer, [])])
-    ctrl = _make_controller(client)
-
-    await ctrl.hydrate_persistent_session(resume=True)
-
-    # create() must NOT have been called — we resumed an existing session
-    client.chat_sessions.create.assert_not_awaited()
-    assert ctrl._chat_session_id == "newer-session"
 
 
 async def test_session_flag_picks_by_id() -> None:

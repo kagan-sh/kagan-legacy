@@ -1,4 +1,6 @@
+from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -1050,3 +1052,31 @@ def test_slash_command_registry_canonical_list_includes_attach_detach() -> None:
     assert "detach" in names
     # attach comes before detach alphabetically
     assert names.index("attach") < names.index("detach")
+
+
+@pytest.mark.asyncio
+async def test_handle_slash_attach_and_detach_update_live_attachment() -> None:
+    client = _FakeClient()
+    client.tasks = SimpleNamespace(list=AsyncMock(return_value=[]))
+    client.list_running_agents = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                session_id="sess-agent-123",
+                agent_role="reviewer",
+            )
+        ]
+    )
+    client.attach_chat = AsyncMock()
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    controller._chat_session_id = "chat-session-1"
+
+    assert await controller._handle_slash("/attach sess-agent") is False
+    assert controller._attached_agent_session_id == "sess-agent-123"
+    client.attach_chat.assert_awaited_with(
+        "chat-session-1", "sess-agent-123", agent_role="reviewer"
+    )
+
+    assert await controller._handle_slash("/detach") is False
+    assert controller._attached_agent_session_id is None
+    client.attach_chat.assert_awaited_with("chat-session-1", None)

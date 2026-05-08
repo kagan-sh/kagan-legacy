@@ -227,19 +227,14 @@ class ChatController:
         self,
         *,
         explicit_session_id: str | None = None,
-        resume: bool = False,
     ) -> None:
         """Resolve or create the initial chat session.
 
         Behaviour:
-        - ``explicit_session_id`` (``--session <id>``): resume that specific session.
-        - ``resume=True`` (``--resume``): resume the most-recent session for this project.
+        - ``explicit_session_id`` (``--session-id <id>``): resume that specific session.
         - Otherwise: always create a fresh session immediately (no picker at launch).
         """
-        selected = await self._resolve_initial_session(
-            explicit_session_id,
-            resume=resume,
-        )
+        selected = await self._resolve_initial_session(explicit_session_id)
         if selected is None:
             row = await self.client.chat_sessions.create(
                 source="repl",
@@ -253,8 +248,6 @@ class ChatController:
     async def _resolve_initial_session(
         self,
         explicit_session_id: str | None,
-        *,
-        resume: bool = False,
     ) -> ChatSessionView | None:
         # Explicit session ID takes priority
         if explicit_session_id:
@@ -278,17 +271,6 @@ class ChatController:
                 ],
                 updated_at="",
             )
-
-        # --resume: pick the most-recently-updated session for this project
-        if resume:
-            pairs = await self.client.chat_sessions.list_with_history(
-                project_id=self.client.active_project_id
-            )
-            if pairs:
-                # list_with_history returns pairs; sort by updated_at descending
-                sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
-                most_recent = max(sessions, key=lambda s: s.updated_at or "")
-                return most_recent
 
         # Default: always start fresh (no picker)
         return None

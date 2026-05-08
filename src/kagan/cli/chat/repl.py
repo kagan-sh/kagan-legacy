@@ -1114,7 +1114,6 @@ async def run_chat_async(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
-    resume: bool = False,
 ) -> str | None:
     from kagan.cli.chat.controller import ChatController
     from kagan.core import KaganCore, resolve_default_agent_backend
@@ -1138,10 +1137,7 @@ async def run_chat_async(
         if not await controller.ensure_project():
             return None
 
-        await controller.hydrate_persistent_session(
-            explicit_session_id=session_id,
-            resume=resume,
-        )
+        await controller.hydrate_persistent_session(explicit_session_id=session_id)
 
         _set_workspace_context(Path.cwd())
         _TOOLBAR_STATE.agent_backend = controller.agent_backend
@@ -1164,13 +1160,11 @@ def run_chat(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
-    resume: bool = False,
 ) -> str | None:
     return asyncio.run(
         run_chat_async(
             prompt=prompt,
             session_id=session_id,
             agent=agent,
-            resume=resume,
         )
     )

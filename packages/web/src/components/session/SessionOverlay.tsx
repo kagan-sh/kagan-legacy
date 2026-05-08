@@ -192,10 +192,28 @@ function SessionTypeBadge({ type }: { type: string }) {
 function SessionBodyRouter({ session }: { session: SessionItemResponse }) {
   switch (session.type) {
     case 'orchestrator':
-      return <OrchestratorSessionBody sessionId={session.id} />;
+      return <OrchestratorSessionBody chatSessionId={rawChatSessionId(session, 'orch')} />;
     case 'task':
-      return <TaskSessionBody taskId={session.task_id ?? session.id} sessionId={session.id} />;
+      return (
+        <TaskSessionBody
+          taskId={session.task_id ?? rawScopedId(session.id, 'task')}
+          sessionId={rawTaskSessionId(session)}
+        />
+      );
     default:
-      return <GeneralSessionBody sessionId={session.id} />;
+      return <GeneralSessionBody chatSessionId={rawChatSessionId(session, 'gen')} />;
   }
+}
+
+function rawChatSessionId(session: SessionItemResponse, prefix: string): string {
+  return session.chat_session_id ?? rawScopedId(session.id, prefix);
+}
+
+function rawTaskSessionId(session: SessionItemResponse): string {
+  return session.session_id ?? rawScopedId(session.id, 'task');
+}
+
+function rawScopedId(id: string, prefix: string): string {
+  const marker = `${prefix}:`;
+  return id.startsWith(marker) ? id.slice(marker.length) : id;
 }

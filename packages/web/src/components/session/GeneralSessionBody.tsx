@@ -3,11 +3,11 @@ import { ChatView } from '@/components/chat/chat-view';
 import { ChatOverlayEmptyState } from '@/components/session/chat-overlay-empty-state';
 
 interface GeneralSessionBodyProps {
-  sessionId: string;
+  chatSessionId: string;
 }
 
-export function GeneralSessionBody({ sessionId }: GeneralSessionBodyProps) {
-  const session = useChatSession(sessionId);
+export function GeneralSessionBody({ chatSessionId }: GeneralSessionBodyProps) {
+  const session = useChatSession(chatSessionId);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -22,7 +22,7 @@ export function GeneralSessionBody({ sessionId }: GeneralSessionBodyProps) {
       ) : (
         <div className="min-h-0 flex-1">
           <ChatView
-            sessionId={sessionId}
+            sessionId={chatSessionId}
             projectId={session.projectId}
             messages={session.messages}
             streamEntries={session.streamEntries}

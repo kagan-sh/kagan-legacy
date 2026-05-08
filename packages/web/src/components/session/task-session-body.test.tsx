@@ -3,17 +3,28 @@ import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { TaskSessionBody } from '@/components/session/TaskSessionBody';
 
-vi.mock('@/lib/hooks/use-task-events', () => ({
-  useTaskEvents: () => ({
+const useTaskEventsMock = vi.hoisted(() =>
+  vi.fn(() => ({
     events: [],
     isRunning: false,
     hasMore: false,
     loadingMore: false,
     loadEarlier: vi.fn(),
-  }),
+  })),
+);
+
+vi.mock('@/lib/hooks/use-task-events', () => ({
+  useTaskEvents: useTaskEventsMock,
 }));
 
 describe('TaskSessionBody', () => {
+  it('loads task events with raw task and session ids', () => {
+    renderWithProviders(<TaskSessionBody taskId="task-1" sessionId="worker-session" />);
+    expect(useTaskEventsMock).toHaveBeenCalledWith('task-1', {
+      sessionId: 'worker-session',
+    });
+  });
+
   it('shows task session replay label', () => {
     renderWithProviders(<TaskSessionBody taskId="task-1" />);
     expect(screen.getByText(/task session replay/i)).toBeInTheDocument();

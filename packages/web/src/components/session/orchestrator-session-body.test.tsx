@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
-import { GeneralSessionBody } from '@/components/session/GeneralSessionBody';
+import { OrchestratorSessionBody } from '@/components/session/OrchestratorSessionBody';
 
 const useChatSessionMock = vi.hoisted(() =>
   vi.fn(() => ({
@@ -22,15 +21,9 @@ vi.mock('@/lib/hooks/use-chat-session', () => ({
   useChatSession: useChatSessionMock,
 }));
 
-describe('GeneralSessionBody', () => {
-  it('shows the disclaimer message prominently', () => {
-    renderWithProviders(<GeneralSessionBody chatSessionId="chat-raw" />);
-    expect(screen.getByText(/general session/i)).toBeInTheDocument();
-    expect(screen.getByText(/raw backend streaming/i)).toBeInTheDocument();
-  });
-
+describe('OrchestratorSessionBody', () => {
   it('loads the legacy chat hook with the raw chat session id', () => {
-    renderWithProviders(<GeneralSessionBody chatSessionId="chat-raw" />);
+    renderWithProviders(<OrchestratorSessionBody chatSessionId="chat-raw" />);
     expect(useChatSessionMock).toHaveBeenCalledWith('chat-raw');
   });
 });

@@ -50,15 +50,13 @@ function toggleTheme(): void {
  * Resolve the task id implied by the current URL.
  *
  * Kept path-based and framework-agnostic so the registry stays decoupled
- * from the router. Matches `/task/:id` and `/session/:id`.
+ * from the router. Matches only `/task/:id`.
  */
 function currentTaskIdFromPath(): string | null {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname;
   const taskMatch = /^\/task\/([^/?]+)/.exec(path);
   if (taskMatch) return taskMatch[1] ?? null;
-  const sessionMatch = /^\/session\/([^/?]+)/.exec(path);
-  if (sessionMatch) return sessionMatch[1] ?? null;
   return null;
 }
 

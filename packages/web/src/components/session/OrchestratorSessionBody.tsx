@@ -3,11 +3,11 @@ import { ChatView } from '@/components/chat/chat-view';
 import { ChatOverlayEmptyState } from '@/components/session/chat-overlay-empty-state';
 
 interface OrchestratorSessionBodyProps {
-  sessionId: string;
+  chatSessionId: string;
 }
 
-export function OrchestratorSessionBody({ sessionId }: OrchestratorSessionBodyProps) {
-  const session = useChatSession(sessionId);
+export function OrchestratorSessionBody({ chatSessionId }: OrchestratorSessionBodyProps) {
+  const session = useChatSession(chatSessionId);
 
   if (session.loading) {
     return (
@@ -19,7 +19,7 @@ export function OrchestratorSessionBody({ sessionId }: OrchestratorSessionBodyPr
 
   return (
     <ChatView
-      sessionId={sessionId}
+      sessionId={chatSessionId}
       projectId={session.projectId}
       messages={session.messages}
       streamEntries={session.streamEntries}

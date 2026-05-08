@@ -49,8 +49,7 @@ const LOAD_EARLIER_BATCH = 200;
 
 /**
  * Shared hook for loading task events, subscribing to WS updates,
- * and managing the follow-up prompt queue. Used by both the session
- * page and the chat side panel — single source of truth.
+ * and managing the follow-up prompt queue for task session replay.
  */
 export function useTaskEvents(
     taskId: string | undefined,

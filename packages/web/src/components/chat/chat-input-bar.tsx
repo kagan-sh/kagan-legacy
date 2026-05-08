@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect, type KeyboardEvent, useMemo } from 'react';
 import { Send, Plus, Paperclip, X } from 'lucide-react';
-import { useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
-import { isStreamingAtom, pendingQueueAtom, enqueuePendingAtom, clearPendingQueueAtom, PENDING_QUEUE_MAX } from '@/lib/atoms/chat';
+import { PENDING_QUEUE_MAX, type PendingMessage, type PendingMessageInput } from '@/lib/atoms/chat';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -33,7 +32,6 @@ interface ChatInputBarProps {
   onSend: (text: string, attachments?: Attachment[]) => void;
   onSlashCommand?: (command: string) => void;
   onInterrupt?: (opts?: { pendingText: string | null }) => void;
-  /** Override the streaming-atom check. When true, send is disabled. */
   disableSend?: boolean;
   placeholder?: string;
   className?: string;
@@ -51,6 +49,14 @@ interface ChatInputBarProps {
    * Defaults to true. Typically driven by the server `persist_input_history` setting.
    */
   persistHistory?: boolean;
+  /** Whether the session is currently streaming (gates queue-vs-send logic). */
+  isStreaming?: boolean;
+  /** Current pending message queue (for badge display). */
+  pendingQueue?: PendingMessage[];
+  /** Enqueue a message while streaming. Returns false if queue is full. */
+  onEnqueue?: (input: string | PendingMessageInput) => boolean;
+  /** Clear the entire pending queue. */
+  onClearQueue?: () => void;
 }
 
 export function ChatInputBar({
@@ -64,16 +70,16 @@ export function ChatInputBar({
   onPrefillConsumed,
   projectId,
   persistHistory = true,
+  isStreaming = false,
+  pendingQueue = [],
+  onEnqueue,
+  onClearQueue,
 }: ChatInputBarProps) {
   const [text, setText] = useState('');
   const [showCommands, setShowCommands] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState<string>('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  const isStreaming = useAtomValue(isStreamingAtom);
-  const pendingQueue = useAtomValue(pendingQueueAtom);
-  const enqueue = useSetAtom(enqueuePendingAtom);
-  const clearQueue = useSetAtom(clearPendingQueueAtom);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -124,8 +130,8 @@ export function ChatInputBar({
   const handleSend = useCallback(() => {
     if (!canSend) return;
     // If the agent is currently streaming, queue the message instead.
-    if (isStreaming) {
-      const ok = enqueue({
+    if (isStreaming && onEnqueue) {
+      const ok = onEnqueue({
         text: text.trim(),
         ...(attachments.length > 0 ? { attachments } : {}),
       });
@@ -143,7 +149,7 @@ export function ChatInputBar({
       return;
     }
     doSend(text, attachments);
-  }, [text, canSend, isStreaming, enqueue, doSend, attachments]);
+  }, [text, canSend, isStreaming, onEnqueue, doSend, attachments]);
 
   const handleSelectCommand = (command: string) => {
     setText(command + ' ');
@@ -175,7 +181,7 @@ export function ChatInputBar({
       e.preventDefault();
       // Clear pending queue on Escape.
       if (pendingQueue.length > 0) {
-        clearQueue();
+        onClearQueue?.();
       }
       if (isStreaming) {
         e.stopPropagation();
@@ -392,7 +398,7 @@ export function ChatInputBar({
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => clearQueue()}
+              onClick={() => onClearQueue?.()}
               aria-label="Clear queue"
               className="size-6 shrink-0 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
             >

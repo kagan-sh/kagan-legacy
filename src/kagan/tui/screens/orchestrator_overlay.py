@@ -80,9 +80,6 @@ class OrchestratorOverlay(ModalScreen[None]):
         # Orchestrator history cache
         self._orchestrator_history: list[tuple[str, str]] = []
 
-        # Stream worker for task replay
-        self._sse_task: asyncio.Task[None] | None = None
-
         # In-flight message send
         self._send_task: asyncio.Task[None] | None = None
 
@@ -128,7 +125,6 @@ class OrchestratorOverlay(ModalScreen[None]):
         self.call_after_refresh(self._focus_input)
 
     async def on_unmount(self) -> None:
-        await self._cancel_sse()
         if self._chat_message_task is not None:
             self._chat_message_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -171,7 +167,6 @@ class OrchestratorOverlay(ModalScreen[None]):
 
     async def _select_orchestrator(self) -> None:
         """Default to orchestrator mode."""
-        await self._cancel_sse()
         self._selected_session_id = None
         self._selected_item = None
         self._update_breadcrumb(_ORCHESTRATOR_TITLE)
@@ -182,7 +177,6 @@ class OrchestratorOverlay(ModalScreen[None]):
         if self._selected_session_id == item.id:
             return
 
-        await self._cancel_sse()
         self._selected_session_id = item.id
         self._selected_item = item
 
@@ -294,13 +288,6 @@ class OrchestratorOverlay(ModalScreen[None]):
                 case _:
                     pass
 
-    async def _cancel_sse(self) -> None:
-        if self._sse_task is not None:
-            self._sse_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._sse_task
-            self._sse_task = None
-
     # ------------------------------------------------------------------
     # Key / event handlers
     # ------------------------------------------------------------------
@@ -352,7 +339,7 @@ class OrchestratorOverlay(ModalScreen[None]):
         session_list = self._session_list()
         if session_list is None:
             return
-        items = list(session_list._items)
+        items = session_list.snapshot_items()
         if not items:
             return
 

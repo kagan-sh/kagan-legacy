@@ -598,7 +598,6 @@ forbidden_modules = [
     "kagan.cli.chat._approval_batch",
     "kagan.cli.chat._approval_panel",
     "kagan.cli.chat._chat_ui",
-    "kagan.cli.chat._completion",
     "kagan.cli.chat._handshake",
     "kagan.cli.chat._permission_ui",
     "kagan.cli.chat._renderer",
@@ -607,7 +606,6 @@ forbidden_modules = [
     "kagan.cli.chat._streaming",
     "kagan.cli.chat._theme",
     "kagan.cli.chat._title",
-    "kagan.cli.chat._yolo",
 ]
 
 [tool.vulture]

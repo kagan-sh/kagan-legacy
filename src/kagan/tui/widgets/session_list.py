@@ -183,6 +183,10 @@ class SessionList(Vertical):
         """Force a refresh of the session list (callable from the overlay)."""
         await self._refresh_items()
 
+    def snapshot_items(self) -> list[SessionItem]:
+        """Return an ordered snapshot of the current session items (read-only copy)."""
+        return list(self._items)
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

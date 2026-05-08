@@ -35,6 +35,9 @@ export function GeneralSessionBody({ chatSessionId }: GeneralSessionBodyProps) {
             onSlashCommand={session.onSlashCommand}
             scrollRef={session.scrollRef}
             emptySlot={<ChatOverlayEmptyState />}
+            pendingQueue={session.pendingQueue}
+            onEnqueue={session.onEnqueue}
+            onClearQueue={session.onClearQueue}
           />
         </div>
       )}

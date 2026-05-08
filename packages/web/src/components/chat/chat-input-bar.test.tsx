@@ -5,12 +5,11 @@ import { createStore } from "jotai";
 import { renderWithProviders } from "@/test/render";
 import { ChatInputBar } from "@/components/chat/chat-input-bar";
 import { sseConnectedAtom } from "@/lib/atoms/connection";
-import { isStreamingAtom, pendingQueueAtom, type PendingMessage } from "@/lib/atoms/chat";
+import { type PendingMessage } from "@/lib/atoms/chat";
 
-function connectedStore(streaming: boolean = false) {
+function connectedStore() {
     const store = createStore();
     store.set(sseConnectedAtom, true);
-    store.set(isStreamingAtom, streaming);
     return store;
 }
 
@@ -68,9 +67,9 @@ describe("ChatInputBar", () => {
         expect(onSend).toHaveBeenCalledWith("hello world", undefined);
     });
 
-    it("disables send button while streaming", () => {
-        renderWithProviders(<ChatInputBar onSend={vi.fn()} />, {
-            store: connectedStore(true),
+    it("send button disabled when input is empty (streaming or not)", () => {
+        renderWithProviders(<ChatInputBar onSend={vi.fn()} isStreaming={true} />, {
+            store: connectedStore(),
         });
 
         expect(
@@ -97,8 +96,8 @@ describe("ChatInputBar", () => {
         const user = userEvent.setup();
         const onInterrupt = vi.fn();
         renderWithProviders(
-            <ChatInputBar onSend={vi.fn()} onInterrupt={onInterrupt} />,
-            { store: connectedStore(true) },
+            <ChatInputBar onSend={vi.fn()} onInterrupt={onInterrupt} isStreaming={true} />,
+            { store: connectedStore() },
         );
 
         const input = screen.getByPlaceholderText(
@@ -228,9 +227,10 @@ describe("ChatInputBar", () => {
 
     describe('pending queue badge', () => {
         it('input remains enabled during streaming', () => {
-            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, {
-                store: connectedStore(true),
-            });
+            renderWithProviders(
+                <ChatInputBar onSend={vi.fn()} isStreaming={true} />,
+                { store: connectedStore() },
+            );
 
             const input = screen.getByPlaceholderText(
                 'Type a message or / for commands...',
@@ -240,44 +240,59 @@ describe("ChatInputBar", () => {
         });
 
         it('queued badge shows count when queue non-empty', () => {
-            const store = connectedStore(true);
             const msgs: PendingMessage[] = [
                 { id: 'a', text: 'first' },
                 { id: 'b', text: 'second' },
             ];
-            store.set(pendingQueueAtom, msgs);
 
-            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+            renderWithProviders(
+                <ChatInputBar onSend={vi.fn()} isStreaming={true} pendingQueue={msgs} />,
+                { store: connectedStore() },
+            );
 
             expect(screen.getByText(/2 queued/i)).toBeInTheDocument();
         });
 
         it('badge hidden when queue empty', () => {
-            const store = connectedStore(true);
-
-            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+            renderWithProviders(
+                <ChatInputBar onSend={vi.fn()} isStreaming={true} pendingQueue={[]} />,
+                { store: connectedStore() },
+            );
 
             expect(screen.queryByText(/queued/i)).toBeNull();
         });
 
-        it('badge clear button empties queue', async () => {
+        it('badge clear button calls onClearQueue', async () => {
             const user = userEvent.setup();
-            const store = connectedStore(true);
-            store.set(pendingQueueAtom, [{ id: 'a', text: 'msg' }]);
+            const onClearQueue = vi.fn();
 
-            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+            renderWithProviders(
+                <ChatInputBar
+                    onSend={vi.fn()}
+                    isStreaming={true}
+                    pendingQueue={[{ id: 'a', text: 'msg' }]}
+                    onClearQueue={onClearQueue}
+                />,
+                { store: connectedStore() },
+            );
 
             const clearBtn = screen.getByRole('button', { name: /clear queue/i });
             await user.click(clearBtn);
 
-            expect(store.get(pendingQueueAtom)).toHaveLength(0);
-            expect(screen.queryByText(/queued/i)).toBeNull();
+            // The component is prop-controlled: the badge persists until the
+            // parent re-renders with an updated pendingQueue. Only verify the
+            // callback was invoked.
+            expect(onClearQueue).toHaveBeenCalledTimes(1);
         });
 
         it('queues attachments with the pending message during streaming', async () => {
             const user = userEvent.setup();
-            const store = connectedStore(true);
-            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+            const onEnqueue = vi.fn().mockReturnValue(true);
+
+            renderWithProviders(
+                <ChatInputBar onSend={vi.fn()} isStreaming={true} onEnqueue={onEnqueue} />,
+                { store: connectedStore() },
+            );
 
             await user.click(screen.getByRole('button', { name: 'Add attachment' }));
             await user.click(screen.getByText('Add files or photos'));
@@ -295,12 +310,14 @@ describe("ChatInputBar", () => {
             );
             await user.click(screen.getByRole('button', { name: 'Send message' }));
 
-            expect(store.get(pendingQueueAtom)).toMatchObject([
-                {
+            expect(onEnqueue).toHaveBeenCalledWith(
+                expect.objectContaining({
                     text: 'read this',
-                    attachments: [{ name: 'notes.txt', type: 'file', content: 'hello' }],
-                },
-            ]);
+                    attachments: expect.arrayContaining([
+                        expect.objectContaining({ name: 'notes.txt', type: 'file', content: 'hello' }),
+                    ]),
+                }),
+            );
         });
     });
 });

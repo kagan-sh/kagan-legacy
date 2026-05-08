@@ -3,31 +3,25 @@
  * auto-scroll coordination, edit-prefill, slash commands, and interrupt logic
  * for a single chat session identified by `id`.
  *
+ * All streaming / buffer / queue state is keyed by session id via hook-local
+ * state (useState / useRef). No global jotai atoms are used here, eliminating
+ * cross-session races when multiple sessions are mounted concurrently.
+ *
  * Returns a stable descriptor that chat-page.tsx and orchestrator-chat-panel
  * bind to the view layer. This is the single authoritative chat-streaming hook.
  */
 
 import { useState, useEffect, useRef, useCallback, type RefObject, type MutableRefObject } from 'react';
 import { useNavigate } from 'react-router';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient, ApiError } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
 import {
-  chatMessagesAtom,
-  isStreamingAtom,
-  streamEntriesAtom,
-  appendStreamChunkAtom,
-  addToolStartAtom,
-  updateToolProgressAtom,
-  addStreamErrorAtom,
-  addStreamNoteAtom,
-  resetStreamAtom,
-  takeoverBannerAtom,
-  turnConflictAtom,
-  dequeuePendingAtom,
   type ChatStreamEntry,
   type TurnConflict,
+  type PendingMessage,
+  type PendingMessageInput,
+  PENDING_QUEUE_MAX,
 } from '@/lib/atoms/chat';
 import { useChatWatch } from '@/lib/hooks/use-chat-watch';
 import { CHAT_WATCH_TYPE } from '@kagan/shared-api-client';
@@ -55,6 +49,7 @@ export interface ChatSessionState {
   lastSentText: string;
   editPrefill: string | null;
   scrollRef: RefObject<HTMLDivElement | null>;
+  pendingQueue: PendingMessage[];
   onSend: (text: string, attachments?: Attachment[]) => void;
   onInterrupt: (opts?: { pendingText: string | null }) => void;
   /** Handles slash commands. Pass `extra.onNew` to override /new and /exit navigation. */
@@ -63,6 +58,10 @@ export interface ChatSessionState {
   onDismissTakeover: () => void;
   onDismissConflict: () => void;
   onPrefillConsumed: () => void;
+  /** Enqueue a message while streaming. Returns false if queue is full. */
+  onEnqueue: (input: string | PendingMessageInput) => boolean;
+  /** Clear the entire pending queue. */
+  onClearQueue: () => void;
   switchBackend: (backend: string) => Promise<void>;
   /** Expose setters so embedded panels can reset state on session switch. */
   setEditPrefill: (value: string | null) => void;
@@ -74,19 +73,21 @@ export interface ChatSessionState {
 export function useChatSession(id: string | undefined): ChatSessionState {
   const navigate = useNavigate();
 
-  // ── Atoms ──────────────────────────────────────────────────────────────────
-  const [messages, setMessages] = useAtom(chatMessagesAtom);
-  const [isStreaming, setIsStreaming] = useAtom(isStreamingAtom);
-  const streamEntries = useAtomValue(streamEntriesAtom);
-  const appendChunk = useSetAtom(appendStreamChunkAtom);
-  const addToolStart = useSetAtom(addToolStartAtom);
-  const updateToolProgress = useSetAtom(updateToolProgressAtom);
-  const addError = useSetAtom(addStreamErrorAtom);
-  const addNote = useSetAtom(addStreamNoteAtom);
-  const resetStream = useSetAtom(resetStreamAtom);
-  const [takeoverBanner, setTakeoverBanner] = useAtom(takeoverBannerAtom);
-  const [turnConflict, setTurnConflict] = useAtom(turnConflictAtom);
-  const dequeue = useSetAtom(dequeuePendingAtom);
+  // ── Per-session state (no global atoms — prevents cross-session races) ──────
+  const [messages, setMessages] = useState<WireChatMessage[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamEntries, setStreamEntries] = useState<ChatStreamEntry[]>([]);
+  const [takeoverBanner, setTakeoverBanner] = useState<string | null>(null);
+  const [turnConflict, setTurnConflict] = useState<TurnConflict | null>(null);
+
+  // Pending queue: keep a ref in sync with state so internal drain logic
+  // (setTimeout callbacks) always reads the current value without stale closures.
+  const pendingQueueRef = useRef<PendingMessage[]>([]);
+  const [pendingQueue, _setPendingQueueState] = useState<PendingMessage[]>([]);
+  const setPendingQueue = useCallback((next: PendingMessage[]) => {
+    pendingQueueRef.current = next;
+    _setPendingQueueState(next);
+  }, []);
 
   // ── Local state ────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -111,6 +112,109 @@ export function useChatSession(id: string | undefined): ChatSessionState {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null) as MutableRefObject<ReturnType<typeof setInterval> | null>;
 
+  // ── Stream entry helpers (all local — no global atoms) ─────────────────────
+
+  const appendChunk = useCallback((payload: { content: string; thought?: boolean; startedAt?: number }) => {
+    setStreamEntries((entries) => {
+      const kind = payload.thought ? 'thought' : 'text';
+      const last = entries.at(-1);
+      if (last && last.kind === kind) {
+        const updated = entries.slice(0, -1);
+        if (kind === 'thought') {
+          updated.push({ ...last, content: last.content + payload.content } as ChatStreamEntry);
+        } else {
+          updated.push({ ...last, content: last.content + payload.content } as ChatStreamEntry);
+        }
+        return updated;
+      } else if (kind === 'thought') {
+        return [...entries, { kind, content: payload.content, startedAt: payload.startedAt ?? Date.now() }];
+      } else {
+        return [...entries, { kind, content: payload.content }];
+      }
+    });
+  }, []);
+
+  const addToolStart = useCallback((payload: { tool: string }) => {
+    const toolId = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setStreamEntries((entries) => [
+      ...entries,
+      { kind: 'tool' as const, id: toolId, name: payload.tool, status: 'running' as const },
+    ]);
+  }, []);
+
+  const updateToolProgress = useCallback((payload: { tool: string; status?: string }) => {
+    setStreamEntries((entries) => {
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i]!;
+        if (entry.kind === 'tool' && entry.name === payload.tool) {
+          const updated = entries.slice();
+          updated[i] = {
+            ...entry,
+            status: payload.status === 'done' ? 'done' : entry.status,
+            detail: payload.status ?? entry.detail,
+          };
+          return updated;
+        }
+      }
+      return entries;
+    });
+  }, []);
+
+  const addError = useCallback((payload: { message: string }) => {
+    setStreamEntries((entries) => [
+      ...entries,
+      { kind: 'error' as const, message: payload.message },
+    ]);
+  }, []);
+
+  const addNote = useCallback((payload: { message: string }) => {
+    setStreamEntries((entries) => [
+      ...entries,
+      { kind: 'note' as const, message: payload.message },
+    ]);
+  }, []);
+
+  const resetStream = useCallback(() => {
+    setStreamEntries([]);
+    setIsStreaming(false);
+  }, []);
+
+  // ── Queue helpers ──────────────────────────────────────────────────────────
+
+  const onEnqueue = useCallback((input: string | PendingMessageInput): boolean => {
+    const payload = typeof input === 'string' ? { text: input } : input;
+    let enqueued = false;
+    // Functional updater runs synchronously so `enqueued` is set before return.
+    setPendingQueue((() => {
+      const queue = pendingQueueRef.current;
+      if (queue.length >= PENDING_QUEUE_MAX) return queue;
+      enqueued = true;
+      const msgId = `pq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const next = [
+        ...queue,
+        payload.attachments && payload.attachments.length > 0
+          ? { id: msgId, text: payload.text, attachments: payload.attachments }
+          : { id: msgId, text: payload.text },
+      ];
+      return next;
+    })());
+    return enqueued;
+  }, [setPendingQueue]);
+
+  const onClearQueue = useCallback(() => {
+    setPendingQueue([]);
+  }, [setPendingQueue]);
+
+  /** Remove and return the first item from the queue, or null if empty. */
+  const dequeue = useCallback((): PendingMessage | null => {
+    const queue = pendingQueueRef.current;
+    if (queue.length === 0) return null;
+    const [first, ...rest] = queue;
+    setPendingQueue(rest);
+    return first ?? null;
+  }, [setPendingQueue]);
+
+  // ── Poll fallback when SSE drops ───────────────────────────────────────────
   const pollForTurnCompletion = useCallback(
     (sid: string) => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -131,7 +235,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         }
       }, 2000);
     },
-    [setMessages, resetStream, setIsStreaming],
+    [resetStream],
   );
 
   useEffect(() => {
@@ -177,7 +281,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
       setTakeoverBanner(null);
       setTurnConflict(null);
     };
-  }, [id, setMessages, resetStream, setIsStreaming, addNote, pollForTurnCompletion, setTakeoverBanner, setTurnConflict]);
+  }, [id, resetStream, addNote, pollForTurnCompletion]);
 
   // ── Fetch available backends ────────────────────────────────────────────────
   useEffect(() => {
@@ -320,15 +424,11 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     },
     [
       id,
-      setIsStreaming,
       appendChunk,
       addToolStart,
       updateToolProgress,
       addError,
       resetStream,
-      setMessages,
-      setTakeoverBanner,
-      setPermissionRequest,
       dequeue,
     ],
   );
@@ -343,7 +443,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         return [...prev, ...appended];
       });
     },
-    [id, setMessages],
+    [id],
   );
 
   useChatWatch(id, { onEvent: handleWatchEvent, onCatchup: handleCatchup });
@@ -427,7 +527,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         }
       })();
     },
-    [id, setIsStreaming, setMessages, addError, setTurnConflict],
+    [id, addError],
   );
 
   // Keep the ref up-to-date so that CHAT_DONE's queue-drain sees the latest version.
@@ -462,7 +562,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         }
       })();
     },
-    [id, isStreaming, addNote, setIsStreaming, lastSentText, doSendStream],
+    [id, isStreaming, addNote, lastSentText, doSendStream],
   );
 
   const onTakeoverAndRetry = useCallback(async () => {
@@ -477,7 +577,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     setTimeout(() => {
       doSendStream(pendingText, pendingAttachments);
     }, 300);
-  }, [id, turnConflict, setTurnConflict, doSendStream]);
+  }, [id, turnConflict, doSendStream]);
 
   const onSlashCommand = useCallback(
     (command: string, extra?: SlashCommandExtra) => {
@@ -533,11 +633,11 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           onSend(command, undefined);
       }
     },
-    [onSend, navigate, setMessages, switchBackend],
+    [onSend, navigate, switchBackend],
   );
 
-  const onDismissTakeover = useCallback(() => setTakeoverBanner(null), [setTakeoverBanner]);
-  const onDismissConflict = useCallback(() => setTurnConflict(null), [setTurnConflict]);
+  const onDismissTakeover = useCallback(() => setTakeoverBanner(null), []);
+  const onDismissConflict = useCallback(() => setTurnConflict(null), []);
   const onPrefillConsumed = useCallback(() => setEditPrefill(null), []);
 
   return {
@@ -554,6 +654,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     lastSentText,
     editPrefill,
     scrollRef,
+    pendingQueue,
     onSend,
     onInterrupt,
     onSlashCommand,
@@ -561,6 +662,8 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     onDismissTakeover,
     onDismissConflict,
     onPrefillConsumed,
+    onEnqueue,
+    onClearQueue,
     switchBackend,
     setEditPrefill,
     setLabel,

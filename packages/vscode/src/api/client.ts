@@ -11,9 +11,6 @@ import {
   type SearchMentionsInput,
   type SessionTimelineEntry,
   type TurnInProgressResponse,
-  type SessionsResponse,
-  type SessionItemResponse,
-  type CreateSessionRequest,
 } from "@kagan/shared-api-client";
 
 export { ApiError };
@@ -28,12 +25,19 @@ export interface KaganClientConfig {
  * VS Code KaganClient — extends the shared KaganApiClient.
  *
  * Inherits all HTTP plumbing (auth headers, envelope unwrapping, URL
- * normalisation) from the shared class. This subclass adds:
- *   - chatStream() with 409 TURN_IN_PROGRESS special handling
- *   - followChatSession() with reconnection and catch-up logic for live chat
- *   - VS Code-specific endpoints (analytics, mentions, doctor, github)
- *   - streamRequest() — raw fetch helper for SSE paths that must bypass
- *     envelope unwrapping (streaming SSE, /health raw status)
+ * normalisation, session/task/project/analytics CRUD) from the shared class.
+ * `streamRequest()` is also inherited — it is a base-class helper for raw SSE
+ * paths that bypass envelope unwrapping.
+ *
+ * This subclass adds only VS Code-specific behaviour:
+ *   - chatStream() override — 409 TURN_IN_PROGRESS detection before the base
+ *     class error path, using streamRequest() for auth-aware raw fetch
+ *   - followChatSession() — per-session SSE subscription with auto-reconnect
+ *     and catch-up via getChatMessages() after a disconnect
+ *   - ping() override — forwards auth headers via streamRequest() (the base
+ *     implementation issues a no-auth GET /health)
+ *   - GitHub integration endpoints (preflight, detect-repo, preview, sync)
+ *   - getDoctor() convenience alias for getDoctorReport()
  */
 export class KaganClient extends KaganApiClient {
   constructor(
@@ -308,28 +312,6 @@ export class KaganClient extends KaganApiClient {
 
   getDoctor(): Promise<DoctorReportResponse> {
     return this.get<DoctorReportResponse>("/api/doctor");
-  }
-
-  // ── Unified sessions ───────────────────────────────────────────────────
-
-  /** GET /api/v1/sessions */
-  getSessions(): Promise<SessionsResponse> {
-    return this.get<SessionsResponse>("/api/v1/sessions");
-  }
-
-  /** POST /api/v1/sessions */
-  createSession(input: CreateSessionRequest): Promise<SessionItemResponse> {
-    return this.post<SessionItemResponse>("/api/v1/sessions", input);
-  }
-
-  /** POST /api/v1/sessions/:sessionId/stop */
-  stopSession(sessionId: string): Promise<void> {
-    return this.post<void>(`/api/v1/sessions/${sessionId}/stop`, {});
-  }
-
-  /** POST /api/v1/sessions/:sessionId/close */
-  closeSession(sessionId: string): Promise<void> {
-    return this.post<void>(`/api/v1/sessions/${sessionId}/close`, {});
   }
 
 }

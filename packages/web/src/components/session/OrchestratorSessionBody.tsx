@@ -32,6 +32,9 @@ export function OrchestratorSessionBody({ chatSessionId }: OrchestratorSessionBo
       onSlashCommand={session.onSlashCommand}
       scrollRef={session.scrollRef}
       emptySlot={<ChatOverlayEmptyState />}
+      pendingQueue={session.pendingQueue}
+      onEnqueue={session.onEnqueue}
+      onClearQueue={session.onClearQueue}
     />
   );
 }

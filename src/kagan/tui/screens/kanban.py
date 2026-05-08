@@ -710,21 +710,21 @@ class KanbanScreen(Screen[None]):
     def action_focus_down(self) -> None:
         self.action_next_card()
 
-    def action_toggle_chat(self) -> None:
+    def _push_assistant_overlay(self) -> None:
         task = self._selected_task()
         self.app.push_screen(OrchestratorOverlay(task_id=task.id if task else None))
+
+    def action_toggle_chat(self) -> None:
+        self._push_assistant_overlay()
 
     async def action_switch_session(self) -> None:
-        task = self._selected_task()
-        self.app.push_screen(OrchestratorOverlay(task_id=task.id if task else None))
+        self._push_assistant_overlay()
 
     async def action_fullscreen_chat(self) -> None:
-        task = self._selected_task()
-        self.app.push_screen(OrchestratorOverlay(task_id=task.id if task else None))
+        self._push_assistant_overlay()
 
     async def action_expand_chat_overlay(self) -> None:
-        task = self._selected_task()
-        self.app.push_screen(OrchestratorOverlay(task_id=task.id if task else None))
+        self._push_assistant_overlay()
 
     def action_peek_task(self) -> None:
         overlay = self.query_one(PeekOverlay)

@@ -8,6 +8,8 @@
  *   - error: CHAT_ERROR clears streaming, appends error entry
  *   - takeover: CHAT_TURN_TERMINATED with reason=takeover sets takeoverBanner
  *   - 409 conflict: POST /stream returning 409 sets turnConflict
+ *
+ * All state assertions use result.current.* — no global jotai atoms.
  */
 
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
@@ -17,14 +19,6 @@ import { createElement, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 
 import { useChatSession } from '@/lib/hooks/use-chat-session';
-import {
-  isStreamingAtom,
-  streamEntriesAtom,
-  takeoverBannerAtom,
-  turnConflictAtom,
-  chatMessagesAtom,
-  enqueuePendingAtom,
-} from '@/lib/atoms/chat';
 import { CHAT_WATCH_TYPE } from '@kagan/shared-api-client';
 import type { ChatWatchEvent } from '@kagan/shared-api-client';
 
@@ -112,7 +106,7 @@ describe('useChatSession — connect', () => {
     expect(result.current.label).toBe('Test Session');
     expect(result.current.projectId).toBe('project-1');
     expect(result.current.agentBackend).toBe('claude');
-    expect(store.get(chatMessagesAtom)).toEqual([{ role: 'assistant', content: 'Hello' }]);
+    expect(result.current.messages).toEqual([{ role: 'assistant', content: 'Hello' }]);
   });
 
   it('sets isStreaming and adds reconnect note when turn is active on load', async () => {
@@ -120,13 +114,12 @@ describe('useChatSession — connect', () => {
     (apiClient.getTurnStatus as Mock).mockResolvedValueOnce({ active: true });
 
     const store = createStore();
-    renderWithStore(() => useChatSession('session-2'), store);
+    const { result } = renderWithStore(() => useChatSession('session-2'), store);
 
     await act(async () => {});
 
-    expect(store.get(isStreamingAtom)).toBe(true);
-    const entries = store.get(streamEntriesAtom);
-    expect(entries.some((e) => e.kind === 'note')).toBe(true);
+    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.streamEntries.some((e) => e.kind === 'note')).toBe(true);
   });
 });
 
@@ -138,39 +131,41 @@ describe('useChatSession — chunk dispatch', () => {
 
   it('sets isStreaming to true and appends a text entry on CHAT_CHUNK', async () => {
     const store = createStore();
-    renderWithStore(() => useChatSession('session-1'), store);
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'hello', thought: false });
 
-    expect(store.get(isStreamingAtom)).toBe(true);
-    const entries = store.get(streamEntriesAtom);
-    const textEntry = entries.find((e) => e.kind === 'text');
+    expect(result.current.isStreaming).toBe(true);
+    const textEntry = result.current.streamEntries.find((e) => e.kind === 'text');
     expect(textEntry).toBeDefined();
     expect((textEntry as { kind: 'text'; content: string } | undefined)?.content).toBe('hello');
   });
 
   it('appends a thought entry when thought flag is true', async () => {
     const store = createStore();
-    renderWithStore(() => useChatSession('session-1'), store);
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'thinking…', thought: true });
 
-    const entries = store.get(streamEntriesAtom);
-    expect(entries.some((e) => e.kind === 'thought')).toBe(true);
+    expect(result.current.streamEntries.some((e) => e.kind === 'thought')).toBe(true);
   });
 
   it('resets stream entries and isStreaming on CHAT_DONE', async () => {
     const store = createStore();
-    store.set(isStreamingAtom, true);
-    renderWithStore(() => useChatSession('session-1'), store);
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
+
+    // Seed streaming state via a chunk event.
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'partial', thought: false });
+    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.streamEntries.length).toBeGreaterThan(0);
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_DONE, full_response: 'final text' });
 
-    expect(store.get(isStreamingAtom)).toBe(false);
-    expect(store.get(streamEntriesAtom)).toHaveLength(0);
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.streamEntries).toHaveLength(0);
   });
 
   it('drains queued attachments into the next stream after CHAT_DONE', async () => {
@@ -178,12 +173,16 @@ describe('useChatSession — chunk dispatch', () => {
     try {
       const { streamSSE } = await import('@/lib/api/sse');
       const store = createStore();
-      store.set(enqueuePendingAtom, {
-        text: 'follow up',
-        attachments: [{ id: 'att-1', name: 'notes.txt', type: 'file', content: 'hello' }],
-      });
-      renderWithStore(() => useChatSession('session-1'), store);
+      const { result } = renderWithStore(() => useChatSession('session-1'), store);
       await act(async () => {});
+
+      // Seed the queue via the hook's onEnqueue.
+      act(() => {
+        result.current.onEnqueue({
+          text: 'follow up',
+          attachments: [{ id: 'att-1', name: 'notes.txt', type: 'file', content: 'hello' }],
+        });
+      });
 
       fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_DONE, full_response: 'final text' });
       await act(async () => {
@@ -221,13 +220,12 @@ describe('useChatSession — tool start / done', () => {
 
   it('adds a running tool entry on CHAT_TOOL_START', async () => {
     const store = createStore();
-    renderWithStore(() => useChatSession('session-1'), store);
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_START, tool: 'shell' });
 
-    const entries = store.get(streamEntriesAtom);
-    const tool = entries.find((e) => e.kind === 'tool');
+    const tool = result.current.streamEntries.find((e) => e.kind === 'tool');
     expect(tool).toBeDefined();
     if (tool?.kind === 'tool') {
       expect(tool.name).toBe('shell');
@@ -237,14 +235,13 @@ describe('useChatSession — tool start / done', () => {
 
   it('marks a tool as done on CHAT_TOOL_PROGRESS with status=done', async () => {
     const store = createStore();
-    renderWithStore(() => useChatSession('session-1'), store);
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_START, tool: 'shell' });
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_PROGRESS, tool: 'shell', status: 'done' });
 
-    const entries = store.get(streamEntriesAtom);
-    const tool = entries.find((e) => e.kind === 'tool');
+    const tool = result.current.streamEntries.find((e) => e.kind === 'tool');
     if (tool?.kind === 'tool') {
       expect(tool.status).toBe('done');
     }
@@ -259,15 +256,17 @@ describe('useChatSession — error', () => {
 
   it('appends an error entry and clears isStreaming on CHAT_ERROR', async () => {
     const store = createStore();
-    store.set(isStreamingAtom, true);
-    renderWithStore(() => useChatSession('session-1'), store);
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
+
+    // Seed streaming state first.
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'partial', thought: false });
+    expect(result.current.isStreaming).toBe(true);
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_ERROR, error: 'backend crashed' });
 
-    expect(store.get(isStreamingAtom)).toBe(false);
-    const entries = store.get(streamEntriesAtom);
-    expect(entries.some((e) => e.kind === 'error')).toBe(true);
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.streamEntries.some((e) => e.kind === 'error')).toBe(true);
   });
 });
 
@@ -279,13 +278,13 @@ describe('useChatSession — takeover', () => {
 
   it('sets takeoverBanner on CHAT_TURN_TERMINATED with reason=takeover', async () => {
     const store = createStore();
-    renderWithStore(() => useChatSession('session-1'), store);
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' });
 
-    expect(store.get(takeoverBannerAtom)).toMatch(/taken over/i);
-    expect(store.get(isStreamingAtom)).toBe(false);
+    expect(result.current.takeoverBanner).toMatch(/taken over/i);
+    expect(result.current.isStreaming).toBe(false);
   });
 
   it('onDismissTakeover clears the banner', async () => {
@@ -294,10 +293,10 @@ describe('useChatSession — takeover', () => {
     await act(async () => {});
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' });
-    expect(store.get(takeoverBannerAtom)).not.toBeNull();
+    expect(result.current.takeoverBanner).not.toBeNull();
 
     act(() => { result.current.onDismissTakeover(); });
-    expect(store.get(takeoverBannerAtom)).toBeNull();
+    expect(result.current.takeoverBanner).toBeNull();
   });
 });
 
@@ -333,11 +332,10 @@ describe('useChatSession — 409 conflict', () => {
       await Promise.resolve();
     });
 
-    const conflict = store.get(turnConflictAtom);
-    expect(conflict).not.toBeNull();
-    expect(conflict?.pendingText).toBe('hello world');
-    expect(conflict?.partialChars).toBe(42);
-    expect(store.get(isStreamingAtom)).toBe(false);
+    expect(result.current.turnConflict).not.toBeNull();
+    expect(result.current.turnConflict?.pendingText).toBe('hello world');
+    expect(result.current.turnConflict?.partialChars).toBe(42);
+    expect(result.current.isStreaming).toBe(false);
   });
 
   it('stores original attachments for takeover retry after a 409', async () => {
@@ -365,22 +363,33 @@ describe('useChatSession — 409 conflict', () => {
       await Promise.resolve();
     });
 
-    expect(store.get(turnConflictAtom)?.pendingAttachments).toEqual([attachment]);
+    expect(result.current.turnConflict?.pendingAttachments).toEqual([attachment]);
   });
 
   it('onDismissConflict clears the conflict state', async () => {
+    const { ApiError } = await import('@/lib/api/client');
+    const { streamSSE } = await import('@/lib/api/sse');
+
+    (streamSSE as Mock).mockImplementation(async function* () {
+      throw new ApiError(409, 'Turn in progress');
+    });
+
     const store = createStore();
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    store.set(turnConflictAtom, {
-      runningSince: '2026-01-01T00:00:00Z',
-      partialChars: 0,
-      pendingText: 'test',
+    // Trigger 409 to set the conflict state via onSend.
+    await act(async () => {
+      result.current.onSend('test message');
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
+    expect(result.current.turnConflict).not.toBeNull();
+
     act(() => { result.current.onDismissConflict(); });
-    expect(store.get(turnConflictAtom)).toBeNull();
+    expect(result.current.turnConflict).toBeNull();
   });
 });
 
@@ -392,12 +401,14 @@ describe('useChatSession — slash commands', () => {
 
   it('/clear resets messages', async () => {
     const store = createStore();
-    store.set(chatMessagesAtom, [{ role: 'user', content: 'hi' }]);
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
+    // After mount, API provides [{ role: 'assistant', content: 'Hello' }].
+    expect(result.current.messages.length).toBeGreaterThan(0);
+
     act(() => { result.current.onSlashCommand('/clear'); });
-    expect(store.get(chatMessagesAtom)).toHaveLength(0);
+    expect(result.current.messages).toHaveLength(0);
   });
 
   it('/new calls extra.onNew when provided instead of navigating', async () => {

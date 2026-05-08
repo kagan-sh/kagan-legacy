@@ -4,7 +4,7 @@ import { ChatMessage } from '@/components/chat/chat-message';
 import { ChatStreamEntries } from '@/components/chat/chat-stream-entries';
 import { ChatInputBar } from '@/components/chat/chat-input-bar';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import type { ChatStreamEntry } from '@/lib/atoms/chat';
+import type { ChatStreamEntry, PendingMessage, PendingMessageInput } from '@/lib/atoms/chat';
 import type { Attachment } from '@/lib/chat-attachments';
 import type { WireChatMessage } from '@kagan/shared-api-client';
 
@@ -40,6 +40,12 @@ export interface ChatViewProps {
   disableSend?: boolean;
   /** Placeholder text for the input bar. */
   placeholder?: string;
+  /** Pending message queue — forwarded to ChatInputBar for badge display. */
+  pendingQueue?: PendingMessage[];
+  /** Enqueue a message while streaming. Returns false if queue is full. */
+  onEnqueue?: (input: string | PendingMessageInput) => boolean;
+  /** Clear the entire pending queue. */
+  onClearQueue?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +86,9 @@ export function ChatView({
   footerHint,
   disableSend,
   placeholder,
+  pendingQueue,
+  onEnqueue,
+  onClearQueue,
 }: ChatViewProps) {
   const { visibleMessages, hasEarlierMessages } = useMemo(() => {
     if (visibleCount === undefined) {
@@ -167,6 +176,10 @@ export function ChatView({
         disableSend={disableSend}
         placeholder={placeholder}
         projectId={projectId ?? undefined}
+        isStreaming={isStreaming}
+        pendingQueue={pendingQueue}
+        onEnqueue={onEnqueue}
+        onClearQueue={onClearQueue}
       />
     </div>
   );

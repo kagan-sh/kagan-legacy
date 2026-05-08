@@ -277,9 +277,17 @@ async def transition_session(
         obj = s.get(Session, session_id)
         if obj is None:
             raise NotFoundError("Session", session_id)
+        # TOCTOU guard: status must not have drifted between the initial read
+        # and this write transaction.
         if obj.status != src:
             raise IllegalTransition(obj.status, to)
-        transition_session_in_db(s, session_id, to)
+        # Apply the mutation directly on the already-loaded row rather than
+        # delegating to transition_session_in_db, which would redundantly call
+        # s.get(Session, session_id) again on the same SQLModel session.
+        obj.status = to
+        if to in _TERMINAL_STATUSES:
+            obj.ended_at = _utc_now()
+        s.add(obj)
         s.commit()
         s.refresh(obj)
         return obj  # type: ignore[return-value]  # SQLModel refresh returns None

@@ -682,6 +682,7 @@ class WorkspaceScreen(Screen[None]):
     def _re_render_if_idle(self) -> None:
         if not self.is_mounted:
             return
+        self._render_session_list()
 
     def _selected_session_item(self) -> ChatSessionListItem | None:
         option_list = self.query_one("#workspace-session-list", OptionList)

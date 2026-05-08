@@ -101,18 +101,16 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## Right Rail
+## Sessions Overlay
 
-The app shell owns one right rail. It hosts exactly one of two surfaces:
+The app shell owns one global sessions overlay. `SessionOverlay` renders the
+active orchestrator, worker/reviewer, or general session from
+`sessionOverlayTargetAtom`; `sessionOverlayLayoutAtom` controls only the docked,
+bottom, and fullscreen layouts.
 
-- `SessionOverlay` for task worker/reviewer streams, keyed by `rightRailTaskIdAtom`.
-- `OrchestratorChatPanel` for project orchestrator sessions, keyed by
-  `rightRailChatSessionIdAtom`.
-
-`rightRailModeAtom` controls layout only: `none`, `chat-right`, `chat-bottom`,
-or `chat-fullscreen`. `Cmd/Ctrl+.` toggles the rail; `Cmd/Ctrl+K` opens the
-session picker. Task streams use `/task/:id?lane=worker|reviewer` for deep
-links. Orchestrator sessions use `/chat/:id` or the workspace route.
+`Cmd/Ctrl+.` cycles the overlay layout and `Cmd/Ctrl+K` opens the session
+picker. Task streams still deep-link through `/task/:id?lane=worker|reviewer`;
+orchestrator and general sessions use the workspace/session routes.
 
 ______________________________________________________________________
 

@@ -167,6 +167,7 @@ def test_slash_command_registry_is_canonical() -> None:
         "analytics",
         "approvals",
         "clear",
+        "close",
         "delete",
         "exit",
         "flow",
@@ -176,6 +177,8 @@ def test_slash_command_registry_is_canonical() -> None:
         "repo",
         "sessions",
         "status",
+        "stop",
+        "switch",
         "tool",
     ]
     assert SLASH_COMMAND_REGISTRY.get("help") is not None
@@ -380,13 +383,18 @@ class _FakeClient:
         self.chat = _FakeChatEngine()
         self.chat_sessions = ChatSessions(self._engine, self.settings)
 
+    async def list_session_items(self, project_id: str | None = None) -> list[Any]:
+        from kagan.core._session_items import list_session_items
+
+        return await list_session_items(self._engine, project_id=project_id)
+
 
 @pytest.mark.asyncio
 async def test_open_sessions_reattach_attaches_session(monkeypatch) -> None:
     """Reopening a session attaches it and restores orchestrator_history.
 
     messages_rendered is no longer stored so no transcript is reprinted —
-    only the "Attached session" confirmation line is printed.
+    only the switch confirmation line is printed.
     """
     client = _FakeClient()
     await save_chat_session(
@@ -415,8 +423,7 @@ async def test_open_sessions_reattach_attaches_session(monkeypatch) -> None:
 
     assert should_restart is False
     assert controller._chat_session_id == "cfcee6c1"
-    # Session is confirmed as attached
-    assert any("Attached session" in line for line in lines)
+    assert any("Switched to session" in line for line in lines)
     # History is loaded — restored as rendered transcript lines
     assert len(controller._rendered_messages) == 1
 
@@ -440,8 +447,8 @@ async def test_open_sessions_without_query_uses_picker_selection(monkeypatch) ->
 
     async def _pick_session(title: str, options: list[Any]) -> str | None:
         assert title == "Select session"
-        assert any(option.value == "sess1111" for option in options)
-        return "sess1111"
+        assert any(option.value == "orch:sess1111" for option in options)
+        return "orch:sess1111"
 
     def _capture_print(*args, **kwargs) -> None:
         del kwargs
@@ -457,7 +464,7 @@ async def test_open_sessions_without_query_uses_picker_selection(monkeypatch) ->
 
     assert should_restart is False
     assert controller._chat_session_id == "sess1111"
-    assert any("Attached session" in line for line in lines)
+    assert any("Switched to session" in line for line in lines)
 
 
 @pytest.mark.asyncio
@@ -703,60 +710,13 @@ async def test_resolve_initial_session_returns_none_without_explicit_id() -> Non
 
 
 @pytest.mark.asyncio
-async def test_resolve_initial_session_uses_task_session_binding(monkeypatch) -> None:
-    from kagan.core.chat.sessions import TaskBinding
-
+async def test_resolve_initial_session_rejects_legacy_task_binding_id() -> None:
     client = _FakeClient()
-
-    async def _fake_resolve_task_binding(self, session_id: str) -> TaskBinding | None:
-        del self
-        assert session_id == "tasksess"
-        return TaskBinding(
-            id="tasksess",
-            label="Task tasksess - Investigate bug",
-            source="task-session",
-            agent_backend="claude-code",
-            task_id="tasksess",
-            status="open",
-        )
-
-    monkeypatch.setattr(
-        "kagan.core.chat.ChatSessions.resolve_task_binding",
-        _fake_resolve_task_binding,
-    )
-
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
+
     result = await controller._resolve_initial_session("tasksess")
 
-    assert result is not None
-    assert result.id == "tasksess"
-    assert result.source == "task-session"
-
-
-@pytest.mark.asyncio
-async def test_attach_task_scoped_session_does_not_persist_repl_state() -> None:
-    client = _FakeClient()
-    controller = ChatController(cast("Any", client), agent_backend="claude-code")
-
-    from kagan.core.chat.sessions import ChatSessionView
-
-    await controller._attach_session(
-        ChatSessionView(
-            id="tasksess",
-            label="Task tasksess - Investigate bug",
-            source="task-session",
-            agent_backend="claude-code",
-            project_id=None,
-            orchestrator_history=[],
-            messages_rendered=[],
-            updated_at="",
-        ),
-        switching=False,
-    )
-
-    settings = await client.settings.get()
-    assert "chat_sessions_v1" not in settings
-    assert "chat_last_session_repl" not in settings
+    assert result is None
 
 
 @pytest.mark.asyncio

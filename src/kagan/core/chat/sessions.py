@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -23,8 +22,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from kagan.core._db_helpers import _db_async
-from kagan.core.models import ChatMessage, ChatSession, Task
-from kagan.core.models import Session as TaskSession
+from kagan.core.models import ChatMessage, ChatSession
 
 if TYPE_CHECKING:
     import builtins
@@ -125,18 +123,6 @@ def clean_generated_title(raw: str) -> str:
     if len(cleaned) > _SESSION_TITLE_MAX_LENGTH:
         cleaned = cleaned[: _SESSION_TITLE_MAX_LENGTH - 3] + "..."
     return cleaned
-
-
-@dataclass(frozen=True, slots=True)
-class TaskBinding:
-    """A `task-session` source resolves to an agent-Session row, not a chat session."""
-
-    id: str
-    label: str
-    source: str
-    agent_backend: str | None
-    task_id: str
-    status: str
 
 
 def _detached(row: Any) -> Any:
@@ -523,33 +509,6 @@ class ChatSessions:
             return _detached(row)
 
         return await _db_async(self._engine, _write, commit=True)
-
-    # ------------------------------------------------------------------ task binding
-
-    async def resolve_task_binding(self, session_id: str) -> TaskBinding | None:
-        """Resolve a `task-session` source: the id refers to an agent-Session row."""
-        normalized = session_id.strip()
-        if not normalized:
-            return None
-
-        def _read(s: DBSession) -> TaskBinding | None:
-            bound = s.get(TaskSession, normalized)
-            if bound is None:
-                return None
-            task = s.get(Task, bound.task_id)
-            if task is None:
-                return None
-            status_value = getattr(bound.status, "value", str(bound.status))
-            return TaskBinding(
-                id=bound.id,
-                label=f"Task {task.id[:8]} - {task.title}",
-                source="task-session",
-                agent_backend=bound.agent_backend,
-                task_id=task.id,
-                status=status_value,
-            )
-
-        return await _db_async(self._engine, _read)
 
     # ------------------------------------------------------------------ scope state
 

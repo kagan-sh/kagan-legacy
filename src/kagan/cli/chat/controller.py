@@ -259,21 +259,7 @@ class ChatController:
             if pair is not None:
                 row, msgs = pair
                 return chat_session_to_view(row, msgs)
-            binding = await cs.resolve_task_binding(explicit_session_id)
-            if binding is None:
-                return None
-            return ChatSessionView(
-                id=binding.id,
-                label=binding.label,
-                source=binding.source,
-                agent_backend=binding.agent_backend,
-                project_id=None,
-                orchestrator_history=[],
-                messages_rendered=[
-                    f"System: Attached to task session {binding.id} (status: {binding.status})."
-                ],
-                updated_at="",
-            )
+            return None
 
         # Default: always start fresh (no picker)
         return None
@@ -388,18 +374,6 @@ class ChatController:
             if not should_restart:
                 self._print_restored_messages()
             return should_restart
-
-        # Fallback: try resolving as a task binding (legacy task-session source)
-        binding = await self.client.chat_sessions.resolve_task_binding(raw_id)
-        if binding is not None:
-            self._selected_session_id = f"task:{binding.id}"
-            self._selected_session_type = "task"
-            _TOOLBAR_STATE.session_label = f"task:{binding.id}"
-            _console.print(f"[green]Switched to task session:[/green] task:{binding.id}")
-            _console.print(
-                "[dim]Task sessions are read-only. Use the web dashboard or TUI to watch.[/dim]"
-            )
-            return False
 
         _console.print(f"[red]Unknown session: {session_id}[/red]")
         return False

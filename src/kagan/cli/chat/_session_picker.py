@@ -147,7 +147,15 @@ def resolve_chat_session_selector(
         return None
 
     for item in items:
-        if item.session_id == normalized or item.session_id.startswith(normalized):
+        raw_session_id = (
+            item.session_id.split(":", 1)[1] if ":" in item.session_id else item.session_id
+        )
+        if (
+            item.session_id == normalized
+            or item.session_id.startswith(normalized)
+            or raw_session_id == normalized
+            or raw_session_id.startswith(normalized)
+        ):
             return item
     return None
 
@@ -169,6 +177,14 @@ def resolve_unified_session_selector(
         return None
 
     for item in items:
-        if item.session_id == normalized or item.session_id.startswith(normalized):
+        raw_session_id = (
+            item.session_id.split(":", 1)[1] if ":" in item.session_id else item.session_id
+        )
+        if (
+            item.session_id == normalized
+            or item.session_id.startswith(normalized)
+            or raw_session_id == normalized
+            or raw_session_id.startswith(normalized)
+        ):
             return item
     return None

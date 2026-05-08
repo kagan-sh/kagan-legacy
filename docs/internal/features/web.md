@@ -102,15 +102,15 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 8a. Right Rail
+## 8a. Sessions Overlay
 
-- the right rail has one active target: a task stream (`rightRailTaskIdAtom`) or
-  an orchestrator session (`rightRailChatSessionIdAtom`)
-- `SessionOverlay` renders task worker/reviewer streams and follows
-  `/task/:id?lane=worker|reviewer`
-- `OrchestratorChatPanel` renders project orchestrator sessions in the rail,
-  workspace, or `/chat/:id`
-- the help overlay keeps `Esc` streaming behavior separate from rail/session
+- the overlay has one active target from `sessionOverlayTargetAtom`:
+  orchestrator, worker/reviewer, or general
+- `SessionOverlay` renders all session types from the same shell and follows
+  `/task/:id?lane=worker|reviewer` for task deep links
+- the workspace route renders orchestrator and general sessions through the
+  same session body components used by the overlay
+- the help overlay keeps `Esc` streaming behavior separate from session
   switching copy
 
 *Tests:* `packages/web/src/components/session/session-overlay.test.tsx`,

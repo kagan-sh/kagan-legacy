@@ -69,7 +69,6 @@ def _make_client(
     client.chat_sessions.set_last_session_id = AsyncMock()
     client.chat_sessions.list_with_history = AsyncMock(return_value=[])
     client.chat_sessions.get_with_history = AsyncMock(return_value=None)
-    client.chat_sessions.resolve_task_binding = AsyncMock(return_value=None)
 
     return client
 

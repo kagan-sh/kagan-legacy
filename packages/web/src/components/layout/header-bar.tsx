@@ -7,20 +7,20 @@ import { ContextBar } from '@/components/layout/context-bar';
 interface HeaderBarProps {
   onOpenCommandPalette?: () => void;
   onOpenHelp?: () => void;
-  onToggleAIPanel?: () => void;
+  onToggleSessionOverlay?: () => void;
   onToggleFullscreen?: () => void;
-  aiPanelAvailable?: boolean;
-  aiPanelOpen?: boolean;
-  aiPanelFullscreen?: boolean;
+  sessionOverlayAvailable?: boolean;
+  sessionOverlayOpen?: boolean;
+  sessionOverlayFullscreen?: boolean;
 }
 
 export function HeaderBar({
   onOpenCommandPalette,
-  onToggleAIPanel,
+  onToggleSessionOverlay,
   onToggleFullscreen,
-  aiPanelAvailable = true,
-  aiPanelOpen,
-  aiPanelFullscreen,
+  sessionOverlayAvailable = true,
+  sessionOverlayOpen,
+  sessionOverlayFullscreen,
 }: HeaderBarProps) {
   const sseConnected = useAtomValue(sseConnectedAtom);
 
@@ -50,15 +50,15 @@ export function HeaderBar({
               Cmd/Ctrl+Shift+P
             </span>
           </Button>
-          {aiPanelAvailable ? (
+          {sessionOverlayAvailable ? (
             <Button
               type="button"
-              variant={aiPanelOpen ? 'default' : 'ghost'}
+              variant={sessionOverlayOpen ? 'default' : 'ghost'}
               size="sm"
-              onClick={onToggleAIPanel}
-              className={aiPanelOpen ? 'px-2.5' : 'px-2.5 text-[var(--muted-foreground)]'}
-              aria-label="Toggle AI Panel"
-              aria-pressed={aiPanelOpen}
+              onClick={onToggleSessionOverlay}
+              className={sessionOverlayOpen ? 'px-2.5' : 'px-2.5 text-[var(--muted-foreground)]'}
+              aria-label="Toggle Sessions"
+              aria-pressed={sessionOverlayOpen}
             >
               <BotMessageSquare className="size-4" />
               <span className="ml-1 hidden font-code text-[10px] uppercase tracking-[0.16em] sm:inline-flex">
@@ -66,15 +66,15 @@ export function HeaderBar({
               </span>
             </Button>
           ) : null}
-          {aiPanelAvailable && aiPanelOpen ? (
+          {sessionOverlayAvailable && sessionOverlayOpen ? (
             <Button
               type="button"
-              variant={aiPanelFullscreen ? 'default' : 'ghost'}
+              variant={sessionOverlayFullscreen ? 'default' : 'ghost'}
               size="sm"
               onClick={onToggleFullscreen}
-              className={aiPanelFullscreen ? 'px-2' : 'px-2 text-[var(--muted-foreground)]'}
+              className={sessionOverlayFullscreen ? 'px-2' : 'px-2 text-[var(--muted-foreground)]'}
               aria-label="Toggle fullscreen"
-              aria-pressed={aiPanelFullscreen}
+              aria-pressed={sessionOverlayFullscreen}
             >
               <Maximize2 className="size-4" />
             </Button>

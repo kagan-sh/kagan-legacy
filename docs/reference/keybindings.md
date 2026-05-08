@@ -26,7 +26,7 @@ These shortcuts apply in the web dashboard (`kagan web`). All Cmd/Ctrl bindings 
 | ---------------------------------- | ----------------------------------------------- |
 | ++cmd+shift+w++ / ++ctrl+shift+w++ | Toggle Board / Workspace view                   |
 | ++cmd+shift+p++ / ++ctrl+shift+p++ | Open Quick Actions                              |
-| ++cmd+period++ / ++ctrl+period++   | Cycle AI panel on Board / Task routes           |
+| ++cmd+period++ / ++ctrl+period++   | Cycle Sessions dock mode on Board / Task routes |
 | ++cmd+shift+f++ / ++ctrl+shift+f++ | Toggle AI panel fullscreen off-workspace        |
 | ++cmd+up++ / ++ctrl+up++           | Cycle attached agent stream — previous          |
 | ++cmd+down++ / ++ctrl+down++       | Cycle attached agent stream — next              |

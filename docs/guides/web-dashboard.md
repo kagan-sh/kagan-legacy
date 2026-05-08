@@ -62,7 +62,7 @@ Changes save immediately for toggles and dropdowns. Text fields save on blur or 
 | ------------------ | ----------------------------------------------- |
 | `Cmd/Ctrl+Shift+W` | Toggle Board / Workspace                        |
 | `Cmd/Ctrl+Shift+P` | Quick Actions                                   |
-| `Cmd/Ctrl+.`       | Cycle AI panel on Board / Task routes           |
+| `Cmd/Ctrl+.`       | Cycle Sessions dock mode on Board / Task routes |
 | `Cmd/Ctrl+Shift+F` | Toggle AI panel fullscreen off-workspace        |
 | `Cmd/Ctrl+K`       | Session switcher                                |
 | `?` / `F1`         | Help overlay                                    |

@@ -79,7 +79,7 @@ function AppLayout() {
         };
     }, [projectChecked, fetchTasks]);
 
-    const toggleAIPanel = useCallback(() => {
+    const toggleSessionOverlay = useCallback(() => {
         if (workspaceRoute) return;
         overlay.toggle();
     }, [overlay, workspaceRoute]);
@@ -112,7 +112,7 @@ function AppLayout() {
                                 setSessionPickerOpen(false);
                                 setHelpOverlayOpen(true);
                             }}
-                            onToggleAIPanel={toggleAIPanel}
+                            onToggleSessionOverlay={toggleSessionOverlay}
                             onToggleFullscreen={() => {
                                 if (workspaceRoute) return;
                                 if (overlay.layout === "fullscreen") {
@@ -124,9 +124,9 @@ function AppLayout() {
                                     overlay.setLayout("fullscreen");
                                 }
                             }}
-                            aiPanelAvailable={!workspaceRoute}
-                            aiPanelOpen={overlay.isOpen}
-                            aiPanelFullscreen={
+                            sessionOverlayAvailable={!workspaceRoute}
+                            sessionOverlayOpen={overlay.isOpen}
+                            sessionOverlayFullscreen={
                                 !workspaceRoute &&
                                 overlay.isOpen &&
                                 overlay.layout === "fullscreen"

@@ -47,7 +47,7 @@ async def test_repo_picker_lists_project_repositories(board: KaganDriver) -> Non
         assert repo_list.option_count >= 1
 
 
-def test_tmux_session_name_uses_attached_session_id() -> None:
+def test_tmux_session_name_uses_session_id() -> None:
     from kagan.tui.screens.kanban import KanbanScreen
 
     assert KanbanScreen._tmux_session_name("session:abc123") == "kagan-session-abc123"

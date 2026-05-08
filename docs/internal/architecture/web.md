@@ -101,32 +101,18 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## Orchestrator Overlay
+## Right Rail
 
-The right-rail dock used to ship as a split `ChatSidePanel` +
-`OrchestratorChatPanel`. It is now a single mode-aware overlay that mirrors the
-TUI / VS Code experience.
+The app shell owns one right rail. It hosts exactly one of two surfaces:
 
-- `packages/web/src/components/session/orchestrator-overlay.tsx` is the unified
-  rail with three modes — `orchestrator`, `worker`, `reviewer` — and a
-  breadcrumb header (`Orchestrator` or `Worker · running · 23s · ↑12k ↓3k`).
-- `packages/web/src/components/session/running-agents-bar.tsx` lists the active
-  worker / reviewer sessions polled from `GET /api/v1/agents/running` and
-  attaches the overlay on click.
-- `packages/web/src/lib/atoms/chat-attach.ts` exposes `chatAttachAtom`
-  (`null` = orchestrator, `{attachedSessionId, role, …}` = attached) and the
-  `attachChatSessionAtom` / `detachChatSessionAtom` write atoms.
-- `packages/web/src/lib/atoms/running-agents.ts` exposes `runningAgentsAtom`
-  plus loading / refresh write atoms.
+- `ChatSidePanel` for task worker/reviewer streams, keyed by `rightRailTaskIdAtom`.
+- `OrchestratorChatPanel` for project orchestrator sessions, keyed by
+  `rightRailChatSessionIdAtom`.
 
-`Cmd/Ctrl+K` toggles the rail (handled by app-layout dock-mode). `Esc`
-detaches back to orchestrator mode while attached, and closes the rail when
-already in orchestrator mode. The URL query param
-`?chat=task:<taskId>:<sessionId>` is the external source of truth on page
-load — the app-layout reads it and calls `attachChatSessionAtom`.
-
-`ChatSidePanel` is preserved for the task-detail "Open chat" entry point but
-no longer drives the global rail.
+`rightRailModeAtom` controls layout only: `none`, `chat-right`, `chat-bottom`,
+or `chat-fullscreen`. `Cmd/Ctrl+.` toggles the rail; `Cmd/Ctrl+K` opens the
+session picker. Task streams use `/task/:id?lane=worker|reviewer` for deep
+links. Orchestrator sessions use `/chat/:id` or the workspace route.
 
 ______________________________________________________________________
 
@@ -168,7 +154,7 @@ ______________________________________________________________________
 - `/board` -- kanban board and inspector/AI Panel rails
 - `/workspace` -- orchestrator-first workspace with session sidebar and full-width conversation surface
 - `/task/:id` -- unified task workspace with 3 tabs: **Overview**, **Changes**, **Review**
-- `/task/:id?lane=worker|reviewer` -- deep-link that auto-opens the ChatSidePanel overlay for live streaming
+- `/task/:id?lane=worker|reviewer` -- deep-link that opens the task stream rail
 - `/chat/:id` -- orchestrator conversation
 - `/settings` -- categorized system configuration
 - `/welcome` -- onboarding/project setup page
@@ -190,7 +176,9 @@ The task detail page (`/task/:id`) selects its initial tab based on task state:
 | Has workspace (other statuses)    | **Changes**  |
 | Fallback                          | **Overview** |
 
-When a task has an active session, the **ChatSidePanel** overlay auto-opens on the right rail. The overlay shows live streaming output with a Worker/Reviewer lane toggle in its header and a LIVE indicator. URL query parameter `?lane=worker|reviewer` controls which lane is active and triggers the overlay to open. The ChatSidePanel filters events by the active session ID.
+When a task has an active session, `ChatSidePanel` opens in the right rail.
+The Worker/Reviewer lane toggle selects a task session, and the panel filters
+events by that session ID. `?lane=worker|reviewer` controls the initial lane.
 
 ______________________________________________________________________
 

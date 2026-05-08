@@ -8,9 +8,9 @@ The `src/kagan/cli/chat/` module implements the chat REPL, the orchestrator chat
 | -------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `commands.py`        | Slash command parsing (`/help`, `/agents`, `/sessions`, `/attach`, `/clear`, etc.) — pure data, no I/O      |
 | `controller.py`      | `ChatController` — stateful chat session: ties together commands, streaming, ACP, and the approval batch UI |
-| `acp.py`             | ACP client helpers: orchestrator warmup, turn execution, permission handling                                |
-| `_streaming.py`      | `StreamRenderer` — converts `ChatEvent` stream into Rich console output (TUI-free path)                     |
-| `_renderer.py`       | Lower-level rendering helpers used by `_streaming.py`                                                       |
+| `acp.py`             | ACP client helpers for orchestrator warmup and legacy spawn-per-turn execution                              |
+| `_streaming.py`      | Response buffering and markdown streaming primitives used by the CLI renderer                               |
+| `_renderer.py`       | `CLIRenderer` — converts `ChatEvent` stream into Rich console output                                        |
 | `_approval_batch.py` | Batch approval UI for multi-task orchestrator runs                                                          |
 | `_approval_panel.py` | Single-task approval panel widget                                                                           |
 | `_permission_ui.py`  | Interactive permission prompts (ACP `RequestPermission` events)                                             |
@@ -32,23 +32,22 @@ CLI entrypoint (src/kagan/cli/)
   └─ run_chat_async()              __init__.py
        └─ ChatController           controller.py
             ├─ parse_slash_invocation()    commands.py  (for /slash commands)
-            ├─ execute_turn()              acp.py       (for regular messages)
-            │    └─ ACP client → agent process (stdio)
-            │         └─ AgentMessageChunk stream
-            │              └─ ChatEvent stream
-            └─ StreamRenderer             _streaming.py (renders ChatEvent to console)
-                 └─ _renderer.py          (Rich markup helpers)
+            ├─ client.chat.stream_assistant()  core ChatEngine (for regular messages)
+            │    └─ LongLivedACPFactory → agent process (stdio)
+            │         └─ ChatEvent stream
+            ├─ CLIRenderer                 _renderer.py (renders ChatEvent to console)
+            └─ PermissionUI                _permission_ui.py (resolves permission events)
 ```
 
 ## Key invariants
 
 **Slash commands are pure data.** `commands.py` parses text into `SlashCommandInvocation` structs and defines `SlashCommandSpec` — it has no I/O, no Rich, no async. The controller interprets and executes them.
 
-**`controller.py` owns all state.** Mode (auto/pair), backend selection, session history, and the approval batch state all live on `ChatController`. Never add mutable state to `_streaming.py` or `acp.py`.
+**`controller.py` owns REPL orchestration state.** Backend selection, attach mode, session selection, and the approval batch state live on `ChatController`. Chat persistence and turn execution live in core `ChatSessions` / `ChatEngine`.
 
-**`acp.py` owns the subprocess.** The ACP agent process is spawned and managed here. It communicates over stdio. All permission and approval handshakes are handled inside `acp.py` and `_permission_ui.py` before the controller sees the result.
+**Permission policy is event-driven.** `kg chat` has no startup permission bypass flag. ACP permission requests become `PermissionRequest` events; `PermissionUI` resolves them through the inline trust-tier panel and routes the decision back to `ChatEngine.resolve_permission()`. Kagan-owned MCP tools are auto-approved by name.
 
-**`_streaming.py` is transport-agnostic.** It consumes a `AsyncIterator[ChatEvent]` — it does not know whether events came from ACP, a replay buffer, or a test fixture.
+**`_renderer.py` is transport-agnostic.** It consumes `ChatEvent` objects — it does not know whether events came from ACP, a replay buffer, or a test fixture.
 
 ## Adding a new slash command
 
@@ -60,13 +59,13 @@ CLI entrypoint (src/kagan/cli/)
 
 1. Add the variant class to `src/kagan/core/chat/events.py`
 1. Add it to the `ChatEvent` union type
-1. Add a render branch in `StreamRenderer._render_event()` in `_streaming.py`
+1. Add a render branch in `CLIRenderer.on_event()` in `_renderer.py`
 1. Add a unit test in `tests/unit/test_event_rendering.py`
 
 ## Session + Attach Slash Commands
 
-`kagan chat` carries the same orchestrator-overlay model as the TUI and web —
-the user can talk to the orchestrator, jump into a running worker / reviewer
+`kagan chat` uses the same target-switching concept as the TUI and web: the
+user can talk to the orchestrator, jump into a running worker / reviewer
 stream, and detach back to orchestrator mode without leaving the REPL.
 
 - **`/sessions [query]`** lists persisted chat sessions and can reattach the
@@ -84,4 +83,4 @@ stream, and detach back to orchestrator mode without leaving the REPL.
 
 ## Relation to TUI chat
 
-The TUI chat widget (`src/kagan/tui/widgets/chat.py`) is a **separate implementation** sharing only the `ChatEvent` type from `core/chat/events.py`. It does not use `StreamRenderer` or `ChatController`. Do not add CLI-specific logic to the widget, and do not add TUI-specific logic to `controller.py`.
+The TUI chat widget (`src/kagan/tui/widgets/chat.py`) is a **separate implementation** sharing only the `ChatEvent` type from `core/chat/events.py`. It does not use `CLIRenderer` or `ChatController`. Do not add CLI-specific logic to the widget, and do not add TUI-specific logic to `controller.py`.

@@ -60,6 +60,8 @@ Slash commands and usage: [Chat guide](../guides/chat.md).
 | `--session-id`  | Attach to an existing chat or task session |
 | `--agent`       | Override default orchestrator backend      |
 
+`--yolo` has been removed. Use the permission panel's session trust options when a tool asks for approval.
+
 ______________________________________________________________________
 
 ## `kagan doctor`
@@ -154,7 +156,7 @@ ______________________________________________________________________
 
 ## `kagan serve`
 
-Starts the HTTP API server for local integrations. REST + WebSocket endpoints are served from the same local process.
+Starts the HTTP API server for local integrations. REST and SSE endpoints are served from the same local process.
 
 | Option       | Description                               |
 | ------------ | ----------------------------------------- |

@@ -36,7 +36,9 @@ ______________________________________________________________________
 src/kagan/server/
 ├── __init__.py          # re-export create_api_server
 ├── server.py            # ApiServer factory, entry point
-├── _routes.py           # Core REST API + SSE event stream (tasks, projects, settings)
+├── _task_routes.py      # Task REST API
+├── _project_routes.py   # Project/repo REST API
+├── _system_routes.py    # Settings, preflight, presence, and global SSE stream
 ├── _chat_routes.py      # Chat REST + SSE streaming routes (orchestrator sessions)
 ├── _integration_routes.py  # Integration-specific REST routes (preflight, preview, sync)
 ├── _sse.py              # SSE streaming helpers (event generator, keepalive)
@@ -64,7 +66,8 @@ ______________________________________________________________________
 
 1. Calls `kagan.mcp.server.create_server(opts.mcp_opts)`.
 1. Registers a `/health` endpoint.
-1. Calls `register_routes(mcp)` to add the REST API and SSE event stream.
+1. Calls the task, project, system, integration, analytics, and agent route
+   registrars.
 1. Calls `register_chat_routes(mcp)` to add chat REST + SSE streaming.
 
 ______________________________________________________________________
@@ -73,41 +76,41 @@ ______________________________________________________________________
 
 All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: string }`.
 
-| Endpoint                                         | Method | Description                                                                                                                                                         |
-| ------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/health`                                        | GET    | Service health check                                                                                                                                                |
-| `/api/tasks`                                     | GET    | List tasks (optional `status` filter)                                                                                                                               |
-| `/api/tasks`                                     | POST   | Create a new task                                                                                                                                                   |
-| `/api/tasks/counts`                              | GET    | Get task counts grouped by status                                                                                                                                   |
-| `/api/tasks/{id}`                                | GET    | Get task details                                                                                                                                                    |
-| `/api/tasks/{id}`                                | PATCH  | Update task properties                                                                                                                                              |
-| `/api/tasks/{id}`                                | DELETE | Delete a task (Admin tier)                                                                                                                                          |
-| `/api/tasks/{id}/status`                         | POST   | Transition task to new status                                                                                                                                       |
-| `/api/tasks/{id}/events`                         | GET    | Get event history for a task                                                                                                                                        |
-| `/api/tasks/{id}/review`                         | GET    | Get review status for a task                                                                                                                                        |
-| `/api/tasks/{id}/review/decide`                  | POST   | Approve, Reject, or Merge a task                                                                                                                                    |
-| `/api/tasks/{id}/review/conflicts`               | GET    | Get merge conflicts for a task                                                                                                                                      |
-| `/api/tasks/{id}/diff`                           | GET    | Get diff statistics                                                                                                                                                 |
-| `/api/tasks/{id}/diff/raw`                       | GET    | Raw unified diff                                                                                                                                                    |
-| `/api/tasks/{id}/diff/files`                     | GET    | Changed files list                                                                                                                                                  |
-| `/api/tasks/{id}/worktree`                       | GET    | Worktree metadata                                                                                                                                                   |
-| `/api/tasks/{id}/commits`                        | GET    | Commit history                                                                                                                                                      |
-| `/api/projects`                                  | GET    | List all projects                                                                                                                                                   |
-| `/api/projects`                                  | POST   | Create a new project (Admin tier)                                                                                                                                   |
-| `/api/projects/{id}/activate`                    | POST   | Set project as active                                                                                                                                               |
-| `/api/projects/{id}`                             | DELETE | Delete a project (Admin tier)                                                                                                                                       |
-| `/api/settings`                                  | GET    | Get current server settings                                                                                                                                         |
-| `/api/preflight`                                 | GET    | Run preflight checks                                                                                                                                                |
-| `/api/chat/sessions`                             | POST   | Create a new chat session                                                                                                                                           |
-| `/api/chat/sessions`                             | GET    | List chat sessions                                                                                                                                                  |
-| `/api/chat/sessions/{id}`                        | GET    | Get chat session details                                                                                                                                            |
-| `/api/chat/sessions/{id}`                        | DELETE | Delete a chat session                                                                                                                                               |
-| `/api/chat/sessions/{id}/permission/{future_id}` | POST   | Resolve a pending tool-call permission request (body: `{"outcome": "allow_once"\|"allow_always"\|"allow_all_session"\|"deny", "feedback": str\|null}`; returns 204) |
-| `/api/chat/agents`                               | GET    | List available agent backends                                                                                                                                       |
-| `/api/integrations`                              | GET    | List enabled integrations                                                                                                                                           |
-| `/api/integrations/{name}/preflight`             | GET    | Run integration preflight checks                                                                                                                                    |
-| `/api/integrations/{name}/preview`               | GET    | Preview items without importing                                                                                                                                     |
-| `/api/integrations/{name}/sync`                  | POST   | Sync items from integration                                                                                                                                         |
+| Endpoint                                         | Method | Description                                                                                                                                                     |
+| ------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/health`                                        | GET    | Service health check                                                                                                                                            |
+| `/api/tasks`                                     | GET    | List tasks (optional `status` filter)                                                                                                                           |
+| `/api/tasks`                                     | POST   | Create a new task                                                                                                                                               |
+| `/api/tasks/counts`                              | GET    | Get task counts grouped by status                                                                                                                               |
+| `/api/tasks/{id}`                                | GET    | Get task details                                                                                                                                                |
+| `/api/tasks/{id}`                                | PATCH  | Update task properties                                                                                                                                          |
+| `/api/tasks/{id}`                                | DELETE | Delete a task (Admin tier)                                                                                                                                      |
+| `/api/tasks/{id}/status`                         | POST   | Transition task to new status                                                                                                                                   |
+| `/api/tasks/{id}/events`                         | GET    | Get event history for a task                                                                                                                                    |
+| `/api/tasks/{id}/review`                         | GET    | Get review status for a task                                                                                                                                    |
+| `/api/tasks/{id}/review/decide`                  | POST   | Approve, Reject, or Merge a task                                                                                                                                |
+| `/api/tasks/{id}/review/conflicts`               | GET    | Get merge conflicts for a task                                                                                                                                  |
+| `/api/tasks/{id}/diff`                           | GET    | Get diff statistics                                                                                                                                             |
+| `/api/tasks/{id}/diff/raw`                       | GET    | Raw unified diff                                                                                                                                                |
+| `/api/tasks/{id}/diff/files`                     | GET    | Changed files list                                                                                                                                              |
+| `/api/tasks/{id}/worktree`                       | GET    | Worktree metadata                                                                                                                                               |
+| `/api/tasks/{id}/commits`                        | GET    | Commit history                                                                                                                                                  |
+| `/api/projects`                                  | GET    | List all projects                                                                                                                                               |
+| `/api/projects`                                  | POST   | Create a new project (Admin tier)                                                                                                                               |
+| `/api/projects/{id}/activate`                    | POST   | Set project as active                                                                                                                                           |
+| `/api/projects/{id}`                             | DELETE | Delete a project (Admin tier)                                                                                                                                   |
+| `/api/settings`                                  | GET    | Get current server settings                                                                                                                                     |
+| `/api/preflight`                                 | GET    | Run preflight checks                                                                                                                                            |
+| `/api/chat/sessions`                             | POST   | Create a new chat session                                                                                                                                       |
+| `/api/chat/sessions`                             | GET    | List chat sessions                                                                                                                                              |
+| `/api/chat/sessions/{id}`                        | GET    | Get chat session details                                                                                                                                        |
+| `/api/chat/sessions/{id}`                        | DELETE | Delete a chat session                                                                                                                                           |
+| `/api/chat/sessions/{id}/permission/{future_id}` | POST   | Resolve a pending tool-call permission request (body: `{"outcome": "allow_once"\|"allow_always"\|"deny"\|"deny_feedback", "feedback": str\|null}`; returns 204) |
+| `/api/chat/agents`                               | GET    | List available agent backends                                                                                                                                   |
+| `/api/integrations`                              | GET    | List enabled integrations                                                                                                                                       |
+| `/api/integrations/{name}/preflight`             | GET    | Run integration preflight checks                                                                                                                                |
+| `/api/integrations/{name}/preview`               | GET    | Preview items without importing                                                                                                                                 |
+| `/api/integrations/{name}/sync`                  | POST   | Sync items from integration                                                                                                                                     |
 
 ______________________________________________________________________
 

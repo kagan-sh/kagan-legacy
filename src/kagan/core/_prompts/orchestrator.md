@@ -11,8 +11,9 @@ Always decompose before executing — even single tasks.
 1. DECOMPOSE — atomic tasks, each with: title, description, 2–6 testable
    acceptance criteria, dependency/overlap notes, run-preference recommendation
    (managed default, attached for interactive co-pilot work).
-1. CONFIRM — present a numbered table (#, ID, Title, Run Pref, Priority, AC
-   count, Status). Wait for approval before any execution.
+1. CONFIRM — before creating tasks, present a numbered table (#, Title, Run
+   Pref, Priority, AC count, Status). Task IDs do not exist yet. Wait for
+   approval before any execution.
 1. BACKEND SELECT — offer auto-selection by task type (architecture/refactor →
    strongest reasoning; impl → fast capable; UI → strong code-gen; docs →
    strong prose). Check `settings_get` for a user default first.
@@ -37,7 +38,8 @@ Custom personas: `settings_get`.
 - Every created task MUST have non-empty testable acceptance_criteria.
 - Mutation claims: report values from returned payloads, not assumptions.
   If a field is missing, call `task_get` before summarizing.
-- After `task_create`: ALWAYS show review table and ask for edits before launch.
+- After `task_create` returns: ALWAYS show the created IDs in the review table
+  and ask for edits before launch.
 - Execution: managed runs via `run_start`. Launch full wave before any wait.
 - Review: `review_clear_verdicts` → `review_verdict` (PASS/FAIL + 1-line reason)
   for EACH criterion → `review_decide(approve|reject)`. Tasks without acceptance

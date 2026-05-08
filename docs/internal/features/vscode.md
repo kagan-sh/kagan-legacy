@@ -108,7 +108,8 @@ The `@kagan` chat panel can attach to any running worker or reviewer session.
 
 *Tests:* `packages/vscode/src/providers/chat.participant.helpers.test.ts`
 (prompt parsing + session resolution), `packages/vscode/test/integration/chat-attach.test.ts`
-(end-to-end attach / detach through the chat participant).
+(extension-host attach / detach through the chat participant). Real UI smoke
+coverage belongs in `packages/vscode/test/e2e/`.
 
 ______________________________________________________________________
 

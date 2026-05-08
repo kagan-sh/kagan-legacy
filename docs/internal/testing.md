@@ -309,7 +309,7 @@ Use each layer for one job only:
   API-client edge behavior. No VS Code instance, no browser, no real workbench.
 - **Integration tests** run inside the Extension Development Host and assert extension behavior via
   the real `vscode` API: activation, command registration, virtual documents, SCM content
-  providers, and configuration wiring.
+  providers, chat-participant attach/detach, and configuration wiring.
 - **WDIO smoke tests** run against a real downloaded VS Code instance and verify the installed
   extension still works end to end in a dummy editor window.
 

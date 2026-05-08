@@ -102,39 +102,19 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 8a. Orchestrator Overlay
+## 8a. Right Rail
 
-- the right-rail dock is a single mode-aware overlay
-  (`components/session/orchestrator-overlay.tsx`) with three modes:
-  orchestrator, worker, reviewer
-- a breadcrumb header shows the active mode (`Orchestrator` /
-  `Worker · running · 23s · ↑12k ↓3k`)
-- `RunningAgentsBar` (`components/session/running-agents-bar.tsx`) lists
-  active worker / reviewer sessions polled from `GET /api/v1/agents/running`
-  and attaches the rail on click
-- attach state lives in `lib/atoms/chat-attach.ts` (`chatAttachAtom` plus
-  `attachChatSessionAtom` / `detachChatSessionAtom` and
-  `cycleChatAttachAtom`); running-agents data lives in
-  `lib/atoms/running-agents.ts`
-- `Cmd/Ctrl+K` toggles the rail; `Esc` while attached detaches back to
-  orchestrator mode and `Esc` from the chat input while streaming stops the
-  current turn so the user can edit and resend the last message
-- `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓` cycle the attached stream through
-  `[Orchestrator, ...running workers/reviewers]`. Cycle order matches by
-  `session_id` (not list index) so the selection survives polling churn.
-  Wired in `lib/hooks/use-global-shortcuts.ts` via `cycleChatAttachAtom`.
-- the help overlay (`components/layout/help-overlay.tsx`) lists the two
-  `Esc` behaviors as separate rows — "Detach to orchestrator" while
-  attached and "Stop & edit last message" while the chat input is
-  streaming — to remove the previously misleading single-row hint
-- the URL query param `?chat=task:<taskId>:<sessionId>` deep-links into the
-  attached state
-- `ChatSidePanel` is preserved for the task-detail "Open chat" entry point but
-  no longer drives the global rail
+- the right rail has one active target: a task stream (`rightRailTaskIdAtom`) or
+  an orchestrator session (`rightRailChatSessionIdAtom`)
+- `ChatSidePanel` renders task worker/reviewer streams and follows
+  `/task/:id?lane=worker|reviewer`
+- `OrchestratorChatPanel` renders project orchestrator sessions in the rail,
+  workspace, or `/chat/:id`
+- the help overlay keeps `Esc` streaming behavior separate from rail/session
+  switching copy
 
-*Tests:* `packages/web/src/components/__tests__/OrchestratorOverlay.test.tsx`,
-`packages/web/src/components/__tests__/RunningAgentsBar.test.tsx`,
-`packages/web/src/lib/atoms/__tests__/chat-attach.test.ts`.
+*Tests:* `packages/web/src/components/session/chat-side-panel.test.tsx`,
+`packages/web/src/components/layout/app-layout.test.tsx`.
 
 ### Preflight gate
 

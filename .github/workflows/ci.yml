@@ -3,14 +3,12 @@ name: CI
 on:
   pull_request:
     paths-ignore:
-      - "docs/**"
       - "*.md"
       - ".github/assets/**"
       - ".readthedocs.yaml"
   push:
     branches: [main]
     paths-ignore:
-      - "docs/**"
       - "*.md"
       - ".github/assets/**"
       - ".readthedocs.yaml"

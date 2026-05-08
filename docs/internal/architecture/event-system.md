@@ -14,7 +14,7 @@ Typed discriminated union (`kind` field) covering the full lifecycle of an agent
 These are what flows over SSE to the web dashboard and VS Code extension as a task runs.
 
 ```python
-# Emitted by _sessions.py / _acp.py, consumed by server/_chat_routes.py + clients
+# Emitted by _sessions.py / _acp.py, consumed by server SSE routes + clients
 from kagan.core.agent_events import AgentEvent, AgentStart, TurnEnd
 ```
 

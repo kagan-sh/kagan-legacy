@@ -28,6 +28,7 @@ ______________________________________________________________________
 - `--prompt "text"`: single-shot mode — runs prompt, prints result, exits
 - `--session-id ID`: resumes a previous persisted session
 - `--agent NAME`: overrides the default agent backend
+- `--yolo` is intentionally unsupported; tool permissions are handled by the inline approval panel
 - `--prompt` and `--session-id` can be combined
 - Sessions are persisted across restarts (conversation mode, rendered transcript, and orchestrator context)
 - `/sessions` opens session flow in-REPL:

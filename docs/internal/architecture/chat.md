@@ -21,14 +21,14 @@ ______________________________________________________________________
 
 1. **REPL** — interactive terminal chat with an orchestrator agent
 1. **Slash commands** — structured actions (`/agents`, `/sessions`, `/help`)
-1. **Session persistence** — conversation history in core settings
-1. **Orchestrator turns** — ACP-based streaming execution
+1. **Session persistence** — conversation history in core `ChatSessions`
+1. **Orchestrator turns** — `ChatEngine` streams ACP-backed events
 
 **Dependency direction:**
 
 ```text
 kagan.cli.chat ──► kagan.core   (agent spawning, events, tasks)
-kagan.tui  ──► kagan.cli.chat   (ChatController, slash commands)
+kagan.tui  ──► kagan.cli.chat   (slash parsing, backend helpers, ACP turn helpers)
 kagan.cli  ──► kagan.cli.chat   (run_chat for REPL)
 kagan.core ──✘► kagan.cli.chat  NEVER
 ```
@@ -52,13 +52,11 @@ src/kagan/cli/chat/
 ├── _streaming.py      # Immediate Markdown streaming region
 ├── _theme.py          # Chat colors and glyphs
 ├── _title.py          # Session title generation
-├── controller.py      # ChatController, _OrchestratorACPClient
+├── controller.py      # ChatController over core ChatEngine
 ├── acp.py             # run_orchestrator_turn, ACP bridge
 ├── agents.py          # Agent backend selection
 ├── commands.py        # SlashCommandSpec, SlashCommandRegistry
-├── prompt.py          # Orchestrator system prompt
 ├── repl.py            # run_chat, run_chat_async
-├── sessions.py        # Session CRUD, persistence
 └── tool_runs.py       # Tool execution tracking
 ```
 
@@ -70,10 +68,11 @@ ______________________________________________________________________
 
 Main orchestrator for REPL interaction:
 
-- Manages orchestrator agent lifecycle via ACP
+- Manages the REPL lifecycle around core `ChatEngine`
 - Processes user input (text or slash commands)
 - Streams agent output to the Rich console as chunks arrive
 - Maintains conversation state
+- Dispatches permission requests to `PermissionUI`
 
 | Method                                            | Description                      |
 | ------------------------------------------------- | -------------------------------- |
@@ -111,7 +110,7 @@ Aliases: `q→exit`, `?→help`, `s→sessions`, `a→agents`, `f→flow`, `p→
 
 ### Session Persistence
 
-Sessions stored in `client.settings` under `chat_sessions_v1`:
+Sessions are rows managed by `client.chat_sessions`:
 
 - `MAX_STORED_SESSIONS = 30` — oldest pruned on save
 - `MAX_STORED_MESSAGES = 300` — truncated to recent N
@@ -142,28 +141,43 @@ ChatController.process_input()
    └─ text message
        │
        ▼
-   run_orchestrator_turn()
+   client.chat.stream_assistant()
        │
-       ├─ build_orchestrator_prompt() ──► system + context
-       ├─ acp.connect_to_agent() ───────► STDIO handshake
-       ├─ prompt(session/new) ──────────► send message
+       ├─ ChatEngine.push_user() ───────► persist user message
+       ├─ LongLivedACPFactory ──────────► STDIO handshake/session
+       ├─ prompt(...) ──────────────────► send message
        └─ stream loop
-          ├─ AgentMessageChunk ──► ChatEventRenderer ──► StreamingMarkdownRegion
+          ├─ AssistantChunk ────► CLIRenderer ─────────► MarkdownStreamingRegion
           ├─ ToolCallStart ──────► grouped tool status line
           ├─ ToolCallProgress ───► minimal live state label
+          ├─ PermissionRequest ──► PermissionUI ───────► ChatEngine.resolve_permission()
           └─ session/end ────────► finalize
 ```
 
 ### ACP Integration
 
-- `_OrchestratorACPClient` — concrete ACP client adapter
-- `_CaptureACPClient` — silent variant for title generation
+- `LongLivedACPFactory` — core-owned ACP session factory used by `ChatEngine`
+- `_CaptureACPClient` — silent variant for title generation and helper turns
 - `warm_orchestrator_backend()` — pre-warms agent to reduce latency
-- `ChatEventRenderer` — converts ACP session updates into console output, tool records, and toolbar state
-- `StreamingMarkdownRegion` — writes text fragments immediately, flushes after streamed words, and keeps the final accumulated text available for session history
+- `CLIRenderer` — converts chat events into console output, tool records, and toolbar state
+- `MarkdownStreamingRegion` — writes text fragments immediately, flushes after streamed words, and keeps the final accumulated text available for session history
 - Tool calls rendered with compact live indicators for thinking, commands, reads, searches, images, and generic tool activity
 
 **Lightweight mode** (`run_orchestrator_turn(lightweight=True)`): No MCP server, no system prompt, sends prompt as-is for simple completions.
+
+### Permission Flow
+
+`kg chat` does not expose a startup bypass such as `--yolo`. Tool permission
+requests are resolved per request through the inline approval panel:
+
+- approve once
+- approve tool for session
+- allow all for session
+- deny
+- deny with feedback
+
+The session trust choices are stored in the CLI permission cache for the life of
+the REPL process. Kagan-owned MCP tools (`mcp__kagan*`) are auto-approved.
 
 ______________________________________________________________________
 
@@ -183,7 +197,7 @@ ______________________________________________________________________
 | Scope                | Settings Key                    |
 | -------------------- | ------------------------------- |
 | Task-scoped          | `chat_scope_state_{session_id}` |
-| Project orchestrator | `chat_sessions_v1`              |
+| Project orchestrator | `chat_last_session_{scope}`     |
 
 ### Cross-Surface Visibility
 
@@ -196,16 +210,15 @@ ______________________________________________________________________
 - Mock ACP connection, not core
 - Use `run_chat()` with fixed prompt for deterministic output
 - Slash command handlers are pure functions — test directly
-- Session persistence: use in-memory settings, not real DB
+- Session persistence: use real `ChatSessions` storage in isolated test DBs
 
 ______________________________________________________________________
 
 ## What This Architecture Does NOT Have
 
-| Omitted                   | Why                                                     |
-| ------------------------- | ------------------------------------------------------- |
-| Separate chat database    | Sessions in core `settings` table — one source of truth |
-| SSE / HTTP transport      | REPL is local; STDIO + ACP is sufficient                |
-| ChatSession domain model  | Session is a dict in settings, not an entity            |
-| Message class hierarchy   | Messages are dicts (role, content)                      |
-| Multi-turn context window | Orchestrator manages context via ACP session            |
+| Omitted                   | Why                                          |
+| ------------------------- | -------------------------------------------- |
+| Separate chat database    | Chat sessions are core `ChatSession` rows    |
+| SSE / HTTP transport      | REPL is local; STDIO + ACP is sufficient     |
+| Message class hierarchy   | Messages are dicts (role, content)           |
+| Multi-turn context window | Orchestrator manages context via ACP session |

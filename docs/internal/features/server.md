@@ -158,7 +158,7 @@ Once a session is active, the server pushes streaming events over SSE:
 | `CHAT_INTERRUPTED`        | Turn stopped by user interrupt     |
 | `CHAT_SESSION_UPDATED`    | Session title or metadata changed  |
 | `CHAT_BUSY`               | Agent busy on another turn         |
-| `TOOL_PERMISSION_REQUEST` | Agent is waiting for tool approval |
+| `CHAT_PERMISSION_REQUEST` | Agent is waiting for tool approval |
 
 ______________________________________________________________________
 

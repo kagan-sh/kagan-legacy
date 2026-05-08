@@ -259,8 +259,8 @@ ______________________________________________________________________
 ### Streaming output
 
 **Given** the agent sends `AgentMessageChunk` events
-**When** `_OrchestratorACPClient` receives them
-**Then** each chunk is printed to the Rich console immediately with streaming animation, and turn finalization closes the live line without replaying the response.
+**When** `ChatEngine` emits assistant chunk events
+**Then** `CLIRenderer` prints each chunk to the Rich console immediately with streaming animation, and turn finalization closes the live line without replaying the response.
 
 **Given** the user reattaches to a finished agent session in the
 orchestrator overlay
@@ -273,12 +273,28 @@ ______________________________________________________________________
 ### Tool call rendering
 
 **Given** the agent sends `ToolCallStart`
-**When** `_OrchestratorACPClient` receives it
+**When** `ChatEngine` emits it
 **Then** it prints the tool name and arguments.
 
 **Given** the agent sends `ToolCallProgress` updates
-**When** `_OrchestratorACPClient` receives them
+**When** `ChatEngine` emits them
 **Then** it updates the status indicator (pending ✓/✗).
+
+______________________________________________________________________
+
+### Permission requests
+
+**Given** the agent requests permission for a tool call
+**When** `ChatEngine` emits a `PermissionRequest`
+**Then** `PermissionUI` presents the inline trust-tier panel and resolves the request with `allow_once`, `allow_always`, `deny`, or `deny_feedback`.
+
+**Given** the user tries the removed `kagan chat --yolo` flag
+**When** Click parses the command
+**Then** the command exits with usage code 2 and points the user to valid options.
+
+**Given** the user wants permissive behavior for the current REPL session
+**When** a permission request appears
+**Then** they choose "Allow all for session" in the approval panel instead of setting a startup flag.
 
 ______________________________________________________________________
 
@@ -406,15 +422,17 @@ ______________________________________________________________________
 
 **Given** the TUI opens a ChatPanel
 **When** it mounts
-**Then** it creates a `ChatController` and binds to the current scope.
+**Then** it binds to `app.orchestrator_sessions` and the shared TUI chat runner.
 
-**Given** the user types in the ChatPanel input
+**Given** the user types a slash command
 **When** they press Enter
-**Then** the message is processed by `ChatController.process_input()` and rendered in the panel.
+**Then** the widget uses the shared slash parser from `kagan.cli.chat.commands`
+and handles the TUI action locally.
 
-**Given** the agent streams output
-**When** chunks arrive via ACP
-**Then** they're rendered in real-time in the ChatPanel output area.
+**Given** the user sends a normal message
+**When** the turn runs
+**Then** `_chat_runner.py` drives `ChatEngine` / ACP helpers and renders
+`ChatEvent` updates into the widget.
 
 ______________________________________________________________________
 

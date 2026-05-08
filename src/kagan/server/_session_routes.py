@@ -11,7 +11,7 @@ POST /api/v1/sessions/:id/close          → close a session
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, assert_never, cast
 
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -276,6 +276,40 @@ def _next_replay_cursor(events: list[SessionReplayEvent], has_more: bool) -> str
     return f"{last.created_at}|{last.id}"
 
 
+def _paginate_chat_replay_events(
+    events: list[SessionReplayEvent],
+    query: _ReplayQuery,
+) -> tuple[list[SessionReplayEvent], bool]:
+    """Apply cursor/limit/direction to a full in-memory chat transcript."""
+    if not events:
+        return [], False
+
+    def sort_key(ev: SessionReplayEvent) -> tuple[str, str]:
+        return (ev.created_at, ev.id)
+
+    ordered = sorted(events, key=sort_key)
+    if query.direction == "backward":
+        ordered = list(reversed(ordered))
+
+    start_idx = 0
+    cur = query.cursor
+    if cur.created_at is not None and cur.event_id is not None:
+        cur_ts = _format_replay_timestamp(cur.created_at)
+        cur_key = (cur_ts, cur.event_id)
+        for i, ev in enumerate(ordered):
+            ev_key = (ev.created_at, ev.id)
+            if ev_key > cur_key:
+                start_idx = i
+                break
+        else:
+            start_idx = len(ordered)
+
+    page_cap = query.limit + 1
+    page = ordered[start_idx : start_idx + page_cap]
+    has_more = len(page) > query.limit
+    return page[: query.limit], has_more
+
+
 async def _query_chat_replay(
     ctx: ServerContext, session_id: str, query: _ReplayQuery
 ) -> tuple[list[SessionReplayEvent], bool]:
@@ -295,7 +329,7 @@ async def _query_chat_replay(
                 created_at=msg.created_at.isoformat() if msg.created_at else "",
             )
         )
-    return events, False
+    return _paginate_chat_replay_events(events, query)
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +411,7 @@ async def _do_create_session(request: Request, ctx: ServerContext) -> JSONRespon
         )
         prefix = "gen"
     else:
-        return _err(f"Unknown session type: {body.type}", status=400)
+        assert_never(body.type)
 
     capabilities = SessionCapabilitiesResponse(
         can_chat=True,

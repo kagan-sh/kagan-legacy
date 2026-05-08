@@ -197,7 +197,7 @@ async def test_create_session_rejects_unknown_type(
     monkeypatch: pytest.MonkeyPatch,
     setup: Any,
 ) -> None:
-    """POST /api/v1/sessions returns 400 for an unknown session type."""
+    """POST /api/v1/sessions returns 422 when ``type`` is not orchestrator/general."""
     core, _ = setup
     mcp = make_api_server()
     monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
@@ -206,5 +206,5 @@ async def test_create_session_rejects_unknown_type(
     response = await endpoint(make_request("POST", "/api/v1/sessions", body={"type": "unknown"}))
     body = json_body(response)
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert body["ok"] is False

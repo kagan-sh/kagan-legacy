@@ -281,6 +281,33 @@ class ChatController:
             return session_id.split(":", 1)[1]
         return session_id
 
+    def _is_orchestrator_slash_context(self) -> bool:
+        """Whether orchestrator-only slash commands (e.g. ``/flow``) apply."""
+        t = self._selected_session_type
+        return t in (None, "orchestrator", "orch")
+
+    def _slash_presentation_session(self) -> tuple[str, str]:
+        """(human label, machine key) for slash help text."""
+        t = self._selected_session_type
+        if t in (None, "orchestrator", "orch"):
+            return ("Orchestrator", "orchestrator")
+        if t in ("gen", "general"):
+            return ("General", "general")
+        if t == "task":
+            return ("Task", "task")
+        return ("Orchestrator", "orchestrator")
+
+    def _status_line_session_label(self) -> str:
+        """Short session kind string for ``build_chat_status_line``."""
+        t = self._selected_session_type
+        if t in (None, "orchestrator", "orch"):
+            return "orchestrator"
+        if t in ("gen", "general"):
+            return "general"
+        if t == "task":
+            return "task"
+        return "orchestrator"
+
     async def _attach_session(self, session: ChatSessionView, *, switching: bool) -> bool:
         previous_session_id = self._chat_session_id
         session_id = session.id.strip()
@@ -335,6 +362,7 @@ class ChatController:
         self._selected_session_id = f"{prefix}:{session_id}"
         self._selected_session_type = prefix
         _TOOLBAR_STATE.session_label = self._selected_session_id or "orchestrator"
+        _TOOLBAR_STATE.session_type = "general" if prefix == "gen" else "orchestrator"
 
         if self._persist_repl_session:
             await self.client.chat_sessions.set_last_session_id(scope="repl", session_id=session_id)
@@ -363,6 +391,7 @@ class ChatController:
             self._selected_session_id = session_id
             self._selected_session_type = "task"
             _TOOLBAR_STATE.session_label = session_id
+            _TOOLBAR_STATE.session_type = "task"
             _console.print(f"[green]Switched to task session:[/green] {session_id}")
             _console.print(
                 "[dim]Task sessions are read-only. Use the web dashboard or TUI to watch.[/dim]"
@@ -422,6 +451,7 @@ class ChatController:
                 self._selected_session_id = None
                 self._selected_session_type = None
                 _TOOLBAR_STATE.session_label = "orchestrator"
+                _TOOLBAR_STATE.session_type = "orchestrator"
         else:
             _console.print(f"[red]Session not found: {session_id}[/red]")
 
@@ -800,7 +830,7 @@ class ChatController:
             _TOOLBAR_STATE.project_name = Path.cwd().name
             status_line = build_chat_status_line(
                 mode="repl",
-                session_label="orchestrator",
+                session_label=self._status_line_session_label(),
                 message_count=self._turn_count,
             )
             _console.print(f"[dim]{status_line}[/dim]")
@@ -922,6 +952,8 @@ class ChatController:
                 had_error = True
             finally:
                 refresh_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await refresh_task
                 restore_sigint_handler(original_sigint)
                 _TOOLBAR_STATE.is_streaming = False
 
@@ -939,7 +971,7 @@ class ChatController:
 
         status_line = build_chat_status_line(
             mode="repl",
-            session_label="orchestrator",
+            session_label=self._status_line_session_label(),
             message_count=self._turn_count,
         )
         _console.print(f"[dim]{status_line}[/dim]")
@@ -1164,17 +1196,18 @@ class ChatController:
         return False
 
     async def _handle_slash(self, text: str) -> bool:
+        pres_label, pres_key = self._slash_presentation_session()
         result = resolve_slash_input(
             text,
-            session_label="Orchestrator",
-            session_key="orchestrator",
+            session_label=pres_label,
+            session_key=pres_key,
             runtime_session_id=self._chat_session_id,
             current_backend=self.agent_backend,
             available_backends=list_registered_agent_backends(),
             project_name=self._project_name,
             project_id=self.client.active_project_id,
             turn_count=self._turn_count,
-            is_orchestrator=self._selected_session_type in (None, "orchestrator"),
+            is_orchestrator=self._is_orchestrator_slash_context(),
         )
         if not result.handled:
             return False

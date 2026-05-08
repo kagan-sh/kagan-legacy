@@ -34,13 +34,14 @@ export const selectedSessionCapabilitiesAtom = atom((get) => {
   return get(selectedSessionAtom)?.capabilities ?? null;
 });
 
-/** Derived atom: true if any dialog/overlay is open. */
+/** Derived atom: true if any modal dialog or session overlay should pause background work. */
 export const isAnyDialogOpenAtom = atom((get) => {
   return (
     get(sessionPickerOpenAtom) ||
     get(helpOverlayOpenAtom) ||
     get(integrationImportOpenAtom) ||
     get(commandPaletteOpenAtom) ||
+    get(sessionOverlayOpenAtom) ||
     get(boardDialogAtom).kind !== 'none'
   );
 });

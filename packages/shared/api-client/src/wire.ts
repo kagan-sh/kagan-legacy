@@ -307,7 +307,7 @@ export interface SessionsResponse {
 }
 
 export interface CreateSessionRequest {
-  type: string;
+  type: 'orchestrator' | 'general';
   backend?: string | null;
   title?: string | null;
 }

@@ -124,10 +124,6 @@ def transition_session_in_db(
     return obj, src
 
 
-async def _has_passing_review(client: KaganCore, task_id: str) -> bool:
-    return await asyncio.to_thread(is_review_approved, task_id, client.engine)
-
-
 _ALLOWED_TASK_TRANSITIONS: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
     {
         (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),

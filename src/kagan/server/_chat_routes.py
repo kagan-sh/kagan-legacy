@@ -355,6 +355,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 
     @mcp.custom_route("/api/chat/sessions/{session_id}/permission/{future_id}", methods=["POST"])
     @require_context(mcp)
+    @handle_errors
     async def chat_resolve_permission(request: Request, *, ctx: ServerContext) -> Response:
         """Resolve a pending permission request from the agent.
 
@@ -366,8 +367,10 @@ def _register_stream_routes(mcp: FastMCP) -> None:
             return _err("Insufficient access tier", status=403)
         try:
             body = await request.json()
-        except Exception:  # malformed or missing body — default to deny below
-            body = {}
+        except json.JSONDecodeError:
+            return _err("Request body must be valid JSON", status=400)
+        if not isinstance(body, dict):
+            return _err("Request body must be a JSON object", status=400)
         outcome = str(body.get("outcome", "deny"))
         feedback = body.get("feedback") or None
         await ctx.client.chat.resolve_permission(

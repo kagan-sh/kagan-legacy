@@ -416,7 +416,7 @@ class SessionsResponse(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    type: str
+    type: Literal["orchestrator", "general"]
     backend: str | None = None
     title: str | None = None
 

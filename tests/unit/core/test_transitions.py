@@ -117,21 +117,6 @@ _TASK_ILLEGAL: list[tuple[TaskStatus, TaskStatus]] = [
     (TaskStatus.DONE, TaskStatus.REVIEW),
 ]
 
-# Illegal (from, to) pairs:
-_TASK_ILLEGAL: list[tuple[TaskStatus, TaskStatus]] = [
-    # Same-status no-ops
-    (TaskStatus.BACKLOG, TaskStatus.BACKLOG),
-    (TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS),
-    (TaskStatus.REVIEW, TaskStatus.REVIEW),
-    (TaskStatus.DONE, TaskStatus.DONE),
-    # Explicitly forbidden shortcuts
-    (TaskStatus.IN_PROGRESS, TaskStatus.DONE),
-    (TaskStatus.BACKLOG, TaskStatus.DONE),
-    (TaskStatus.BACKLOG, TaskStatus.REVIEW),
-    (TaskStatus.DONE, TaskStatus.IN_PROGRESS),
-    (TaskStatus.DONE, TaskStatus.REVIEW),
-]
-
 
 @pytest.mark.parametrize("frm,to", _TASK_LEGAL)
 @pytest.mark.asyncio

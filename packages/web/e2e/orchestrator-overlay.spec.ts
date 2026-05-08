@@ -14,29 +14,37 @@
 //   ALWAYS TESTABLE (no running agents needed):
 //     - Cmd/Ctrl+K opens the Session Picker overlay.
 //     - Escape closes the Session Picker.
-//     - Session Picker opens the right-rail after selecting a session.
+//     - Session Picker has search input with correct label.
+//
+//   SKIPPED — h11 content-length bug (eng-core blocker):
+//     - Selecting a session from the picker opens the orchestrator chat rail.
+//     - Running agents bar shows "no agents running" when no sessions are active.
 //     - Escape closes the rail when in orchestrator mode.
-//     - RunningAgentsBar shows "no agents running" when no sessions are active.
+//     The SecurityHeadersMiddleware content-length recalculation was patched in
+//     commit f825db9f, but GET /api/chat/sessions still triggers an h11
+//     "Too much data for declared Content-Length" error in the sandboxed E2E
+//     server. The fix is incomplete — eng-core must resolve the remaining edge
+//     case before these tests can be enabled.
 //
-//   SKIPPED (require a FakeAgent fixture or running agent session):
-//     - Agent row appears when a run is active.
-//     - Clicking an agent row shows "Worker · …" breadcrumb.
-//     - Esc while attached returns to orchestrator mode.
-//     - URL ?chat=task:<id>:<session> restores attach state on refresh.
+//   SKIPPED — fake-agent backend (eng-core blocker):
+//     - refresh restores attach state via ?chat=task:<id>:<session> URL param.
+//     - clicking an agent row shows "Worker · …" breadcrumb.
+//     - Esc while attached returns to orchestrator mode without closing the rail.
+//     The webServer env in playwright.config.ts already sets KAGAN_FAKE_AGENT=1,
+//     but the flag has no effect until eng-core's fake-agent backend lands.
 //
-// TODO(fake-agent-fixture): When a scripted fake-agent fixture exists (analogous
-// to FakeAgentFactory in the Python test suite), un-skip the attach assertions.
-// See docs/internal/testing.md "Web Client Tests".
-//
-// NOTE on session-picker loading failure:
-//   The GET /api/chat/sessions request inside the Session Picker occasionally
-//   triggers a content-length protocol error in the sandboxed server (h11
-//   "Too much data for declared Content-Length"). This is a pre-existing server
-//   bug, not a test issue. Tests that depend on sessions appearing in the picker
-//   list are skipped until the server-side fix lands.
+// Un-skip protocol (both blockers):
+//   1. eng-core lands the h11 fix AND fake-agent backend on `refinements`.
+//   2. Run `pnpm exec playwright test orchestrator-overlay.spec.ts` locally.
+//   3. Remove the matching test.skip() call (or the entire outer skip block).
+//   4. Commit under test(web): unskip orchestrator-overlay e2e.
 
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
-import { ensureBoardReady, ensureProjectReady } from './helpers';
+import {
+  ensureBoardReady,
+  ensureProjectReady,
+  createTaskAndRun,
+} from './helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -125,17 +133,15 @@ test.describe('Orchestrator Overlay', () => {
 
   // ── Session selection → right rail ────────────────────────────────────────
   //
-  // Blocked by a pre-existing server-side content-length protocol error that
-  // causes GET /api/chat/sessions inside the Session Picker to fail. Once the
-  // server fix lands, un-skip and validate the full rail open flow.
+  // Blocked (2026-05-08): GET /api/chat/sessions inside the Session Picker
+  // still triggers an h11 "Too much data for declared Content-Length" error in
+  // the sandboxed E2E server. The SecurityHeadersMiddleware patch (commit
+  // f825db9f) addressed the common non-streaming case but an edge case remains
+  // when the session list is non-empty. Track the remaining fix in eng-core.
 
   test.skip(
     'selecting a session from the picker opens the orchestrator chat rail',
     async ({ page, request }) => {
-      // Blocked: GET /api/chat/sessions inside the picker triggers an h11
-      // "Too much data for declared Content-Length" protocol error in the
-      // sandboxed E2E server, so the session list never loads and getByText()
-      // finds nothing. Track the fix in the server before enabling this test.
       await ensureProjectReady(request);
       const sessionId = await createChatSession(request, 'E2E overlay session');
       expect(sessionId).toBeTruthy();
@@ -161,13 +167,13 @@ test.describe('Orchestrator Overlay', () => {
 
   // ── Running agents bar ────────────────────────────────────────────────────
   //
-  // Same server-side block as above — the rail must be open to test the bar.
+  // Same h11 edge-case block as above — the rail must be open to test the bar,
+  // and opening the rail requires the session list to load without the h11 error.
 
   test.skip(
     'Running agents bar shows "no agents running" when no sessions are active',
     async ({ page, request }) => {
-      // Blocked: same GET /api/chat/sessions content-length error prevents the
-      // session from appearing in the picker so the rail never opens.
+      // Blocked (2026-05-08): same GET /api/chat/sessions h11 edge case.
       await ensureProjectReady(request);
       const sessionId = await createChatSession(request, 'E2E overlay agents bar session');
       expect(sessionId).toBeTruthy();
@@ -193,7 +199,7 @@ test.describe('Orchestrator Overlay', () => {
   test.skip(
     'Escape while in orchestrator rail mode closes the rail',
     async ({ page, request }) => {
-      // Blocked: same GET /api/chat/sessions content-length error.
+      // Blocked (2026-05-08): same GET /api/chat/sessions h11 edge case.
       await ensureProjectReady(request);
       const sessionId = await createChatSession(request, 'E2E overlay esc session');
       expect(sessionId).toBeTruthy();
@@ -221,30 +227,45 @@ test.describe('Orchestrator Overlay', () => {
   );
 
   // ── URL restore of attach state ────────────────────────────────────────────
+  //
+  // Blocked (2026-05-08): eng-core fake-agent backend not yet registered.
+  // KAGAN_FAKE_AGENT=1 is passed to the webServer via playwright.config.ts
+  // but has no effect until the backend lands on the refinements branch.
+  // Also depends on the h11 fix above to open the rail first.
 
   test.skip(
     'refresh while attached restores attach state via ?chat=task:<id>:<session> URL param',
     async ({ page, request }) => {
-      // Blocked: no FakeAgent fixture available in the sandboxed E2E server.
-      // The test would need a running session with events to validate that
-      // ?chat=task:<taskId>:<sessionId> restores the attach state and breadcrumb.
+      // Blocked (2026-05-08): eng-core fake-agent + h11 edge-case fix both required.
+      //
+      // When unblocked:
+      //   1. createTaskAndRun(request, 'URL restore test') → taskId.
+      //   2. Open Session Picker, select a session → rail opens.
+      //   3. Wait for an agent row in RunningAgentsBar and click it.
+      //   4. Confirm URL contains ?chat=task:<taskId>:<sessionId>.
+      //   5. page.reload() → assert breadcrumb "Worker · …" is present.
+      //   6. Assert at least one event renders in the event stream.
       void page;
       void request;
+      void createTaskAndRun; // referenced so tree-shaking keeps the import
     },
   );
 
   // ── Attach / detach flow (requires running agent) ─────────────────────────
+  //
+  // Same fake-agent + h11 blockers as above.
 
   test.skip(
     'clicking an agent row attaches and shows "Worker · …" breadcrumb',
     async ({ page, request }) => {
-      // Blocked: no FakeAgent fixture available in the sandboxed E2E server.
-      // With a FakeAgent fixture:
-      //   1. Create a task, start an agent run → an agent row appears in RunningAgentsBar.
-      //   2. Click the row → overlay switches to AgentStreamPanel.
-      //   3. Assert breadcrumb text matches /Worker · \d+[smh]/i.
-      //   4. Assert at least one event item renders in the event stream.
-      //   5. Press Escape → assert breadcrumb is gone and orchestrator rail is visible.
+      // Blocked (2026-05-08): eng-core fake-agent + h11 edge-case fix both required.
+      //
+      // When unblocked:
+      //   1. createTaskAndRun(request, 'Agent row test') to seed a running task.
+      //   2. Open Session Picker, select a session, confirm rail is open.
+      //   3. Wait for an agent row (aria-label "Attach to worker agent: …").
+      //   4. Click the row → assert breadcrumb matches /Worker · \d+[smh]/i.
+      //   5. Assert at least one event item renders in the event stream.
       void page;
       void request;
     },
@@ -253,7 +274,13 @@ test.describe('Orchestrator Overlay', () => {
   test.skip(
     'Escape while attached returns to orchestrator mode without closing the rail',
     async ({ page, request }) => {
-      // Blocked: same as above — requires a running agent session.
+      // Blocked (2026-05-08): eng-core fake-agent + h11 edge-case fix both required.
+      //
+      // When unblocked:
+      //   1. createTaskAndRun → attach to an agent row (same as test above).
+      //   2. Press Escape → assert data-overlay-mode="orchestrator" is visible.
+      //   3. Assert data-overlay-mode="worker" is gone.
+      //   4. Assert the rail container itself is still visible (not closed).
       void page;
       void request;
     },

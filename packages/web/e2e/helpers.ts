@@ -156,3 +156,37 @@ export async function createTaskViaApi(
   expect(taskEnvelope.data?.id).toBeTruthy();
   return taskEnvelope.data!.id;
 }
+
+/**
+ * Create a task and POST /api/tasks/:id/run to start an agent session.
+ *
+ * Requires the server to be booted with KAGAN_FAKE_AGENT=1 (or --fake-agent)
+ * so that a deterministic fake-agent backend is available and the run can
+ * reach RUNNING status without a real coding agent installed.
+ *
+ * Returns the task id. The task status transitions asynchronously; callers
+ * should poll /api/v1/agents/running or wait for UI markers rather than
+ * relying on the response body status field.
+ */
+export async function createTaskAndRun(
+  request: APIRequestContext,
+  title: string,
+): Promise<string> {
+  const taskId = await createTaskViaApi(request, title);
+
+  const runResp = await request.post(`/api/tasks/${taskId}/run`, {
+    data: { agent_backend: 'fake-agent' },
+  });
+  // If the fake-agent backend is not yet registered (eng-core pending), the
+  // run call will fail with 4xx/5xx. We log but do not throw so that tests
+  // can assert on the absence of agent rows and skip gracefully.
+  if (!runResp.ok()) {
+    console.warn(
+      `createTaskAndRun: POST /api/tasks/${taskId}/run returned ${runResp.status()} — ` +
+        'fake-agent backend may not be registered yet (eng-core blocker). ' +
+        'Tests that rely on a running agent will fail until the backend lands.',
+    );
+  }
+
+  return taskId;
+}

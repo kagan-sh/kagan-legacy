@@ -42,12 +42,17 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
+          // KAGAN_FAKE_AGENT=1 registers a deterministic fake-agent backend so
+          // E2E tests can drive tasks to RUNNING state without a real agent.
+          // The flag is safe to pass unconditionally — the server ignores it
+          // when the eng-core fake-agent feature is not yet compiled in.
           command: `uv run poe web-build && uv run kagan web --db "${dbPath}" --no-open --port ${E2E_PORT}`,
           port: E2E_PORT,
           reuseExistingServer: false,
           timeout: 30_000,
           env: {
             KAGAN_E2E_TEMP_DIR: tempDir,
+            KAGAN_FAKE_AGENT: '1',
           },
         },
       }),

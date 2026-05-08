@@ -18,8 +18,6 @@ from prompt_toolkit.application.current import get_app
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, Layout, Window
-from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from rich import box
 from rich.console import Console, Group, RenderableType
@@ -719,11 +717,11 @@ def _toolbar_status_segments() -> tuple[str, str, str, str]:
 
 
 def _build_status_text() -> FormattedText:
-    """Build the FormattedText for the always-on status bar.
+    """Build the FormattedText for the status bar (rule + status line + tip line).
 
-    Shares content with ``_bottom_toolbar`` but is rendered via a permanent
-    prompt_toolkit ``Window`` rather than the transient bottom_toolbar callback.
-    This ensures the status bar stays visible even during Rich ``Live`` regions.
+    Used by unit tests to assert toolbar content without constructing a live
+    PromptSession.  Production code renders the same content via the
+    ``bottom_toolbar`` callback passed to ``PromptSession`` at construction.
     """
     _TIP_ROTATOR.maybe_rotate()
     cols = shutil.get_terminal_size().columns
@@ -744,22 +742,6 @@ def _build_status_text() -> FormattedText:
             ),
         ]
     )
-
-
-def _build_prompt_layout(session: "PromptSession[str]") -> "Layout":
-    """Wrap the default PromptSession layout with a permanent status Window.
-
-    The status Window (height=3 rows: rule + status + tip) is appended below
-    the existing layout container so it is always rendered regardless of
-    streaming state.
-    """
-    existing_container = session.layout.container
-    status_window = Window(
-        content=FormattedTextControl(_build_status_text),
-        height=3,
-    )
-    new_container = HSplit([existing_container, status_window])
-    return Layout(new_container, focused_element=session.default_buffer)
 
 
 _PROMPT_GLYPH_IDLE: Final[str] = "❯ "  # noqa: RUF001
@@ -990,18 +972,10 @@ def _get_prompt_session(
             completer=_SlashCompleter(),
             key_bindings=_build_repl_key_bindings(submit_queue),
             history=history,
+            bottom_toolbar=_bottom_toolbar,
             refresh_interval=0.25,
             mouse_support=False,
         )
-        # Replace the default layout with the always-on custom layout.
-        # This must happen after PromptSession construction so that
-        # _build_prompt_layout can wrap the fully-initialised container.
-        try:
-            _prompt_session.layout = _build_prompt_layout(_prompt_session)
-        except Exception:
-            # Graceful fallback: if layout override fails (e.g. in tests),
-            # attach the bottom_toolbar callback instead.
-            _prompt_session.bottom_toolbar = _bottom_toolbar  # type: ignore[assignment]
     return _prompt_session
 
 

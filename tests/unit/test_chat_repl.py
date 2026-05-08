@@ -1,6 +1,8 @@
 import pytest
+from prompt_toolkit.formatted_text import FormattedText
 
 from kagan.cli.chat.repl import (
+    _TOOLBAR_STATE,
     SearchPickerOption,
     _bottom_toolbar,
     _build_prompt_style_rules,
@@ -12,6 +14,23 @@ from kagan.cli.chat.repl import (
 )
 
 pytestmark = [pytest.mark.unit]
+
+
+def _reset_toolbar_state(**kwargs: object) -> None:
+    _TOOLBAR_STATE.is_streaming = False
+    _TOOLBAR_STATE.agent_backend = ""
+    _TOOLBAR_STATE.project_name = ""
+    _TOOLBAR_STATE.turn_count = 0
+    _TOOLBAR_STATE.queued_count = 0
+    _TOOLBAR_STATE.context_pct = None
+    _TOOLBAR_STATE.token_used_k = None
+    _TOOLBAR_STATE.plan_mode = False
+    _TOOLBAR_STATE.pending_approvals = 0
+    _TOOLBAR_STATE.current_tool = ""
+    _TOOLBAR_STATE.session_label = "orchestrator"
+    _TOOLBAR_STATE.workspace_label = ""
+    for key, value in kwargs.items():
+        setattr(_TOOLBAR_STATE, key, value)
 
 
 def test_history_cycle_target_returns_none_when_no_history_entries() -> None:
@@ -33,11 +52,47 @@ def test_history_cycle_target_from_draft_goes_to_edge_for_direction() -> None:
 
 
 def test_bottom_toolbar_renders_status_and_rotating_tip() -> None:
+    _reset_toolbar_state(session_label="orchestrator")
     toolbar = _bottom_toolbar()
     # FormattedText — extract text content
     text = "".join(fragment[1] for fragment in toolbar)
     assert "tip:" in text  # rotating tip line
     assert "session:" in text  # session label on tip line
+
+
+def test_bottom_toolbar_idle_is_non_empty_and_contains_rule_status_tip() -> None:
+    """_bottom_toolbar() with is_streaming=False must render a non-empty toolbar.
+
+    This is the regression guard for the always-on toolbar bug: the toolbar
+    must be visible even when no agent is streaming (i.e. at the idle prompt).
+    """
+    _reset_toolbar_state(
+        is_streaming=False,
+        session_label="smoke-session",
+        workspace_label="~/projects/test",
+    )
+    toolbar = _bottom_toolbar()
+    assert isinstance(toolbar, FormattedText)
+    assert len(toolbar) > 0, "toolbar must not be empty at idle"
+    text = "".join(fragment[1] for fragment in toolbar)
+    # Must include rule separator, status (cwd), tip, and session label
+    assert "─" in text, "toolbar must include a rule separator"
+    assert "~/projects/test" in text, "toolbar must include cwd / workspace label"
+    assert "tip:" in text, "toolbar must include the rotating tip"
+    assert "session: smoke-session" in text, "toolbar must include the session label"
+
+
+def test_bottom_toolbar_streaming_returns_empty_for_rich_live_handoff() -> None:
+    """When is_streaming=True the prompt-toolkit toolbar yields empty FormattedText.
+
+    During streaming, the footer is rendered by the Rich Live region; the
+    bottom_toolbar callback intentionally returns empty to avoid double-rendering.
+    """
+    _reset_toolbar_state(is_streaming=True)
+    toolbar = _bottom_toolbar()
+    assert isinstance(toolbar, FormattedText)
+    text = "".join(fragment[1] for fragment in toolbar)
+    assert text == "", "toolbar must be empty during streaming (Rich Live owns it)"
 
 
 def test_prompt_style_rules_truecolor_use_kagan_night_palette(

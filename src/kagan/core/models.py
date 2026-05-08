@@ -221,7 +221,11 @@ class ChatSession(SQLModel, table=True):
     source: str
     agent_backend: str | None = Field(default=None)
     project_id: str | None = Field(default=None, foreign_key="projects.id", index=True)
-    session_type: str = Field(default="orchestrator", index=True)
+    session_type: str = Field(
+        default="orchestrator",
+        index=True,
+        sa_column_kwargs={"server_default": "orchestrator"},
+    )
     created_at: datetime = Field(default_factory=_utc_now, index=True)
     updated_at: datetime = Field(default_factory=_utc_now, index=True)
 

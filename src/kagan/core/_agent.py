@@ -154,7 +154,6 @@ class BackendCapability(StrEnum):
 
     MANAGED_DETACHED_RUN = "managed_detached_run"
     ACP_STREAMING = "acp_streaming"
-    PI_RPC_STREAMING = "pi_rpc_streaming"
     PROMPT_ARGUMENT = "prompt_argument"
     WORKDIR_ARGUMENT = "workdir_argument"
     TASK_SCOPED_MCP = "task_scoped_mcp"
@@ -223,7 +222,6 @@ GEMINI_CLI_BACKEND: Final = "gemini-cli"
 KIMI_CLI_BACKEND: Final = "kimi-cli"
 OPENCODE_BACKEND: Final = "opencode"
 GITHUB_COPILOT_BACKEND: Final = "github-copilot"
-PI_CODING_AGENT_BACKEND: Final = "pi-coding-agent"
 REFERENCE_BACKENDS: Final[tuple[str, ...]] = (CLAUDE_CODE_BACKEND, CODEX_BACKEND)
 
 
@@ -603,25 +601,6 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             "*": BackendCommand(
                 description="Install VT Code via Cargo",
                 command="cargo install --git https://github.com/vinhnx/vtcode",
-            ),
-        },
-    ),
-    PI_CODING_AGENT_BACKEND: BackendSpec(
-        name=PI_CODING_AGENT_BACKEND,
-        executable="npx",
-        display_name="pi coding-agent",
-        # No prompt_flag — invocations go through PiRpcClient.prompt(), not CLI args.
-        supports_acp=False,
-        capabilities=frozenset(
-            {
-                BackendCapability.PI_RPC_STREAMING,
-            }
-        ),
-        aliases=("pi",),
-        install={
-            "*": BackendCommand(
-                description="Install pi-coding-agent (requires Node >= 20.6)",
-                command="npm install -g @mariozechner/pi-coding-agent",
             ),
         },
     ),

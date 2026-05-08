@@ -83,20 +83,17 @@ The TUI Workspace is orchestrator-first: the left sidebar is the session list, a
 
 ## Task Screen
 
-| Key             | Action             |
-| --------------- | ------------------ |
-| ++1++ / ++2++   | Switch tabs        |
-| ++enter++       | Primary action     |
-| ++e++           | Edit task          |
-| ++d++           | Delete task        |
-| ++a++           | Approve            |
-| ++x++           | Reject             |
-| ++m++           | Merge              |
-| ++b++           | Rebase             |
-| ++ctrl+f++      | Fullscreen AI chat |
-| ++ctrl+period++ | Toggle AI Panel    |
-| ++ctrl+k++      | Session Switcher   |
-| ++esc++         | Back               |
+| Key           | Action         |
+| ------------- | -------------- |
+| ++1++ / ++2++ | Switch tabs    |
+| ++enter++     | Primary action |
+| ++e++         | Edit task      |
+| ++d++         | Delete task    |
+| ++a++         | Approve        |
+| ++x++         | Reject         |
+| ++m++         | Merge          |
+| ++b++         | Rebase         |
+| ++esc++       | Back           |
 
 AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 

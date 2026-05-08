@@ -51,7 +51,7 @@ ______________________________________________________________________
 
 ## 5. Task Screen
 
-- Shows task context, diff, stream, and AI Panel
+- Shows task context in header + Overview / Changes / Review tabs
 - Agent status panel displays backend, status, elapsed time, run ID, PID, context window usage, and cumulative cost
 - AGENT_STATUS events update context window and cost metrics in real-time
 - `a` approve, `x` reject, `m` merge, `b` rebase
@@ -185,10 +185,8 @@ ______________________________________________________________________
 
 | Key                   | Action                            |
 | --------------------- | --------------------------------- |
-| `1` / `2`             | Switch tabs                       |
+| `1` / `2` / `3`       | Switch tabs                       |
 | `a` / `x` / `m` / `b` | Approve / reject / merge / rebase |
-| `Ctrl+F`              | Fullscreen AI chat (when open)    |
-| `Ctrl+.`              | Toggle AI Panel                   |
 | `Esc`                 | Back                              |
 
 ### Orchestrator Overlay

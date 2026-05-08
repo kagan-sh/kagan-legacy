@@ -65,7 +65,7 @@ kagan/core/
 ├── _persona.py            # persona pipeline definitions
 ├── _preflight.py          # system health checks
 ├── _projects.py           # project repository
-├── _prompts.py            # three-layer prompt resolution
+├── _prompts/              # three-layer prompt resolution and packaged prompt text
 ├── _repetition_guard.py   # loop detection for tool calls
 ├── _reviews.py            # review repository
 ├── _sessions.py           # agent session repository
@@ -238,9 +238,9 @@ Three-layer hierarchy:
 | **Layer 1** | `additional_instructions` setting   | Single text field appended to all prompts |
 | **Layer 2** | `.kagan/prompts/*.md` dotfiles      | Full replacement; bypasses Layers 0 and 1 |
 
-Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`.
+Key functions in `_prompts`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`.
 
-`execution.md` dotfiles may include template placeholders (`{task_title}`, `{task_description}`). If rendering fails, Kagan falls back to default compiled prompt.
+`execution.md` dotfiles may include template placeholders (`{title}`, `{description}`, `{acceptance_criteria}`). If rendering fails, Kagan falls back to default compiled prompt.
 
 #### Project Learnings Injection
 

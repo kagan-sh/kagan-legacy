@@ -256,7 +256,7 @@ ______________________________________________________________________
 
 ## Analytics Routes
 
-Registered in `src/kagan/server/_analytics_routes.py`. All endpoints require an active project context — if none is set, they return an empty list or object rather than erroring. Used by the web dashboard's analytics views and by agents deciding which backend to invoke.
+Registered in `src/kagan/server/_analytics_routes.py`. All endpoints require an active project context — if none is set, they return an empty list or object rather than erroring. Used by backend selection, VS Code commands, and external clients.
 
 | Endpoint                                                          | Purpose                                                                                             |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |

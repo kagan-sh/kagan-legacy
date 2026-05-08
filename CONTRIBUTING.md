@@ -36,14 +36,14 @@ Run `uv run poe --help` for the full task list.
 
 ## Where to look
 
-| Task              | Location                     | Notes                                         |
-| ----------------- | ---------------------------- | --------------------------------------------- |
-| Add CLI command   | `src/kagan/cli/`             | Click group, lazy-loaded                      |
-| Add MCP tool      | `src/kagan/mcp/toolsets/`    | One file per domain                           |
-| Add TUI screen    | `src/kagan/tui/screens/`     | Register in `app.py` SCREENS dict (see below) |
-| Add agent backend | `src/kagan/core/_agent.py`   | Dict entry in AGENT_BACKENDS                  |
-| Web UI feature    | `packages/web/src/`          | React 19 + jotai + Tailwind 4                 |
-| Modify prompts    | `src/kagan/core/_prompts.py` | Run `uv run poe eval` after                   |
+| Task              | Location                   | Notes                                         |
+| ----------------- | -------------------------- | --------------------------------------------- |
+| Add CLI command   | `src/kagan/cli/`           | Click group, lazy-loaded                      |
+| Add MCP tool      | `src/kagan/mcp/toolsets/`  | One file per domain                           |
+| Add TUI screen    | `src/kagan/tui/screens/`   | Register in `app.py` SCREENS dict (see below) |
+| Add agent backend | `src/kagan/core/_agent.py` | Dict entry in AGENT_BACKENDS                  |
+| Web UI feature    | `packages/web/src/`        | React 19 + jotai + Tailwind 4                 |
+| Modify prompts    | `src/kagan/core/_prompts/` | Run `uv run poe eval` after                   |
 
 ## Module ownership
 
@@ -55,7 +55,7 @@ Each `_`-prefixed module in `src/kagan/core/` owns a specific concern. Patch the
 | `core/_sessions.py`    | Session lifecycle, ACP streaming                                         | Adding task-level features → `_tasks.py`                      |
 | `core/_agent.py`       | Agent backend registry + launcher                                        | Adding session features → `_sessions.py`                      |
 | `core/_transitions.py` | Status state machine — the only place to add valid (from→to) transitions | You want to bypass the funnel — don't                         |
-| `core/_prompts.py`     | Three-layer prompt resolution                                            | Changing persona defaults → add to the config layer, not here |
+| `core/_prompts/`       | Three-layer prompt resolution                                            | Changing persona defaults → add to the config layer, not here |
 | `core/_events.py`      | DB-persisted task/session event streams                                  | Adding in-memory signals → `agent_events.py`                  |
 | `cli/chat/`            | CLI chat REPL + streaming controller                                     | Adding TUI chat — that lives in `tui/widgets/chat.py`         |
 | `server/_routes.py`    | HTTP/SSE endpoints                                                       | Adding MCP tools — those live in `mcp/toolsets/`              |
@@ -128,7 +128,7 @@ See [`packages/web/README.md`](packages/web/README.md) for frontend-specific det
 
 ## Prompt changes
 
-If you modify `src/kagan/core/_prompts.py`:
+If you modify `src/kagan/core/_prompts/`:
 
 1. Run `uv run poe eval` to benchmark against the eval suite
 1. Update `evals/promptfooconfig.yaml` if adding new prompt behaviors

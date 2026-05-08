@@ -116,7 +116,7 @@ Type `/` followed by a command name. All commands work in both the CLI REPL and 
 | `/delete`    |       | Delete the current session                                             |
 | `/tool`      |       | Inspect recent tool calls (`/tool <id>` for full input/output)         |
 | `/flow`      | `/f`  | Toggle plan/execution flow modes                                       |
-| `/analytics` |       | Print backend analytics for this project (mirrors the web tab)         |
+| `/analytics` |       | Print backend analytics for this project                               |
 
 ### `/sessions` usage
 

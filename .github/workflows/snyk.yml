@@ -7,13 +7,11 @@ on:
       - "docs/**"
       - "*.md"
       - ".github/assets/**"
-      - "mkdocs.yml"
   pull_request:
     paths-ignore:
       - "docs/**"
       - "*.md"
       - ".github/assets/**"
-      - "mkdocs.yml"
   schedule:
     - cron: "0 6 * * 1" # Weekly on Monday at 06:00 UTC
 

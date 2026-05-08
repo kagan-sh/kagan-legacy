@@ -127,7 +127,7 @@ builds on the last.
 **Affected files:**
 
 - `src/kagan/core/_sessions.py` — verification integration
-- `src/kagan/core/_prompts.py` — checkpoint injection in task prompts
+- `src/kagan/core/_prompts/` — checkpoint injection in task prompts
 - `src/kagan/server/mcp/toolsets/sessions.py` — `verify_step()` tool
 - `src/kagan/core/models.py` — `VerificationResult` model
 

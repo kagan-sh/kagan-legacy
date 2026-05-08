@@ -172,7 +172,7 @@ ______________________________________________________________________
 Resolved via `resolve_orchestrator_prompt(settings, project_path)`:
 
 1. **Dotfile override** — `.kagan/prompts/orchestrator.md` replaces default
-1. **Code default** — `DEFAULT_ORCHESTRATOR_PROMPT` in `core/_prompts.py`
+1. **Code default** — `DEFAULT_ORCHESTRATOR_PROMPT` in `core/_prompts`
 1. **Behavioral clauses** — compiled from settings (execution mode, review strictness, etc.)
 1. **Additional instructions** — `additional_instructions` appended as `## Additional Instructions`
 

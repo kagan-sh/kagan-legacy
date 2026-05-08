@@ -540,8 +540,6 @@ class TaskScreen(_TaskReviewMixin, Screen[None]):
         action_bar.task_data = task
         action_bar.task_running = self._running
         action_bar.review_approved = self._review_approved
-        action_bar.chat_visible = False
-        action_bar.chat_fullscreen = False
         criteria = (
             [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
             if task is not None

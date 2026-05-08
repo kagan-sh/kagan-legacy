@@ -73,6 +73,35 @@ async def test_task_screen_shows_overlay_hint_static(board: KaganDriver) -> None
         assert app.screen.id == "task-screen"
         hint = app.screen.query_one("#ts-chat-hint", Static)
         assert hint.display
+        assert str(hint.content) == "Press o · AI Overlay"
+
+
+async def test_task_action_bar_does_not_advertise_embedded_chat_shortcuts(
+    board: KaganDriver,
+) -> None:
+    """TaskScreen footer keeps pointing back, never stale embedded chat controls."""
+    from textual.widgets import Static
+
+    from kagan.tui import KaganApp
+    from kagan.tui.widgets.task_action_bar import TaskActionBar
+
+    await board.create_task("No stale chat shortcuts task")
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await _navigate_to_task_screen(pilot, board)
+
+        assert app.screen.id == "task-screen"
+        action_bar = app.screen.query_one("#ts-actions", TaskActionBar)
+
+        # Guard against the old embedded chat branch re-labelling Esc as close.
+        action_bar.chat_visible = True
+        action_bar.chat_fullscreen = True
+        await pilot.pause()
+
+        hint_text = str(app.screen.query_one("#ts-action-hint", Static).content).lower()
+        assert "back" in hint_text
+        for removed_hint in ("split", "fullscreen", "sessions", "close"):
+            assert removed_hint not in hint_text
 
 
 async def test_backlog_task_auto_pushes_orchestrator_overlay(board: KaganDriver) -> None:

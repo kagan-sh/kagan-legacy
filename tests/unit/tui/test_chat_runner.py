@@ -28,6 +28,7 @@ from kagan.core.chat import (
 from kagan.tui.screens._chat_runner import (
     apply_chat_event_to_panel,
     apply_task_chat_event,
+    present_agent_event,
     send_chat_message,
     tool_call_id,
     tool_call_title,
@@ -248,6 +249,26 @@ def test_tool_call_id_and_title_helpers() -> None:
     # when used as the title (raw id passed through without a name).
     only_id = {"id": "call_xyz"}
     assert tool_call_title(only_id) == "tool call"
+
+
+def test_present_agent_event_centralizes_task_event_labels() -> None:
+    running = present_agent_event("output_chunk", {"text": "plan", "kind": "thought"})
+    assert running.text == "plan"
+    assert running.chunk_kind == "thought"
+    assert running.runtime_status == "thinking"
+    assert running.stream_action == "Reasoning through approach"
+    assert running.confidence == "assumption"
+
+    tool = present_agent_event("tool_call_update", {"id": "call_1", "name": "grep"})
+    assert tool.tool_id == "call_1"
+    assert tool.tool_title == "grep"
+    assert tool.tool_status == "updated"
+    assert tool.stream_action == "Running tool: grep"
+
+    failed = present_agent_event("agent_failed", {"message": "boom"})
+    assert failed.note == "boom"
+    assert failed.runtime_status == "error"
+    assert failed.stream_action == "Agent failed"
 
 
 @pytest.mark.asyncio

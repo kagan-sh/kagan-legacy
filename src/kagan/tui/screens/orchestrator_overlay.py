@@ -31,6 +31,8 @@ from textual.widgets import Input, Static
 from kagan.core.enums import SessionKind
 from kagan.tui.keybindings import ORCHESTRATOR_OVERLAY_BINDINGS
 from kagan.tui.screens._chat_runner import (
+    present_agent_event,
+    render_agent_event_to_output,
     send_chat_message,
 )
 from kagan.tui.widgets.chat import ChatPanel
@@ -41,7 +43,7 @@ if TYPE_CHECKING:
 
     from kagan.core.models import SessionEvent
     from kagan.tui.app import KaganApp
-    from kagan.tui.widgets.streaming import ChunkKind, StreamingOutput
+    from kagan.tui.widgets.streaming import StreamingOutput
 
 _ORCHESTRATOR_TITLE = "Orchestrator"
 
@@ -351,15 +353,13 @@ class OrchestratorOverlay(ModalScreen[None]):
         event: SessionEvent,
         output: StreamingOutput,
     ) -> None:
-        from kagan.tui.screens._chat_runner import stream_chunk_text
-
         match event.event_type:
             case "output_chunk":
-                self._render_agent_output_chunk(event.payload or {}, output, merge=True)
+                self._render_agent_event(event.event_type, event.payload or {}, output, merge=True)
             case "agent_completed":
-                output.post_note("Agent completed")
+                self._render_agent_event(event.event_type, event.payload or {}, output, merge=True)
             case "agent_failed":
-                output.post_note(stream_chunk_text(event.payload or {}) or "Agent failed")
+                self._render_agent_event(event.event_type, event.payload or {}, output, merge=True)
             case _:
                 pass
 
@@ -368,42 +368,33 @@ class OrchestratorOverlay(ModalScreen[None]):
         event: SessionEvent,
         output: StreamingOutput,
     ) -> bool:
-        from kagan.tui.screens._chat_runner import stream_chunk_text
-
         payload = event.payload or {}
         match event.event_type:
             case "output_chunk":
-                self._render_agent_output_chunk(payload, output, merge=False)
+                self._render_agent_event(event.event_type, payload, output, merge=False)
             case "agent_completed":
                 role_label = (self._attached_role or "Agent").capitalize()
                 self._update_breadcrumb(f"{role_label} · done")
-                output.post_note("Agent completed")
+                self._render_agent_event(event.event_type, payload, output, merge=False)
                 return True
             case "agent_failed":
                 role_label = (self._attached_role or "Agent").capitalize()
                 self._update_breadcrumb(f"{role_label} · failed")
-                output.post_note(stream_chunk_text(payload) or "Agent failed")
+                self._render_agent_event(event.event_type, payload, output, merge=False)
                 return True
             case _:
                 pass
         return False
 
-    def _render_agent_output_chunk(
+    def _render_agent_event(
         self,
+        event_type: str,
         payload: dict,
         output: StreamingOutput,
         *,
         merge: bool,
     ) -> None:
-        from kagan.tui.screens._chat_runner import (
-            stream_chunk_kind,
-            stream_chunk_text,
-        )
-
-        text = stream_chunk_text(payload)
-        kind = stream_chunk_kind(payload)
-        if text and kind in {"assistant", "thought", "note", "user"}:
-            output.append_chunk(text, kind=cast("ChunkKind", kind), merge=merge)
+        render_agent_event_to_output(output, present_agent_event(event_type, payload), merge=merge)
 
     async def _cancel_sse(self) -> None:
         if self._sse_task is not None:

@@ -43,7 +43,8 @@ src/kagan/cli/chat/
 ├── _approval_batch.py # Batched approval state
 ├── _approval_panel.py # Rich approval panel rendering
 ├── _chat_ui.py        # Shared chat prompt/status UI helpers
-├── _completion.py     # Slash command completion
+├── _approval_types.py # Shared approval/session-decision types (PermissionUI + batch panel)
+├── _utils.py          # Shared helpers (e.g. fuzzy_match for slash completion)
 ├── _handshake.py      # Agent handshake/preflight helpers
 ├── _permission_ui.py  # Permission prompt interactions (trust-tier approval panel)
 ├── _renderer.py       # ACP event renderer and tool call display

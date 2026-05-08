@@ -76,13 +76,13 @@ ______________________________________________________________________
 
 ### `session/`
 
-- `chat-side-panel.tsx` -- right-rail streaming overlay with lane toggle and LIVE indicator
-- `orchestrator-chat-panel.tsx` -- orchestrator conversation with streaming and interrupt
-- `event-stream.tsx` -- event list renderer for session output
-- `session-picker.tsx` -- global session switcher
-- `follow-up-queue.tsx` -- queued follow-up message management
-- `task-commits-panel.tsx` -- commit history panel for a task workspace
-- `chat-overlay-empty-state.tsx` -- empty state for the chat overlay when no session is active
+- `SessionOverlay.tsx` — global AI rail: docked/bottom/fullscreen layouts for orchestrator, general, and task-backed sessions
+- `GeneralSessionBody.tsx` / `OrchestratorSessionBody.tsx` / `TaskSessionBody.tsx` — route the active row to `ChatView` + `useChatSession`
+- `session-picker.tsx` — session switcher chrome
+- `event-stream.tsx` — event list renderer for task-scoped output
+- `follow-up-queue.tsx` — queued follow-up messages for a task session
+- `task-commits-panel.tsx` — commit history panel for a task workspace
+- `chat-overlay-empty-state.tsx` — empty state when no session is selected
 
 ### `chat/`
 
@@ -118,21 +118,27 @@ ______________________________________________________________________
 
 Custom hooks in `src/lib/hooks/`:
 
-- `use-event-stream.ts` -- connects SSE event stream to the Jotai atom graph
-- `use-task-events.ts` -- subscribes to task-scoped session events via CustomEvent dispatch
-- `use-board-dnd.ts` -- drag-and-drop state and handlers for the kanban board
-- `use-board-keyboard.ts` -- keyboard navigation and shortcuts for the board
-- `use-follow-up-queue.ts` -- manages the follow-up message queue for a task session
-- `use-mobile.ts` -- responsive breakpoint detection
+- `use-chat-session.ts` — **per-session** streaming, interrupt, queue, and slash-command state for one chat id (hook-local `useState`; live events from `GET /api/chat/sessions/{id}/watch` via `useChatWatch`)
+- `use-chat-watch.ts` — subscribes to `GET /api/chat/sessions/{id}/watch` for live `ChatWatchEvent` envelopes
+- `use-session-overlay.ts` — docked/fullscreen shell for `SessionOverlay`
+- `use-session-list.ts` — polls unified session list for the overlay/workspace
+- `use-session-actions.ts` — stop/close session helpers
+- `use-event-stream.ts` — connects `GET /api/events/stream` to the Jotai atom graph (board + task events)
+- `use-task-events.ts` — subscribes to task-scoped session events via `CustomEvent` dispatch
+- `use-board-dnd.ts` — drag-and-drop state and handlers for the kanban board
+- `use-board-keyboard.ts` — keyboard navigation and shortcuts for the board
+- `use-follow-up-queue.ts` — manages the follow-up message queue for a task session
+- `use-mobile.ts` — responsive breakpoint detection
 
 ______________________________________________________________________
 
 ## State Architecture
 
-- **Jotai atoms** in `src/lib/atoms/` hold authentication, board, chat, connection, theme, and UI shell state.
+- **Jotai atoms** in `src/lib/atoms/` hold authentication, board, connection, theme, UI shell, and session-overlay chrome (open/layout/selection). **Chat streaming buffers, pending queues, and stream entries are not global atoms** — they live inside `useChatSession` (hook-local state) so concurrent sessions cannot race.
+- **`src/lib/atoms/chat.ts`** exports **types and constants** only (`ChatStreamEntry`, pending-queue types, `PENDING_QUEUE_MAX`), not writable singleton atoms.
 - **ContextBar** coordinates active project/repo selection and seeds `boardRepoFilterAtom`; if repos exist it keeps one selected, and if none exist it opens the Add Repository dialog.
 - **Route-local state** handles page-specific loading, tab selection, and transient form state.
-- **SSE sync** lives in `use-event-stream.ts` and feeds board/task updates into the atom graph. Chat streaming uses per-turn SSE via `POST /api/chat/{id}/stream`.
+- **SSE sync** lives in `use-event-stream.ts` and feeds board/task updates into the atom graph. **Live chat UI** consumes `GET /api/chat/sessions/{id}/watch` via `useChatWatch` + `useChatSession`; sending a turn still opens `POST /api/chat/{id}/stream` (per-turn SSE body drained for backpressure; the watch stream carries decoded `ChatWatchEvent` frames).
 
 ______________________________________________________________________
 
@@ -194,7 +200,7 @@ ______________________________________________________________________
   - auto-reconnects with exponential backoff (1s → 30s)
   - dispatches `SESSION_EVENT` via `CustomEvent('kagan:session-event')` for component-level subscription
   - refreshes `/api/presence` and posts presence heartbeats so task cards can show live watchers
-- **Chat streaming** uses per-turn SSE (`POST /api/chat/{id}/stream`) — `OrchestratorChatPanel` manages streaming state locally, syncs session summary changes back to `/workspace`, and passes `disableSend` to `ChatInputBar`
+- **Chat streaming** — `useChatSession` posts turns to `POST /api/chat/{id}/stream` and listens on `GET /api/chat/sessions/{id}/watch` for `ChatWatchEvent` frames (chunks, tools, done, permission requests). Stream/buffer state is **per hook instance**, not global Jotai.
 - **Commands** (run, cancel, follow-up, interrupt) use REST endpoints via `apiClient`
 
 Bundled web mode talks to the same local server instance that serves the SPA. It does not perform QR pairing or token auth.

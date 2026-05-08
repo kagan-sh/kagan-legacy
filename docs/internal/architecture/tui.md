@@ -75,7 +75,7 @@ KaganApp (Textual App)
 ├── KanbanScreen             # Main screen after project selected
 │   ├── BoardView            # 4-column kanban (BACKLOG → DONE)
 │   ├── TaskInspector        # Docked details panel
-│   ├── SessionOverlay       # Docked / fullscreen session surface
+│   ├── OrchestratorOverlay  # Modal assistant surface (orchestrator / attached streams)
 │   └── PeekOverlay          # Task preview on P
 │
 ├── WorkspaceScreen          # Orchestrator-first workspace with session sidebar + full chat surface

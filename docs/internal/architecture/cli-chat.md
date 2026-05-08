@@ -20,7 +20,7 @@ The `src/kagan/cli/chat/` module implements the chat REPL, the orchestrator chat
 | `_session_picker.py` | Interactive session selection (attach to existing sessions)                                                 |
 | `_title.py`          | Dynamic title bar for the REPL                                                                              |
 | `_theme.py`          | Rich theme constants for chat output                                                                        |
-| `_completion.py`     | Input completion helpers                                                                                    |
+| `_utils.py`          | Shared helpers (`fuzzy_match`, etc.) used by REPL completion and session picker                             |
 | `agents.py`          | Agent listing/resolution helpers (`/agents` command support)                                                |
 | `prompt.py`          | Input normalization utilities                                                                               |
 | `__init__.py`        | Public surface: `run_chat()` / `run_chat_async()` entrypoints                                               |

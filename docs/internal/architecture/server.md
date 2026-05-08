@@ -39,7 +39,11 @@ src/kagan/server/
 ├── _task_routes.py      # Task REST API
 ├── _project_routes.py   # Project/repo REST API
 ├── _system_routes.py    # Settings, preflight, presence, and global SSE stream
-├── _chat_routes.py      # Chat REST + SSE streaming routes (orchestrator sessions)
+├── _chat_routes.py      # Legacy chat REST + SSE (`/api/chat/...`, permission resolve)
+├── _session_routes.py   # Unified sessions v1 (`/api/v1/sessions`, replay, message SSE)
+├── _sse_fanout.py       # Shared SSE fan-out helpers (resolve params, broadcast, emit)
+├── _sse_stream.py       # Unified turn stream loop shared by chat + v1 session routes
+├── _middleware.py       # ASGI middleware (security headers, Content-Length fixes)
 ├── _integration_routes.py  # Integration-specific REST routes (preflight, preview, sync)
 ├── _sse.py              # SSE streaming helpers (event generator, keepalive)
 ├── _access.py           # Access control helpers (HTTP access tiers for REST routes)
@@ -68,7 +72,8 @@ ______________________________________________________________________
 1. Registers a `/health` endpoint.
 1. Calls the task, project, system, integration, analytics, and agent route
    registrars.
-1. Calls `register_chat_routes(mcp)` to add chat REST + SSE streaming.
+1. Calls `register_chat_routes(mcp)` for legacy `/api/chat/...` REST + SSE.
+1. Calls `register_session_routes(mcp)` for unified `/api/v1/sessions` list/create/replay/message/stop/close.
 
 ______________________________________________________________________
 

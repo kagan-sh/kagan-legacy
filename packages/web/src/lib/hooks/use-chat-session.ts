@@ -7,8 +7,8 @@
  * state (useState / useRef). No global jotai atoms are used here, eliminating
  * cross-session races when multiple sessions are mounted concurrently.
  *
- * Returns a stable descriptor that chat-page.tsx and orchestrator-chat-panel
- * bind to the view layer. This is the single authoritative chat-streaming hook.
+ * Returns a stable descriptor that chat surfaces (`chat-page`, session overlay
+ * bodies) bind to the view layer. This is the single authoritative chat-streaming hook.
  */
 
 import { useState, useEffect, useRef, useCallback, type RefObject, type MutableRefObject } from 'react';

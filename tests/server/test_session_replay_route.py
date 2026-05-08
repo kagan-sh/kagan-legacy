@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +36,13 @@ async def _seed_session(engine, task_id: str) -> str:
 
 
 async def _seed_event(
-    engine, session_id: str, task_id: str, event_type: str = "output_chunk"
+    engine,
+    session_id: str,
+    task_id: str,
+    event_type: str = "output_chunk",
+    *,
+    event_id: str | None = None,
+    created_at: datetime | None = None,
 ) -> str:
     event = SessionEvent(
         task_id=task_id,
@@ -43,6 +50,10 @@ async def _seed_event(
         event_type=event_type,
         payload={"text": f"chunk for {event_type}"},
     )
+    if event_id is not None:
+        event.id = event_id
+    if created_at is not None:
+        event.created_at = created_at
 
     def _w(s) -> SessionEvent:
         s.add(event)
@@ -183,6 +194,65 @@ async def test_replay_cursor_pagination(
     assert len(page2["events"]) == 1
     assert page2["has_more"] is False
     assert page2["events"][0]["id"] == ids[2]
+
+
+@pytest.mark.asyncio
+async def test_replay_composite_cursor_preserves_created_at_order(
+    monkeypatch: pytest.MonkeyPatch,
+    setup: Any,
+) -> None:
+    """Composite cursors continue after the last (created_at, id) pair."""
+    core, task_id = setup
+    session_id = await _seed_session(core.engine, task_id)
+    await _seed_event(
+        core.engine,
+        session_id,
+        task_id,
+        "first",
+        event_id="z_first",
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    await _seed_event(
+        core.engine,
+        session_id,
+        task_id,
+        "second",
+        event_id="a_second",
+        created_at=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+    )
+    await _seed_event(
+        core.engine,
+        session_id,
+        task_id,
+        "third",
+        event_id="m_third",
+        created_at=datetime(2026, 1, 1, 12, 2, tzinfo=UTC),
+    )
+
+    mcp = make_api_server()
+    ctx = _make_ctx(core)
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
+
+    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
+    req = make_request(
+        "GET",
+        f"/api/v1/sessions/{session_id}/replay?limit=2",
+        path_params={"session_id": session_id},
+    )
+    page1 = json_body(await endpoint(req))["data"]
+
+    assert [event["id"] for event in page1["events"]] == ["z_first", "a_second"]
+    assert page1["next_cursor"].endswith("|a_second")
+
+    req2 = make_request(
+        "GET",
+        f"/api/v1/sessions/{session_id}/replay?limit=2&cursor={page1['next_cursor']}",
+        path_params={"session_id": session_id},
+    )
+    page2 = json_body(await endpoint(req2))["data"]
+
+    assert [event["id"] for event in page2["events"]] == ["m_third"]
+    assert page2["has_more"] is False
 
 
 @pytest.mark.asyncio

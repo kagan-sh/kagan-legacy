@@ -6,34 +6,10 @@ Targeted waits only — no wait_for_workers().
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 from tests.helpers.driver import KaganDriver
 
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
-
-
-async def _create_agent_session(core, task_id: str, session_id: str) -> str:
-    from sqlmodel import Session as DbSession
-
-    from kagan.core.enums import SessionStatus
-    from kagan.core.models import Session as AgentSession
-
-    def _write() -> str:
-        row = AgentSession(
-            id=session_id,
-            task_id=task_id,
-            agent_backend="test",
-            status=SessionStatus.RUNNING,
-            agent_role="worker",
-        )
-        with DbSession(core.engine) as db:
-            db.add(row)
-            db.commit()
-        return session_id
-
-    return await asyncio.to_thread(_write)
 
 
 async def _pause_until(pilot, predicate, *, attempts: int = 20) -> None:
@@ -209,7 +185,7 @@ async def test_attached_session_replays_recent_events(board: KaganDriver) -> Non
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await _create_agent_session(app.core, task.id, session_id)
+        await board.create_agent_session(task.id, session_id=session_id)
         await app.core.tasks.events.emit(
             task.id,
             "output_chunk",
@@ -267,8 +243,8 @@ async def test_attached_session_streams_live_events_for_selected_session(
         assert isinstance(overlay, OrchestratorOverlay)
         panel = overlay.query_one("#orch-chat", ChatPanel)
 
-        await _create_agent_session(app.core, task.id, session_id)
-        await _create_agent_session(app.core, task.id, "other-session")
+        await board.create_agent_session(task.id, session_id=session_id)
+        await board.create_agent_session(task.id, session_id="other-session")
         await overlay.attach(session_id, "worker", task_id=task.id)
         await pilot.pause()
         await pilot.pause()

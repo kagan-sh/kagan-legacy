@@ -18,10 +18,16 @@ from typing import Any
 from sqlmodel import Session, select
 
 from kagan.core import (
+    AgentRole,
     KaganCore,
     NotFoundError,
     Priority,
+    SessionStatus,
     TaskStatus,
+    db_async,
+)
+from kagan.core import (
+    Session as AgentSession,
 )
 from kagan.core.models import Repository, Worktree
 
@@ -347,6 +353,32 @@ class CoreDriver:
             return await self._ctx.tasks.run(task_id, **kwargs)
         except Exception:
             return None
+
+    async def create_agent_session(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+        status: SessionStatus = SessionStatus.RUNNING,
+        agent_role: AgentRole | str | None = AgentRole.WORKER,
+        agent_backend: str = "test",
+    ) -> str:
+        """Create an agent session row for tests that need a session-bound event stream."""
+        row = AgentSession(
+            id=session_id,
+            task_id=task_id,
+            agent_backend=agent_backend,
+            status=status,
+            agent_role=agent_role.value if isinstance(agent_role, AgentRole) else agent_role,
+        )
+        created_id = row.id
+
+        def _create(s: Session) -> AgentSession:
+            s.add(row)
+            return row
+
+        await db_async(self._ctx.engine, _create, commit=True)
+        return created_id
 
     async def cancel_task(self, task_id: str) -> bool:
         try:

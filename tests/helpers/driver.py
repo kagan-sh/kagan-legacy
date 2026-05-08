@@ -257,6 +257,15 @@ class KaganDriver:
             launcher=launcher,
         )
 
+    async def create_agent_session(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+    ) -> str:
+        """Create a running agent session for session-bound event tests."""
+        return await self._driver.create_agent_session(task_id, session_id=session_id)
+
     async def cancel_task(self, task_id: str) -> bool:
         return await self._driver.cancel_task(task_id)
 

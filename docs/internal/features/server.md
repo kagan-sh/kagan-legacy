@@ -218,15 +218,6 @@ entries (task / session join with timing and token counters), sorted by
 
 *Tests:* `tests/server/test_running_agents_route.py`.
 
-### Live diff of running agents
-
-```bash
-curl -N http://localhost:8765/api/v1/agents/running/events
-```
-
-SSE stream that emits `joined`, `started`, `finished`, and `status_change`
-deltas as the running-agents list mutates. 25-second keepalive.
-
 ### Replaying a session
 
 ```bash
@@ -239,18 +230,6 @@ Returns `SessionReplayPage` — an ordered `events` list, a `next_cursor`
 or `backward`; `limit` is bounded at 1000.
 
 *Tests:* `tests/server/test_session_replay_route.py`.
-
-### Live tailing one session
-
-```bash
-curl -N "http://localhost:8765/api/v1/sessions/<SESSION_ID>/events"
-curl -N "http://localhost:8765/api/v1/sessions/<SESSION_ID>/events?since=<EVENT_ID>"
-```
-
-SSE tail of `SessionEvent` rows for a single session. The optional `since`
-cursor lets clients reconcile with a `replay` snapshot before streaming.
-
-*Tests:* `tests/server/test_session_events_sse.py`.
 
 ______________________________________________________________________
 

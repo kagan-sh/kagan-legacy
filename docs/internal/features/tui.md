@@ -90,8 +90,8 @@ ______________________________________________________________________
   the chord again re-focuses the overlay's chat input.
   *Tests:* `tests/tui/test_orchestrator_overlay.py`.
 - The overlay has two modes: orchestrator (talks to the project orchestrator
-  chat session) and attached (re-streams a worker / reviewer session via
-  `/api/v1/sessions/{id}/replay` + `/events`).
+  chat session) and attached (re-streams a worker / reviewer session from
+  persisted events plus the core task event stream).
 - `Esc` from an attached stream detaches back to orchestrator; `Esc` from
   orchestrator closes the overlay.
 - A `RunningAgentsBar` under the chat input lists active sessions; `↓` from

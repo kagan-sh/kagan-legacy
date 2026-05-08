@@ -26,7 +26,8 @@ except ModuleNotFoundError:
         "  kagan chat                         Interactive REPL\n"
         "  kagan chat 'fix the bug'           Single-shot prompt\n"
         "  kagan chat --prompt 'fix the bug'  Single-shot prompt\n"
-        "  kagan chat --session-id abc123     Resume a session"
+        "  kagan chat --session-id abc123     Resume a session\n\n"
+        "Note: --yolo has been removed; use the approval panel's session trust options."
     ),
 )
 @click.argument("prompt_argument", metavar="PROMPT", required=False)

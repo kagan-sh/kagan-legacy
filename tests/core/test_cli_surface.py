@@ -528,6 +528,24 @@ def test_chat_positional_prompt_is_single_shot(monkeypatch, tmp_path: Path) -> N
     }
 
 
+def test_chat_yolo_flag_is_removed(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        ["chat", "--yolo", "--prompt", "fix the bug"],
+        env=_runner_env(tmp_path),
+    )
+
+    assert result.exit_code == 2
+    assert "No such option: --yolo" in result.output
+
+
+def test_chat_help_says_yolo_is_removed(tmp_path: Path) -> None:
+    result = CliRunner().invoke(cli, ["chat", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "--yolo has been removed" in result.output
+
+
 def test_chat_rejects_positional_prompt_with_prompt_option(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(

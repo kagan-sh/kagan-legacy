@@ -1,8 +1,9 @@
 """TUI command with startup doctor gate.
 
-The doctor gate now runs inside the TUI via DoctorModal (FAIL cases) or a
-degraded banner on WelcomeScreen (WARN-only). The CLI-level hard exit has been
-replaced with an in-TUI modal path so users get a guided remediation flow.
+The doctor gate now runs inside the TUI via DoctorModal for FAIL cases.
+WARN-only doctor results continue startup without degraded-performance
+messaging. The CLI-level hard exit has been replaced with an in-TUI modal path
+so users get a guided remediation flow for blocking failures.
 """
 
 from __future__ import annotations

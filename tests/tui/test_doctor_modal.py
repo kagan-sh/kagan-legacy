@@ -38,7 +38,7 @@ async def _wait_for_setup_flow(app) -> None:
 
 
 async def test_doctor_modal_shown_on_fail_checks(tmp_path) -> None:
-    """DoctorModal is pushed when startup_checks contains a FAIL."""
+    """DoctorModal is pushed when a required startup check contains a FAIL."""
     from kagan.tui import KaganApp
 
     checks = [
@@ -200,15 +200,67 @@ async def test_doctor_modal_fix_hint_shown_for_fail_rows(tmp_path) -> None:
 
 
 async def test_warn_only_routes_to_project_picker(tmp_path) -> None:
-    """WARN-only checks continue to the non-blocking project picker."""
+    """WARN-only checks continue without degraded-performance messaging."""
+    from unittest.mock import patch
+
     from kagan.tui import KaganApp
 
-    checks = [_make_check("ide", "warn", fix_hint="Install VS Code")]
+    checks = [
+        _make_check("ide", "warn", fix_hint="Install VS Code"),
+        DoctorCheck(
+            name="agent backends",
+            status="pass",
+            message="Default backend 'claude-code' ready - 1/3 backends installed",
+            fix_hint="",
+            verify_hint="claude --version",
+            category="backend",
+        ),
+        DoctorCheck(
+            name="backend: codex",
+            status="warn",
+            message="codex not found",
+            fix_hint="Install codex",
+            verify_hint="codex --version",
+            category="backend",
+        ),
+    ]
+    notified: list[str] = []
+    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
+    original_notify = app.notify
+
+    def _capture_notify(message, *args, **kwargs):
+        notified.append(str(message))
+        return original_notify(message, *args, **kwargs)
+
+    with patch.object(app, "notify", side_effect=_capture_notify):
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert app.screen.id == "setup-flow"
+
+    degraded = [m for m in notified if "degraded" in m.lower() or "performance" in m.lower()]
+    assert not degraded
+
+
+async def test_required_fail_routes_to_doctor_modal_with_error_state(tmp_path) -> None:
+    """Required FAIL checks still show the blocking doctor modal."""
+    from kagan.tui import KaganApp
+
+    checks = [
+        _make_check("git", "fail", fix_hint="Install git"),
+        DoctorCheck(
+            name="agent backends",
+            status="pass",
+            message="Default backend 'claude-code' ready",
+            fix_hint="",
+            verify_hint="claude --version",
+            category="backend",
+        ),
+    ]
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.pause()
-        assert app.screen.id == "setup-flow"
+        assert app.screen.id == "doctor-modal"
 
 
 async def test_all_pass_routes_to_project_picker(tmp_path) -> None:

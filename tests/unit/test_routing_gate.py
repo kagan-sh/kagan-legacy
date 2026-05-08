@@ -1,9 +1,4 @@
-"""Unit tests for the _is_optional_backend_warning gate in app.py.
-
-Covers: cases (a)-(d) from the task brief, ensuring only non-degrading
-backend WARNs are suppressed at the boot gate while all other WARNs
-(and all FAILs) still trigger the "Degraded mode" toast.
-"""
+"""Unit tests for the startup doctor failure gate in app.py."""
 
 import pytest
 
@@ -28,115 +23,52 @@ def _make_check(
     )
 
 
-def _backend(name: str, status: str) -> DoctorCheck:
-    return _make_check(f"agent backend: {name}", status, category="backend")
-
-
-# ---------------------------------------------------------------------------
-# Import the helper under test
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def gate():
-    from kagan.tui.app import _is_optional_backend_warning
+    from kagan.tui.app import _has_startup_doctor_failures
 
-    return _is_optional_backend_warning
-
-
-# ---------------------------------------------------------------------------
-# Case (a): all PASS — no WARNs at all
-# ---------------------------------------------------------------------------
+    return _has_startup_doctor_failures
 
 
-def test_case_a_all_pass_no_warnings(gate) -> None:
+def test_all_pass_checks_do_not_block_startup(gate) -> None:
     checks = [
-        _backend("claude-code", "pass"),
-        _backend("opencode", "pass"),
+        _make_check("agent backends", "pass", category="backend"),
+        _make_check("backend: claude-code (default)", "pass", category="backend"),
         _make_check("git", "pass", category="core"),
     ]
-    for c in checks:
-        assert not gate(c, checks), f"Expected gate=False for {c.name!r} (all PASS)"
+    assert not gate(checks)
 
 
-# ---------------------------------------------------------------------------
-# Case (b): default PASS + 5 non-default WARNs — optional, not degrading
-# ---------------------------------------------------------------------------
-
-
-def test_case_b_default_pass_nondefault_warn_are_optional(gate) -> None:
+def test_warn_only_backend_detail_checks_do_not_block_startup(gate) -> None:
     checks = [
-        _backend("claude-code", "pass"),  # default (the one that matters)
-        _backend("opencode", "warn"),
-        _backend("gemini-cli", "warn"),
-        _backend("codex", "warn"),
-        _backend("aider", "warn"),
-        _backend("continue", "warn"),
+        _make_check("agent backends", "pass", category="backend"),
+        _make_check("backend: claude-code (default)", "pass", category="backend"),
+        _make_check("backend: opencode", "warn", category="backend"),
+        _make_check("backend: gemini-cli", "warn", category="backend"),
     ]
-    passing_check = checks[0]
-    assert not gate(passing_check, checks), "PASS check should not be optional"
-
-    for warn_check in checks[1:]:
-        assert gate(warn_check, checks), (
-            f"Non-default WARN {warn_check.name!r} should be optional when a PASS exists"
-        )
+    assert not gate(checks)
 
 
-# ---------------------------------------------------------------------------
-# Case (c): default WARN with no other PASSes — still degraded
-# ---------------------------------------------------------------------------
-
-
-def test_case_c_default_warn_no_pass_is_degraded(gate) -> None:
-    checks = [
-        _backend("claude-code", "warn"),  # the only backend, and it's WARN
-        _backend("opencode", "warn"),
-    ]
-    for c in checks:
-        assert not gate(c, checks), f"{c.name!r} should NOT be optional — no passing backend exists"
-
-
-# ---------------------------------------------------------------------------
-# Case (d): git WARN — not optional, not a backend check
-# ---------------------------------------------------------------------------
-
-
-def test_case_d_git_warn_is_not_optional(gate) -> None:
+def test_warn_only_required_checks_do_not_block_startup(gate) -> None:
     checks = [
         _make_check("git", "warn", category="core"),
-        _backend("claude-code", "pass"),
+        _make_check("agent backends", "pass", category="backend"),
     ]
-    git_check = checks[0]
-    assert not gate(git_check, checks), "git WARN must not be treated as optional"
+    assert not gate(checks)
 
 
-# ---------------------------------------------------------------------------
-# Edge: non-WARN checks always return False regardless of others
-# ---------------------------------------------------------------------------
-
-
-def test_non_warn_always_false(gate) -> None:
+def test_required_failure_blocks_startup(gate) -> None:
     checks = [
-        _backend("claude-code", "pass"),
-        _backend("opencode", "fail"),
+        _make_check("git", "fail", category="core"),
+        _make_check("agent backends", "pass", category="backend"),
     ]
-    for c in checks:
-        assert not gate(c, checks), (
-            f"gate must be False for status={c.status!r} (only WARN is optional-eligible)"
-        )
+    assert gate(checks)
 
 
-# ---------------------------------------------------------------------------
-# Edge: "agent_backend:" prefix (raw name) is also handled
-# ---------------------------------------------------------------------------
-
-
-def test_raw_agent_backend_prefix_handled(gate) -> None:
+def test_default_backend_failure_blocks_startup(gate) -> None:
     checks = [
-        _make_check("agent_backend:claude-code", "pass", category="backend"),
-        _make_check("agent_backend:opencode", "warn", category="backend"),
+        _make_check("agent backends", "fail", category="backend"),
+        _make_check("backend: claude-code (default)", "fail", category="backend"),
+        _make_check("backend: opencode", "warn", category="backend"),
     ]
-    warn_check = checks[1]
-    assert gate(warn_check, checks), (
-        "agent_backend: prefix (underscore) should also be treated as optional backend"
-    )
+    assert gate(checks)

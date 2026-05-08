@@ -40,10 +40,19 @@ async def test_boot_with_optional_backend_warns_shows_no_degraded_toast(
     from kagan.cli.doctor import DoctorCheck
     from kagan.tui import KaganApp
 
-    # Case (b): one PASS, five WARNs for non-default backends
+    # Mirrors actual `kagan doctor` collapsed backend output: one passing
+    # summary/default row plus WARN detail rows for optional missing backends.
     startup_checks = [
         DoctorCheck(
-            name="agent backend: claude-code",
+            name="agent backends",
+            status="pass",
+            message="Default backend 'claude-code' ready - 1/3 backends installed",
+            fix_hint="",
+            verify_hint="claude --version",
+            category="backend",
+        ),
+        DoctorCheck(
+            name="backend: claude-code (default)",
             status="pass",
             message="claude-code found",
             fix_hint="",
@@ -51,7 +60,7 @@ async def test_boot_with_optional_backend_warns_shows_no_degraded_toast(
             category="backend",
         ),
         DoctorCheck(
-            name="agent backend: opencode",
+            name="backend: opencode",
             status="warn",
             message="opencode not found",
             fix_hint="",
@@ -59,7 +68,7 @@ async def test_boot_with_optional_backend_warns_shows_no_degraded_toast(
             category="backend",
         ),
         DoctorCheck(
-            name="agent backend: gemini-cli",
+            name="backend: gemini-cli",
             status="warn",
             message="gemini-cli not found",
             fix_hint="",

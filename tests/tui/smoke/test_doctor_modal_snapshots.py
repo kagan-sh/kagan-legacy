@@ -2,7 +2,7 @@
 
 These tests verify the three visible states:
 1. All-green: no modal, project picker shown.
-2. WARN-only: project picker shown with a toast notification.
+2. WARN-only: project picker shown with no degraded-performance warning.
 3. FAIL: DoctorModal with N check rows visible.
 """
 
@@ -63,7 +63,7 @@ async def test_snapshot_all_green_routes_to_project_picker(tmp_path) -> None:
         assert "doctor-modal" not in screen_ids
 
 
-# ── State 2: WARN-only (project picker shown, notification emitted) ───────
+# ── State 2: WARN-only (project picker shown, no degraded warning) ─────────
 
 
 async def test_snapshot_warn_only_routes_to_project_picker(tmp_path) -> None:

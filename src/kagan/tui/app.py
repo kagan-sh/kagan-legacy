@@ -56,23 +56,8 @@ def _any_backend_available(checks: list[DoctorCheck]) -> bool:
     )
 
 
-def _is_optional_backend_warning(check: DoctorCheck, all_checks: list[DoctorCheck]) -> bool:
-    """Return True when a WARN check is informational rather than degrading.
-
-    A backend WARN is optional (non-degrading) when:
-    - the check name starts with "agent_backend:" or "agent backend:" (a per-backend row), AND
-    - at least one other check in the same list has category=="backend" and status=="pass".
-
-    Any other WARN — git, tmux, DB, integrations — is not optional.
-    """
-    if check.status != "warn":
-        return False
-    is_backend_check = check.name.startswith("agent_backend:") or check.name.startswith(
-        "agent backend:"
-    )
-    if not is_backend_check:
-        return False
-    return any(c.category == "backend" and c.status == "pass" for c in all_checks)
+def _has_startup_doctor_failures(checks: list[DoctorCheck]) -> bool:
+    return any(c.status == "fail" for c in checks)
 
 
 class KaganApp(App[None]):
@@ -154,9 +139,8 @@ class KaganApp(App[None]):
 
     async def _route_startup(self) -> None:
         checks = self._startup_checks
-        pending_warning: str | None = None
         if checks is not None and len(checks) > 0:
-            has_fail = any(c.status == "fail" for c in checks)
+            has_fail = _has_startup_doctor_failures(checks)
             has_warn = any(c.status == "warn" for c in checks)
             if has_fail or has_warn:
                 fail_count = sum(1 for c in checks if c.status == "fail")
@@ -176,22 +160,6 @@ class KaganApp(App[None]):
                     callback=self._on_doctor_modal_dismissed,
                 )
                 return
-            if has_warn:
-                # Suppress the "Degraded mode" toast when every WARN is an
-                # optional backend warning (a non-default backend not installed
-                # while at least one backend passes).
-                functional_warnings = [
-                    c
-                    for c in checks
-                    if c.status == "warn" and not _is_optional_backend_warning(c, checks)
-                ]
-                if functional_warnings:
-                    warn_count = len(functional_warnings)
-                    noun = "check" if warn_count == 1 else "checks"
-                    pending_warning = (
-                        f"Degraded mode: {warn_count} doctor {noun} returned warnings. "
-                        "Run 'kagan doctor' to fix."
-                    )
 
         settings = await self.core.settings.get()
         last_project_id = settings.get("ui.last_project_id")
@@ -206,13 +174,9 @@ class KaganApp(App[None]):
             else:
                 await self.activate_project(project)
                 self.push_screen("kanban-screen")
-                if pending_warning:
-                    self.notify(pending_warning, severity="warning", timeout=8)
                 return
 
         self.push_screen(OnboardingFlow(mode="project-picker", dismissible=False))
-        if pending_warning:
-            self.notify(pending_warning, severity="warning", timeout=8)
 
     def _on_doctor_modal_dismissed(self, _skipped: bool) -> None:
         """Called when DoctorModal is dismissed (user clicked Skip anyway)."""

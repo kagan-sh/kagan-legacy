@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
 from textual.containers import Vertical
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
@@ -374,12 +375,13 @@ class OrchestratorOverlay(ModalScreen[None]):
     # Handle chat submit
     def on_chat_panel_submit_requested(self, message: ChatPanel.SubmitRequested) -> None:
         if self._attached_session_id is not None:
-            # Cannot send to attached agent sessions from this overlay
-            panel = self._chat_panel()
-            if panel:
-                panel.add_system_message(
-                    "Detach (Esc) to return to orchestrator before sending messages."
-                )
+            # Route to the attached agent session instead of the orchestrator.
+            if self._chat_message_task is not None and not self._chat_message_task.done():
+                self._chat_message_task.cancel()
+            self._chat_message_task = asyncio.create_task(
+                self._send_attached_message(self._attached_session_id, message.text),
+                name="orch-overlay-send-attached",
+            )
             return
 
         if self._chat_message_task is not None and not self._chat_message_task.done():
@@ -389,6 +391,30 @@ class OrchestratorOverlay(ModalScreen[None]):
             self._send_orchestrator_message(message.text),
             name="orch-overlay-send",
         )
+
+    async def _send_attached_message(self, session_id: str, text: str) -> None:
+        """Route a typed message to the attached agent session.
+
+        Injects the text as a user-turn event into the agent's event stream so
+        it is visible in the live overlay and any future replay.  If the session
+        has already finished, shows an inline notice instead.
+        """
+        from kagan.core.errors import KaganError
+
+        panel = self._chat_panel()
+        try:
+            await self.kagan_app.core.send_message_to_session(session_id, text)
+        except KaganError as exc:
+            # Session no longer accepts input (e.g. COMPLETED or FAILED).
+            role_label = (self._attached_role or "Agent").capitalize()
+            notice = f"{role_label} session has finished — Esc to detach"
+            if panel:
+                panel.add_system_message(notice)
+            logger.debug("send_attached_message rejected: {}", exc)
+        except Exception as exc:
+            if panel:
+                panel.add_system_message(f"Send error: {exc}")
+            logger.opt(exception=True).warning("_send_attached_message failed")
 
     async def _send_orchestrator_message(self, text: str) -> None:
         from kagan.core.errors import KaganError

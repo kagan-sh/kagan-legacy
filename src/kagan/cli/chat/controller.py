@@ -184,6 +184,10 @@ class ChatController:
         self._project_name: str | None = None
         self._selected_repo_id: str | None = None
         self._selected_repo_name: str | None = None
+        # In-memory tracking of the currently attached agent session (set by
+        # /attach, cleared by /detach).  When set, typed messages are routed to
+        # the worker/reviewer session instead of the orchestrator.
+        self._attached_agent_session_id: str | None = None
         self._watcher = DBWatcher(client)
 
         show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
@@ -933,10 +937,17 @@ class ChatController:
 
         Returns True if the REPL loop should exit (e.g. ``/close`` issued).
         On cancel, empties *drain_pending* and updates the toolbar counter.
+
+        When a non-slash message is typed while an agent session is attached
+        (via ``/attach``), the message is routed to that session's event stream
+        rather than the orchestrator — mirroring the TUI overlay behaviour.
         """
         rotate_tip_on_submit()
         if stripped.startswith("/"):
             return await self._handle_slash(stripped)
+        if self._attached_agent_session_id is not None:
+            await self._send_to_attached(stripped)
+            return False
         try:
             result = await self._send(stripped)
         except KeyboardInterrupt:
@@ -952,6 +963,32 @@ class ChatController:
                     drain_pending.get_nowait()
             _TOOLBAR_STATE.queued_count = 0
         return False
+
+    async def _send_to_attached(self, text: str) -> None:
+        """Route a message to the currently attached agent session.
+
+        On success, echoes the message to the console for confirmation.  If the
+        session is no longer accepting input (COMPLETED, FAILED, etc.), prints
+        an inline notice and clears the attachment so subsequent messages go to
+        the orchestrator.
+        """
+        from kagan.core.errors import KaganError
+
+        session_id = self._attached_agent_session_id
+        if session_id is None:
+            return
+        try:
+            await self.client.send_message_to_session(session_id, text)
+            _console.print(f"[dim]→ {session_id[:8]}:[/dim] {text}")
+        except KaganError as exc:
+            _console.print(f"[dim]Agent session has finished — detaching. ({exc})[/dim]")
+            self._attached_agent_session_id = None
+            with contextlib.suppress(Exception):
+                if self._chat_session_id:
+                    await self.client.attach_chat(self._chat_session_id, None)
+        except Exception as exc:
+            logger.opt(exception=True).warning("_send_to_attached failed")
+            _console.print(f"[red]Send error:[/red] {exc}")
 
     async def _repl_loop(self) -> None:
         _console.print(
@@ -1272,9 +1309,12 @@ class ChatController:
             _console.print(f"[red]Attach failed: {exc}[/red]")
             return
 
+        self._attached_agent_session_id = session_id
         role_label = (agent_role or "worker").capitalize()
         _console.print(f"[green]Attached:[/green] {role_label} · {session_id[:8]}")
-        _console.print("[dim]Attached to agent: read-only — /detach to return.[/dim]")
+        _console.print(
+            "[dim]Attached — messages are routed to the agent session. /detach to return.[/dim]"
+        )
 
     async def _detach_agent(self) -> None:
         """Detach the current chat session from any agent, returning to orchestrator."""
@@ -1289,4 +1329,5 @@ class ChatController:
             _console.print(f"[red]Detach failed: {exc}[/red]")
             return
 
+        self._attached_agent_session_id = None
         _console.print("[green]Detached → Orchestrator[/green]")

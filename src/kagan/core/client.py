@@ -180,6 +180,64 @@ class KaganCore:
             agent_role=agent_role,
         )
 
+    async def send_message_to_session(self, session_id: str, text: str) -> None:
+        """Inject a user message into a running agent session's event stream.
+
+        The message is recorded as an ``output_chunk`` event with
+        ``kind="user"`` so the orchestrator overlay's live stream and replay
+        render it as a ``UserInputWidget``.  This is the same event shape the
+        agent itself emits when it echoes a user turn.
+
+        Raises :class:`kagan.core.errors.KaganError` if the session does not
+        exist or is in a terminal status (COMPLETED, FAILED, CANCELLED).  Only
+        sessions with status PENDING or RUNNING accept input — calling this on
+        any other status is a programming error from the caller's perspective.
+
+        Args:
+            session_id: ID of the agent Session to inject into.
+            text: The user message text to inject.
+        """
+        from kagan.core._db_helpers import _db_async
+        from kagan.core.enums import SessionStatus
+        from kagan.core.errors import KaganError
+        from kagan.core.models import Session, Task
+
+        cleaned = text.strip()
+        if not cleaned:
+            raise ValueError("text is required")
+
+        def _fetch(s) -> tuple[str | None, str | None]:
+            """Return (task_id, status_value) for the session, or (None, None)."""
+            row = s.get(Session, session_id)
+            if row is None:
+                return None, None
+            task = s.get(Task, row.task_id)
+            task_id = task.id if task is not None else None
+            return task_id, str(getattr(row.status, "value", row.status))
+
+        task_id, status_str = await _db_async(self._engine, _fetch)
+        if task_id is None:
+            raise KaganError(f"session not found: id={session_id!r}")
+
+        _active = {SessionStatus.PENDING.value, SessionStatus.RUNNING.value}
+        if status_str not in _active:
+            raise KaganError(f"session does not accept input: status={status_str}")
+
+        payload: dict = {
+            "text": cleaned,
+            "kind": "user",
+            "acp": {
+                "sessionUpdate": "user_message_chunk",
+                "content": {"type": "text", "text": cleaned},
+            },
+        }
+        await self.tasks.events.emit(
+            task_id,
+            "output_chunk",
+            payload,
+            session_id=session_id,
+        )
+
     async def preflight(self, *, agent_backend: str | None = None) -> list[PreflightCheckResult]:
         return await asyncio.to_thread(run_all_checks, self._db_path, agent_backend)
 

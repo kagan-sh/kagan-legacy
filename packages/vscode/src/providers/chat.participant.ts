@@ -130,13 +130,21 @@ export function registerChatParticipant(
     vscode.commands.executeCommand("workbench.action.chat.open", { query });
   });
 
-  // kagan.attachToSession — invoked by tree-view node clicks and the command palette.
+  // kagan.attachToSession — internal command invoked by running-agent tree clicks.
   const attachToSession = vscode.commands.registerCommand(
     "kagan.attachToSession",
-    (sessionId: string, taskTitle?: string) => {
-      attachState.setGlobal({ sessionId, taskTitle: taskTitle ?? "" });
+    (sessionId: unknown, taskTitle?: unknown) => {
+      const id = typeof sessionId === "string" ? sessionId.trim() : "";
+      if (!id) {
+        void vscode.window.showWarningMessage(
+          "Choose a running agent session from the Kagan view to attach chat.",
+        );
+        return;
+      }
+      const title = typeof taskTitle === "string" ? taskTitle : "";
+      attachState.setGlobal({ sessionId: id, taskTitle: title });
       vscode.commands.executeCommand("workbench.action.chat.open", {
-        query: `@kagan /attach ${sessionId}`,
+        query: `@kagan /attach ${id}`,
       });
     },
   );

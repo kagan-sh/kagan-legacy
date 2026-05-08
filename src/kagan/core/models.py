@@ -227,8 +227,6 @@ class ChatSession(SQLModel, table=True):
     # rename-and-recreate migrations, which corrupts SQLite's trigger-based FK
     # enforcement. The application layer enforces referential integrity instead.
     attached_session_id: str | None = Field(default=None, index=True)
-    # Role context for the attached session ("worker" | "reviewer" | None).
-    attached_role: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utc_now, index=True)
     updated_at: datetime = Field(default_factory=_utc_now, index=True)
 

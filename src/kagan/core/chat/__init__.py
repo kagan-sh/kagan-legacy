@@ -9,8 +9,8 @@ use. The legacy `kagan.cli.chat.sessions` raw-SQL helpers are gone — call
 from kagan.core.chat._attach import (
     AgentNotificationKind,
     attach_chat_to_session,
-    inject_agent_notification,
     notify_project_chat_sessions,
+    record_agent_lifecycle_event,
 )
 from kagan.core.chat._factories import LongLivedACPFactory
 from kagan.core.chat.acp import (
@@ -84,8 +84,8 @@ __all__ = [
     "chat_session_to_view",
     "clean_generated_title",
     "format_relative_time",
-    "inject_agent_notification",
     "make_spawn_per_turn_acp_factory",
     "notify_project_chat_sessions",
+    "record_agent_lifecycle_event",
     "run_spawn_per_turn_acp_prompt",
 ]

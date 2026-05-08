@@ -1,37 +1,28 @@
-"""Behavioral tests: session lifecycle transitions inject agent notifications into chat.
+"""Behavioral tests: session lifecycle transitions persist explicit events.
 
-Verifies that transition_session() fires notify_project_chat_sessions() so the
-orchestrator chat model sees agent lifecycle events on the next turn.
-
-Test strategy:
-- Seed project + chat session + task + agent session directly via _db_async.
-- Call transition_session() via the public client-level funnel.
-- Assert that a system ChatMessage with the expected kind lands in the chat.
-- Negative case: project-mismatch chat sessions receive no notification.
+Lifecycle updates must not be stored as synthetic chat messages. The transition
+funnel records one task event per agent session boundary so chat transcripts
+remain user/assistant conversation history.
 """
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import pytest
+from sqlmodel import select
 
 from kagan.core import KaganCore
 from kagan.core._db_helpers import _db_async
 from kagan.core.enums import SessionStatus
-from kagan.core.models import Session
+from kagan.core.models import Session, SessionEvent
 from kagan.core.transitions import transition_session
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
     from pathlib import Path
 
 pytestmark = [pytest.mark.core]
-
-
-# ---------------------------------------------------------------------------
-# Fixtures / helpers
-# ---------------------------------------------------------------------------
 
 
 async def _seed_session(
@@ -41,7 +32,6 @@ async def _seed_session(
     status: SessionStatus = SessionStatus.PENDING,
     role: str | None = "worker",
 ) -> str:
-    """Insert a Session row and return its ID."""
     session = Session(
         task_id=task_id,
         agent_backend="fake",
@@ -61,36 +51,30 @@ async def _seed_session(
 
 
 @pytest.fixture
-async def client(tmp_path: Path) -> KaganCore:  # type: ignore[misc]
+async def client(tmp_path: Path) -> AsyncGenerator[KaganCore]:
     async with KaganCore(db_path=tmp_path / "notify_test.db") as c:
         project = await c.projects.create("Notify Project")
         await c.projects.set_active(project.id)
         yield c
 
 
-async def _chat_messages(client: KaganCore, chat_id: str) -> list[dict]:
-    """Return all chat messages for chat_id as plain dicts (content parsed as JSON if valid)."""
-    messages = await client.chat_sessions.history(chat_id)
-    result = []
-    for msg in messages:
-        try:
-            content = json.loads(msg.content)
-        except (ValueError, TypeError):
-            content = msg.content
-        result.append({"role": msg.role, "content": content})
-    return result
+async def _lifecycle_events(client: KaganCore, session_id: str) -> list[SessionEvent]:
+    return await _db_async(
+        client.engine,
+        lambda s: list(
+            s.exec(
+                select(SessionEvent)
+                .where(SessionEvent.session_id == session_id)
+                .where(SessionEvent.event_type == "agent_lifecycle")
+            ).all()
+        ),
+    )
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
-async def test_pending_to_running_injects_agent_started(client: KaganCore) -> None:
-    """PENDING → RUNNING fires agent_started into project chat sessions."""
+async def test_pending_to_running_records_agent_started_event(client: KaganCore) -> None:
+    """PENDING to RUNNING records agent_started without mutating chat history."""
     project_id = client.active_project_id
     assert project_id is not None
-
     chat = await client.chat_sessions.create(
         source="web", label="Orchestrator", project_id=project_id
     )
@@ -99,22 +83,19 @@ async def test_pending_to_running_injects_agent_started(client: KaganCore) -> No
 
     await transition_session(client, session_id, SessionStatus.RUNNING)
 
-    msgs = await _chat_messages(client, chat.id)
-    system_msgs = [m for m in msgs if m["role"] == "system"]
-    assert len(system_msgs) == 1
-
-    payload = system_msgs[0]["content"]
-    assert payload["type"] == "agent_notification"
+    assert await client.chat_sessions.history(chat.id) == []
+    events = await _lifecycle_events(client, session_id)
+    assert len(events) == 1
+    payload = events[0].payload
     assert payload["kind"] == "agent_started"
     assert payload["session_id"] == session_id
     assert "Worker task" in payload["summary"]
 
 
-async def test_running_to_completed_injects_agent_finished(client: KaganCore) -> None:
-    """RUNNING → COMPLETED fires agent_finished into project chat sessions."""
+async def test_running_to_completed_records_agent_finished_event(client: KaganCore) -> None:
+    """RUNNING to COMPLETED records agent_finished."""
     project_id = client.active_project_id
     assert project_id is not None
-
     chat = await client.chat_sessions.create(
         source="tui", label="Orchestrator", project_id=project_id
     )
@@ -123,153 +104,75 @@ async def test_running_to_completed_injects_agent_finished(client: KaganCore) ->
 
     await transition_session(client, session_id, SessionStatus.COMPLETED)
 
-    msgs = await _chat_messages(client, chat.id)
-    system_msgs = [m for m in msgs if m["role"] == "system"]
-    assert len(system_msgs) == 1
-
-    payload = system_msgs[0]["content"]
-    assert payload["type"] == "agent_notification"
+    assert await client.chat_sessions.history(chat.id) == []
+    events = await _lifecycle_events(client, session_id)
+    assert len(events) == 1
+    payload = events[0].payload
     assert payload["kind"] == "agent_finished"
     assert payload["session_id"] == session_id
     assert "Completion task" in payload["summary"]
 
 
-async def test_running_to_failed_injects_agent_stopped(client: KaganCore) -> None:
-    """RUNNING → FAILED fires agent_stopped into project chat sessions."""
-    project_id = client.active_project_id
-    assert project_id is not None
-
-    chat = await client.chat_sessions.create(
-        source="web", label="Orchestrator", project_id=project_id
-    )
-    task = await client.tasks.create("Failing task")
+@pytest.mark.parametrize("target", [SessionStatus.FAILED, SessionStatus.CANCELLED])
+async def test_running_to_stopped_records_agent_stopped_event(
+    client: KaganCore, target: SessionStatus
+) -> None:
+    """RUNNING to FAILED/CANCELLED records agent_stopped."""
+    task = await client.tasks.create(f"{target.value} task")
     session_id = await _seed_session(client.engine, task.id, status=SessionStatus.RUNNING)
 
-    await transition_session(client, session_id, SessionStatus.FAILED)
+    await transition_session(client, session_id, target)
 
-    msgs = await _chat_messages(client, chat.id)
-    system_msgs = [m for m in msgs if m["role"] == "system"]
-    assert len(system_msgs) == 1
-
-    payload = system_msgs[0]["content"]
-    assert payload["type"] == "agent_notification"
+    events = await _lifecycle_events(client, session_id)
+    assert len(events) == 1
+    payload = events[0].payload
     assert payload["kind"] == "agent_stopped"
     assert payload["session_id"] == session_id
-    assert "Failing task" in payload["summary"]
+    assert target.value.lower() in payload["summary"]
 
 
-async def test_running_to_cancelled_injects_agent_stopped(client: KaganCore) -> None:
-    """RUNNING → CANCELLED fires agent_stopped (not agent_finished)."""
+async def test_orchestrator_and_attached_chats_are_not_lifecycle_storage(
+    client: KaganCore,
+) -> None:
+    """Lifecycle event storage is independent of chat attachment state."""
     project_id = client.active_project_id
     assert project_id is not None
 
-    chat = await client.chat_sessions.create(
-        source="web", label="Orchestrator", project_id=project_id
+    other_task = await client.tasks.create("Task Y")
+    other_session_id = await _seed_session(
+        client.engine, other_task.id, status=SessionStatus.RUNNING
     )
-    task = await client.tasks.create("Cancelled task")
+    task = await client.tasks.create("Task X")
     session_id = await _seed_session(client.engine, task.id, status=SessionStatus.RUNNING)
 
-    await transition_session(client, session_id, SessionStatus.CANCELLED)
-
-    msgs = await _chat_messages(client, chat.id)
-    system_msgs = [m for m in msgs if m["role"] == "system"]
-    assert len(system_msgs) == 1
-
-    payload = system_msgs[0]["content"]
-    assert payload["kind"] == "agent_stopped"
-    assert payload["session_id"] == session_id
-
-
-async def test_project_mismatch_chat_receives_no_notification(client: KaganCore) -> None:
-    """Chat sessions in a different project are not notified."""
-    project_a = client.active_project_id
-    assert project_a is not None
-
-    project_b = await client.projects.create("Other Project")
-
-    # Chat session belonging to project_b
-    chat_other = await client.chat_sessions.create(
-        source="web", label="Other Orchestrator", project_id=project_b.id
-    )
-
-    task = await client.tasks.create("Task in A")
-    session_id = await _seed_session(client.engine, task.id, status=SessionStatus.PENDING)
-
-    await transition_session(client, session_id, SessionStatus.RUNNING)
-
-    msgs = await _chat_messages(client, chat_other.id)
-    # chat_other is in project_b; task is in project_a — no notification expected
-    system_msgs = [m for m in msgs if m["role"] == "system"]
-    assert system_msgs == []
-
-
-async def test_only_orchestrator_and_attached_chat_notified(client: KaganCore) -> None:
-    """Notification lands in orchestrator and attached-matching chat; skips differently-attached.
-
-    Scenario: project P has three chat sessions —
-      - A: orchestrator mode (attached_session_id IS NULL)
-      - B: attached to session_X (the session being transitioned)
-      - C: attached to session_Y (a different session)
-
-    Transitioning session_X to COMPLETED must notify A and B; C must receive nothing.
-    """
-    project_id = client.active_project_id
-    assert project_id is not None
-
-    # Session Y — a different, unrelated agent session
-    task_y = await client.tasks.create("Task Y")
-    session_y_id = await _seed_session(client.engine, task_y.id, status=SessionStatus.RUNNING)
-
-    # Session X — the one we will transition
-    task_x = await client.tasks.create("Task X")
-    session_x_id = await _seed_session(client.engine, task_x.id, status=SessionStatus.RUNNING)
-
-    # Chat A: orchestrator mode (no attachment)
     chat_a = await client.chat_sessions.create(
         source="web", label="Orchestrator", project_id=project_id
     )
-
-    # Chat B: attached to session_X
     chat_b = await client.chat_sessions.create(
         source="web", label="Watching X", project_id=project_id
     )
-    await client.attach_chat(chat_b.id, session_x_id, agent_role="worker")
-
-    # Chat C: attached to session_Y (different session — must NOT be notified)
+    await client.attach_chat(chat_b.id, session_id, agent_role="worker")
     chat_c = await client.chat_sessions.create(
         source="web", label="Watching Y", project_id=project_id
     )
-    await client.attach_chat(chat_c.id, session_y_id, agent_role="worker")
+    await client.attach_chat(chat_c.id, other_session_id, agent_role="worker")
 
-    # Transition session_X to COMPLETED
-    await transition_session(client, session_x_id, SessionStatus.COMPLETED)
+    await transition_session(client, session_id, SessionStatus.COMPLETED)
 
-    msgs_a = await _chat_messages(client, chat_a.id)
-    msgs_b = await _chat_messages(client, chat_b.id)
-    msgs_c = await _chat_messages(client, chat_c.id)
-
-    sys_a = [m for m in msgs_a if m["role"] == "system"]
-    sys_b = [m for m in msgs_b if m["role"] == "system"]
-    sys_c = [m for m in msgs_c if m["role"] == "system"]
-
-    # A (orchestrator) and B (attached to X) must receive the notification
-    assert len(sys_a) == 1, "orchestrator chat should receive notification"
-    assert sys_a[0]["content"]["kind"] == "agent_finished"
-    assert sys_a[0]["content"]["session_id"] == session_x_id
-
-    assert len(sys_b) == 1, "chat attached to session_X should receive notification"
-    assert sys_b[0]["content"]["session_id"] == session_x_id
-
-    # C (attached to Y) must NOT receive the notification
-    assert sys_c == [], "chat attached to a different session must not receive notification"
+    assert await client.chat_sessions.history(chat_a.id) == []
+    assert await client.chat_sessions.history(chat_b.id) == []
+    assert await client.chat_sessions.history(chat_c.id) == []
+    events = await _lifecycle_events(client, session_id)
+    assert len(events) == 1
+    assert events[0].payload["kind"] == "agent_finished"
 
 
 async def test_notification_does_not_block_transition(client: KaganCore) -> None:
-    """Transition succeeds and returns updated session even if no chat sessions exist."""
+    """Transition succeeds and returns updated session even if event recording is a no-op."""
     task = await client.tasks.create("Solo task")
     session_id = await _seed_session(client.engine, task.id, status=SessionStatus.PENDING)
 
-    # No chat sessions created — notify_project_chat_sessions is a no-op silently
     updated = await transition_session(client, session_id, SessionStatus.RUNNING)
+
     assert updated.status == SessionStatus.RUNNING
     assert updated.id == session_id

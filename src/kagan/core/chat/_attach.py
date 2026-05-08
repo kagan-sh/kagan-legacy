@@ -5,21 +5,19 @@ Provides two public helpers consumed by the orchestrator chat overlay:
 - ``attach_chat_to_session`` — wire a ChatSession to a specific agent Session
   (or detach it by passing ``session_id=None``, which returns it to orchestrator
   mode).
-- ``inject_agent_notification`` — append a structured ``system`` ChatMessage so
-  the orchestrator model sees worker/reviewer state transitions on the next turn.
-  Mirrors Claude Code's ``task-notification`` mode.
+- ``record_agent_lifecycle_event`` — append a structured task event for
+  worker/reviewer lifecycle transitions without polluting chat history.
 """
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
 from kagan.core._db_helpers import _db_async
-from kagan.core.models import ChatMessage, ChatSession
+from kagan.core.models import ChatSession, Session, SessionEvent, Task
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -41,9 +39,8 @@ async def attach_chat_to_session(
         chat_session_id: ID of the ChatSession to update.
         session_id: Target agent Session ID, or ``None`` to return the chat to
             orchestrator mode (detached from any specific session).
-        agent_role: Role hint stored alongside the attach target
-            (e.g. ``"worker"`` or ``"reviewer"``).  Cleared to ``None`` when
-            ``session_id`` is ``None``.
+        agent_role: Deprecated compatibility hint. The role is derived from
+            ``Session.agent_role`` whenever callers need it.
     """
 
     def _write(s) -> None:
@@ -52,7 +49,6 @@ async def attach_chat_to_session(
             logger.warning("attach_chat_to_session: chat session {} not found", chat_session_id)
             return
         row.attached_session_id = session_id
-        row.attached_role = agent_role if session_id is not None else None
         row.updated_at = datetime.now(UTC)
         s.add(row)
 
@@ -65,57 +61,57 @@ async def attach_chat_to_session(
     )
 
 
-async def inject_agent_notification(
+async def record_agent_lifecycle_event(
     engine: Engine,
-    chat_session_id: str,
     *,
+    task_id: str,
     kind: AgentNotificationKind,
     session_id: str,
     summary: str,
 ) -> None:
-    """Append a system ChatMessage encoding an agent lifecycle transition.
+    """Append a task event encoding an agent lifecycle transition.
 
-    The message is stored with ``role="system"`` so the orchestrator model sees
-    it as an out-of-band notification rather than user input.  The ``content``
-    field is a JSON-encoded struct that downstream consumers (TUI, web, CLI) can
-    parse to render a badge or inline notice.
+    Lifecycle state belongs to the task/session event stream. Chat transcripts
+    stay limited to conversation history so session replay does not invent
+    messages the user or model never authored.
 
     Args:
         engine: SQLAlchemy engine.
-        chat_session_id: ID of the ChatSession to notify.
+        task_id: ID of the task whose agent session changed state.
         kind: Lifecycle event kind — one of ``"agent_finished"``,
             ``"agent_stopped"``, or ``"agent_started"``.
         session_id: The agent Session ID that triggered the transition.
         summary: Short human-readable description of the transition.
     """
-    payload = json.dumps(
-        {
-            "type": "agent_notification",
-            "kind": kind,
-            "session_id": session_id,
-            "summary": summary,
-        }
-    )
 
     def _write(s) -> None:
-        chat_row = s.get(ChatSession, chat_session_id)
-        if chat_row is None:
-            logger.warning("inject_agent_notification: chat session {} not found", chat_session_id)
+        task_row = s.get(Task, task_id)
+        session_row = s.get(Session, session_id)
+        if task_row is None or session_row is None:
+            logger.warning(
+                "record_agent_lifecycle_event: task/session missing task={} session={}",
+                task_id,
+                session_id,
+            )
             return
-        msg = ChatMessage(
-            session_id=chat_session_id,
-            role="system",
-            content=payload,
+
+        event = SessionEvent(
+            task_id=task_id,
+            session_id=session_id,
+            event_type="agent_lifecycle",
+            payload={
+                "kind": kind,
+                "session_id": session_id,
+                "summary": summary,
+            },
         )
-        s.add(msg)
-        chat_row.updated_at = datetime.now(UTC)
-        s.add(chat_row)
+        s.add(event)
 
     await _db_async(engine, _write, commit=True)
     logger.debug(
-        "Injected {} notification into chat session {} for agent session {}",
+        "Recorded {} lifecycle event for task {} agent session {}",
         kind,
-        chat_session_id,
+        task_id,
         session_id,
     )
 
@@ -128,61 +124,33 @@ async def notify_project_chat_sessions(
     session_id: str,
     summary: str,
 ) -> None:
-    """Inject an agent notification into relevant chat sessions for a project.
+    """Compatibility wrapper that records one lifecycle event for the session.
 
-    Strategy — notify only chat sessions that care about this agent session:
-
-    - ChatSessions in **orchestrator mode** (``attached_session_id IS NULL``) for
-      the same project — keeps the orchestrator model informed of all transitions.
-    - ChatSessions **attached to this exact session** (``attached_session_id ==
-      session_id``) — the user is actively watching this stream.
-
-    ChatSessions attached to a *different* agent session are skipped entirely;
-    they belong to a separate stream context and injecting cross-session noise
-    would confuse both the model and the user.
-
-    If no sessions match, the notification is silently dropped (best-effort).
-
-    This is wired into the session-status transition hooks so the orchestrator
-    model always sees agent completions on the next turn.
+    ``project_id`` is accepted for older callers but no longer controls fan-out:
+    lifecycle state is stored once on the task event stream instead of once per
+    chat session.
     """
-    from sqlmodel import or_, select
+    del project_id
 
-    def _find_sessions(s) -> list[str]:
-        from kagan.core.models import ChatSession as CS
+    def _task_id_for_session(s) -> str | None:
+        row = s.get(Session, session_id)
+        return row.task_id if row is not None else None
 
-        stmt = select(CS.id).where(  # type: ignore[attr-defined]
-            CS.project_id == project_id,  # type: ignore[attr-defined]
-            or_(
-                CS.attached_session_id.is_(None),  # type: ignore[attr-defined]
-                CS.attached_session_id == session_id,  # type: ignore[attr-defined]
-            ),
-        )
-        ids = list(s.exec(stmt).all())
-        return ids
-
-    chat_ids = await _db_async(engine, _find_sessions)
-    if not chat_ids:
+    task_id = await _db_async(engine, _task_id_for_session)
+    if task_id is None:
         return
-
-    for cid in chat_ids:
-        try:
-            await inject_agent_notification(
-                engine,
-                cid,
-                kind=kind,
-                session_id=session_id,
-                summary=summary,
-            )
-        except Exception:
-            logger.opt(exception=True).warning(
-                "Failed to inject notification into chat session {}", cid
-            )
+    await record_agent_lifecycle_event(
+        engine,
+        task_id=task_id,
+        kind=kind,
+        session_id=session_id,
+        summary=summary,
+    )
 
 
 __all__ = [
     "AgentNotificationKind",
     "attach_chat_to_session",
-    "inject_agent_notification",
     "notify_project_chat_sessions",
+    "record_agent_lifecycle_event",
 ]

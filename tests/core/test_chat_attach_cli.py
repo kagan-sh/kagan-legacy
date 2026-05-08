@@ -20,6 +20,7 @@ from kagan.core.enums import SessionStatus, TaskStatus
 from kagan.core.models import ChatSession, Session, Task
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
     from pathlib import Path
 
 pytestmark = [pytest.mark.core]
@@ -74,7 +75,7 @@ async def _get_chat_row(engine, chat_id: str) -> ChatSession | None:
 
 
 @pytest.fixture
-async def client(tmp_path: Path) -> KaganCore:
+async def client(tmp_path: Path) -> AsyncGenerator[KaganCore]:
     async with KaganCore(db_path=tmp_path / "attach_cli.db") as c:
         project = await c.projects.create("Attach CLI Project")
         await c.projects.set_active(project.id)
@@ -114,11 +115,13 @@ async def test_attach_chat_persists_across_repl_restart(
         row2 = await _get_chat_row(c2.engine, chat.id)
         assert row2 is not None
         assert row2.attached_session_id == session_id
-        assert row2.attached_role == "worker"
+        attached = await _db_async(c2.engine, lambda s: s.get(Session, row2.attached_session_id))
+        assert attached is not None
+        assert attached.agent_role == "worker"
 
 
 async def test_detach_returns_to_orchestrator_mode(client: KaganCore) -> None:
-    """Detaching clears attached_session_id and attached_role."""
+    """Detaching clears attached_session_id."""
     chat = await client.chat_sessions.create(source="repl", label="Orchestrator")
     project_id = client.active_project_id
     assert project_id is not None
@@ -133,7 +136,6 @@ async def test_detach_returns_to_orchestrator_mode(client: KaganCore) -> None:
     row = await _get_chat_row(client.engine, chat.id)
     assert row is not None
     assert row.attached_session_id is None
-    assert row.attached_role is None
 
 
 async def test_list_running_agents_returns_sessions_for_project(client: KaganCore) -> None:
@@ -184,7 +186,9 @@ async def test_attach_chat_switches_session_id_on_reattach(client: KaganCore) ->
     row = await _get_chat_row(client.engine, chat.id)
     assert row is not None
     assert row.attached_session_id == s2
-    assert row.attached_role == "reviewer"
+    attached = await _db_async(client.engine, lambda s: s.get(Session, row.attached_session_id))
+    assert attached is not None
+    assert attached.agent_role == "reviewer"
 
 
 # ---------------------------------------------------------------------------

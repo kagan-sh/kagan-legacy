@@ -264,6 +264,12 @@ def _infer_agent_role(task_status: TaskStatus) -> AgentRole:
     return AgentRole.WORKER
 
 
+def _transition_session_in_db(*args, **kwargs):
+    from kagan.core.transitions import transition_session_in_db
+
+    return transition_session_in_db(*args, **kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Module-level sync DB helpers
 # ---------------------------------------------------------------------------
@@ -321,26 +327,29 @@ class Sessions:
             obj = s.get(Session, session_id)
             if obj:
                 obj.pid = pid
-                obj.status = SessionStatus.RUNNING
+                if obj.status == SessionStatus.PENDING:
+                    _transition_session_in_db(s, session_id, SessionStatus.RUNNING, strict=False)
                 s.add(obj)
 
         await _db_async(self._engine, op, commit=True)
 
     async def _mark_session_running(self, session_id: str) -> None:
         def op(s):
-            obj = s.get(Session, session_id)
-            if obj and obj.status == SessionStatus.PENDING:
-                obj.status = SessionStatus.RUNNING
-                s.add(obj)
+            _transition_session_in_db(s, session_id, SessionStatus.RUNNING, strict=False)
 
         await _db_async(self._engine, op, commit=True)
 
     async def _complete_session(self, session_id: str) -> None:
         def op(s):
-            obj = s.get(Session, session_id)
-            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-                obj.status = SessionStatus.COMPLETED
-                obj.ended_at = _utc_now()
+            transitioned = _transition_session_in_db(
+                s,
+                session_id,
+                SessionStatus.COMPLETED,
+                strict=False,
+                allow_pending_completed=True,
+            )
+            if transitioned is not None:
+                obj, _src = transitioned
 
                 # Populate context window fields from the latest UsageUpdate event
                 usage_event = s.exec(
@@ -365,11 +374,7 @@ class Sessions:
 
     async def _fail_session(self, session_id: str) -> None:
         def op(s):
-            obj = s.get(Session, session_id)
-            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-                obj.status = SessionStatus.FAILED
-                obj.ended_at = _utc_now()
-                s.add(obj)
+            _transition_session_in_db(s, session_id, SessionStatus.FAILED, strict=False)
 
         await _db_async(self._engine, op, commit=True)
 
@@ -716,11 +721,7 @@ class Sessions:
             self._recent_tool_calls.pop(active.id, None)
 
             def cancel_op(s):
-                obj = s.get(Session, active.id)
-                if obj:
-                    obj.status = SessionStatus.CANCELLED
-                    obj.ended_at = _utc_now()
-                    s.add(obj)
+                _transition_session_in_db(s, active.id, SessionStatus.CANCELLED, strict=False)
 
             await _db_async(self._engine, cancel_op, commit=True)
 

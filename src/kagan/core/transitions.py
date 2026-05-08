@@ -53,6 +53,80 @@ class IllegalTransition(InvalidTransitionError):
     """
 
 
+_TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
+    [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]
+)
+
+
+def _session_transition_allowed(
+    src: SessionStatus,
+    to: SessionStatus,
+    *,
+    allow_pending_completed: bool = False,
+) -> bool:
+    match (src, to):
+        case (SessionStatus.PENDING, SessionStatus.RUNNING):
+            return True
+        case (SessionStatus.PENDING, SessionStatus.CANCELLED):
+            return True
+        case (SessionStatus.PENDING, SessionStatus.FAILED):
+            return True
+        case (SessionStatus.PENDING, SessionStatus.COMPLETED):
+            return allow_pending_completed
+        case (SessionStatus.RUNNING, SessionStatus.COMPLETED):
+            return True
+        case (SessionStatus.RUNNING, SessionStatus.FAILED):
+            return True
+        case (SessionStatus.RUNNING, SessionStatus.CANCELLED):
+            return True
+        case _:
+            return False
+
+
+def transition_session_in_db(
+    db_session,
+    session_id: str,
+    to: SessionStatus,
+    *,
+    strict: bool = True,
+    allow_pending_completed: bool = False,
+) -> tuple[Session, SessionStatus] | None:
+    """Sync-safe session transition primitive for code already inside _db_async.
+
+    ``transition_session`` is the public async funnel. Internal lifecycle code
+    that already owns a SQLModel session uses this helper so the same transition
+    matrix is enforced without nesting async DB calls inside a sync transaction.
+    Non-strict mode preserves legacy best-effort behavior for monitor callbacks:
+    missing, same-status, or already-terminal sessions become no-ops.
+    """
+    obj = db_session.get(Session, session_id)
+    if obj is None:
+        if strict:
+            raise NotFoundError("Session", session_id)
+        return None
+
+    src = obj.status
+    if src == to:
+        if strict:
+            raise IllegalTransition(src, to)
+        return None
+
+    if not _session_transition_allowed(
+        src,
+        to,
+        allow_pending_completed=allow_pending_completed,
+    ):
+        if strict:
+            raise IllegalTransition(src, to)
+        return None
+
+    obj.status = to
+    if to in _TERMINAL_STATUSES:
+        obj.ended_at = _utc_now()
+    db_session.add(obj)
+    return obj, src
+
+
 async def _has_passing_review(client: KaganCore, task_id: str) -> bool:
     """Return True if every acceptance criterion has a passing verdict.
 
@@ -220,21 +294,8 @@ async def transition_session(
     if src == to:
         raise IllegalTransition(src, to)
 
-    match (src, to):
-        case (SessionStatus.PENDING, SessionStatus.RUNNING):
-            pass
-        case (SessionStatus.PENDING, SessionStatus.CANCELLED):
-            pass
-        case (SessionStatus.PENDING, SessionStatus.FAILED):
-            pass
-        case (SessionStatus.RUNNING, SessionStatus.COMPLETED):
-            pass
-        case (SessionStatus.RUNNING, SessionStatus.FAILED):
-            pass
-        case (SessionStatus.RUNNING, SessionStatus.CANCELLED):
-            pass
-        case _:
-            raise IllegalTransition(src, to)
+    if not _session_transition_allowed(src, to):
+        raise IllegalTransition(src, to)
 
     logger.debug(
         "transition_session: session={} {} → {} (by={})",
@@ -248,12 +309,9 @@ async def transition_session(
         obj = s.get(Session, session_id)
         if obj is None:
             raise NotFoundError("Session", session_id)
-        # TOCTOU guard: abort if status drifted between the read above and now.
         if obj.status != src:
             raise IllegalTransition(obj.status, to)
-        obj.status = to
-        if to in {SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED}:
-            obj.ended_at = _utc_now()
+        transition_session_in_db(s, session_id, to)
         s.add(obj)
         s.commit()
         s.refresh(obj)
@@ -262,11 +320,6 @@ async def transition_session(
     updated = await _db_async(client.engine, _write)
     await _notify_chat_on_session_transition(client, updated, src=src, to=to)
     return updated
-
-
-_TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
-    [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]
-)
 
 
 async def _notify_chat_on_session_transition(
@@ -298,14 +351,14 @@ async def _notify_chat_on_session_transition(
 
     try:
         from kagan.core._db_helpers import _db_async as _dba
-        from kagan.core.chat._attach import notify_project_chat_sessions
+        from kagan.core.chat._attach import record_agent_lifecycle_event
         from kagan.core.models import Task as _Task
 
-        def _lookup(s) -> tuple[str, str] | None:
+        def _lookup(s) -> str | None:
             task = s.get(_Task, session.task_id)
             if task is None:
                 return None
-            return task.project_id, task.title
+            return task.title
 
         task_info = await _dba(client.engine, _lookup)
         if task_info is None:
@@ -316,7 +369,7 @@ async def _notify_chat_on_session_transition(
             )
             return
 
-        project_id, task_title = task_info
+        task_title = task_info
         role_label = f" ({session.agent_role})" if session.agent_role else ""
 
         if entering_running:
@@ -329,9 +382,9 @@ async def _notify_chat_on_session_transition(
             kind = "agent_stopped"
             summary = f"{task_title}{role_label} stopped ({to.value.lower()})"
 
-        await notify_project_chat_sessions(
+        await record_agent_lifecycle_event(
             client.engine,
-            project_id=project_id,
+            task_id=session.task_id,
             kind=kind,
             session_id=session.id,
             summary=summary,

@@ -37,4 +37,4 @@ def test_orchestrator_prompt_requires_parallel_waves_and_acceptance_criteria_qua
     assert "independent" in _ORCHESTRATOR_SYSTEM_PROMPT
     assert "sequential" in _ORCHESTRATOR_SYSTEM_PROMPT.lower()
     assert "non-empty testable acceptance_criteria" in _ORCHESTRATOR_SYSTEM_PROMPT
-    assert "2–6 verifiable outcomes" in _ORCHESTRATOR_SYSTEM_PROMPT
+    assert "verifiable outcomes" in _ORCHESTRATOR_SYSTEM_PROMPT

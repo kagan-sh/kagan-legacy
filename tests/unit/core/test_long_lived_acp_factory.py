@@ -9,11 +9,13 @@ permission resolver round-trips through the long-lived ``_CaptureACPClient``.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from kagan.cli.chat import acp as cli_chat_acp
 from kagan.core import BackendCapability
@@ -73,8 +75,6 @@ class _SpawnRecorder:
         conn = _FakeConn()
         conn.capture = capture
         self.conns.append(conn)
-
-        recorder = self
 
         class _Ctx:
             async def __aenter__(self_ctx) -> tuple[_FakeConn, _FakeProcess]:
@@ -165,8 +165,8 @@ async def test_long_lived_factory_shares_subprocess_across_turns(
             cancel = asyncio.Event()
             updates: list[Any] = []
 
-            async def _on_update(u: Any) -> None:
-                updates.append(u)
+            async def _on_update(u: Any, _sink: list[Any] = updates) -> None:
+                _sink.append(u)
 
             result = await factory.prompt(
                 session_id="ignored",

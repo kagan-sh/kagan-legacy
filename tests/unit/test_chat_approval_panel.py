@@ -261,7 +261,7 @@ def test_run_legacy_input_number_selects_slot(monkeypatch: pytest.MonkeyPatch) -
     fake_console = type("_FC", (), {"print": lambda *a, **kw: None})()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
 
-    idx, fb = _run_legacy_input(
+    idx, _fb = _run_legacy_input(
         _FakeCall(),
         permission_options=[_Opt()],
         queue_position=1,
@@ -293,7 +293,7 @@ def test_run_legacy_input_eof_defaults_to_reject(monkeypatch: pytest.MonkeyPatch
     fake_console = type("_FC", (), {"print": lambda *a, **kw: None})()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
 
-    idx, fb = _run_legacy_input(
+    idx, _fb = _run_legacy_input(
         _FakeCall(),
         permission_options=[_Opt()],
         queue_position=1,

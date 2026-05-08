@@ -133,16 +133,6 @@ async def test_spawn_agent_acp_uses_typed_capability_over_legacy_supports_flag(
         acp_command=("typed-acp", "acp"),
         capabilities=frozenset({BackendCapability.ACP_STREAMING}),
     )
-    legacy_entry = {
-        "executable": "typed-acp",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": False,
-        "acp_command": ["typed-acp", "acp"],
-        "acp_args": [],
-    }
-
     monkeypatch.setattr("kagan.core._agent.get_backend_spec", lambda _name: spec)
     # resolve_spawn_command uses shutil.which from _subprocess, not _agent.
     monkeypatch.setattr("kagan.core._subprocess.shutil.which", lambda exe: exe)

@@ -53,7 +53,7 @@ def test_attachment_extra_fields_ignored() -> None:
 def test_attachment_is_frozen() -> None:
     """Attachment instances are immutable."""
     a = Attachment.model_validate({"data": "x"})
-    with pytest.raises(Exception):
+    with pytest.raises((TypeError, AttributeError, ValueError)):
         a.data = "mutated"  # type: ignore[misc]
 
 

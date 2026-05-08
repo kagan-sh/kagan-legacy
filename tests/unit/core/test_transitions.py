@@ -19,9 +19,11 @@ the session state machine — patching _db_async is the minimal seam.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 

@@ -167,14 +167,9 @@ ______________________________________________________________________
   a task. Priority: active worker → active reviewer → most-recent reviewer →
   most-recent worker → most-recent any → `None`. Pure, total — never raises.
   *Tests:* `tests/unit/core/test_resolve_active_session.py`.
-- `client.list_running_agents(project_id=None)` returns active worker / reviewer
-  sessions joined with their owning task as `ActiveAgentRow` rows ordered by
-  `started_at DESC`; optionally scoped to a project.
-  *Tests:* `tests/core/test_running_agents_listing.py`.
-- `client.attach_chat(chat_session_id, session_id, agent_role=...)` writes
-  `attached_session_id` on the ChatSession; role is derived from
-  `Session.agent_role`, and `session_id=None` detaches. *Tests:*
-  `tests/core/test_chat_attachment.py`.
+- `client.list_session_items(project_id=None)` returns orchestrator, task, and
+  general sessions as unified items with action capabilities; optionally scoped
+  to a project. *Tests:* `tests/core/test_session_items.py`.
 - `transition_session` records an `agent_lifecycle` session event for every
   project chat session when an agent session enters `RUNNING` or a terminal
   status. Failures are logged and never block the transition.

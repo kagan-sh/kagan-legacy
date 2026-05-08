@@ -15,6 +15,7 @@ import type {
   ClientPresence,
   CombinedStats,
   CreateChatSessionInput,
+  CreateSessionRequest,
   CreateProjectInput,
   CreateTaskInput,
   DiffFile,
@@ -32,11 +33,12 @@ import type {
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
-  RunningAgentsResponse,
   RunTaskInput,
   SearchMentionsInput,
+  SessionItemResponse,
   SessionReplayPage,
   SessionTimelineEntry,
+  SessionsResponse,
   SettingsResponse,
   TaskCommitsResponse,
   TaskCountsResponse,
@@ -826,16 +828,39 @@ export class KaganApiClient {
     await this.getSettings();
   }
 
-  // -- Running agents -------------------------------------------------------
+  // -- Unified sessions -----------------------------------------------------
 
-  /** GET /api/v1/agents/running?project_id=… */
-  getRunningAgents(projectId?: string): Promise<RunningAgentsResponse> {
-    const params = new URLSearchParams();
-    if (projectId) params.set("project_id", projectId);
-    return this.get<RunningAgentsResponse>(`/api/v1/agents/running${withQuery(params)}`);
+  /** GET /api/v1/sessions */
+  getSessions(): Promise<SessionsResponse> {
+    return this.get<SessionsResponse>("/api/v1/sessions");
   }
 
-  // -- Session replay -------------------------------------------------------
+  /** POST /api/v1/sessions */
+  createSession(input: CreateSessionRequest): Promise<SessionItemResponse> {
+    return this.post<SessionItemResponse>("/api/v1/sessions", input);
+  }
+
+  /** POST /api/v1/sessions/:sessionId/message */
+  sendSessionMessage(
+    sessionId: string,
+    text: string,
+    options?: { agent_backend?: string; attachments?: unknown[] },
+  ): Promise<unknown> {
+    return this.post<unknown>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/message`, {
+      text,
+      ...options,
+    });
+  }
+
+  /** POST /api/v1/sessions/:sessionId/stop */
+  stopSession(sessionId: string): Promise<unknown> {
+    return this.post<unknown>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/stop`, {});
+  }
+
+  /** POST /api/v1/sessions/:sessionId/close */
+  closeSession(sessionId: string): Promise<unknown> {
+    return this.post<unknown>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/close`, {});
+  }
 
   /**
    * GET /api/v1/sessions/:sessionId/replay

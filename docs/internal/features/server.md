@@ -200,23 +200,22 @@ curl -X POST "http://localhost:8765/api/integrations/{name}/sync?repo=owner/repo
 
 ______________________________________________________________________
 
-## Agent Stream Endpoints
+## Session Endpoints
 
-The orchestrator-chat overlay is driven by four versioned routes (registered
-in `src/kagan/server/_agent_routes.py`).
+The SessionOverlay is driven by versioned session routes.
 
-### Listing running agents
+### Listing sessions
 
 ```bash
-curl http://localhost:8765/api/v1/agents/running
-curl "http://localhost:8765/api/v1/agents/running?project_id=<PROJECT_ID>"
+curl http://localhost:8765/api/v1/sessions
+curl "http://localhost:8765/api/v1/sessions?project_id=<PROJECT_ID>"
 ```
 
-Returns `RunningAgentsResponse` — an `agents` list of `ActiveAgentRowResponse`
-entries (task / session join with timing and token counters), sorted by
-`started_at` descending.
+Returns `SessionsResponse` — a `sessions` list of `SessionItemResponse`
+entries for orchestrator, task, and general sessions. Active sessions sort
+before terminal sessions, then newest `updated_at` first within each group.
 
-*Tests:* `tests/server/test_running_agents_route.py`.
+*Tests:* `tests/server/test_sessions_route.py`.
 
 ### Replaying a session
 

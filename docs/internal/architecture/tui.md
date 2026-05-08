@@ -75,7 +75,7 @@ KaganApp (Textual App)
 ├── KanbanScreen             # Main screen after project selected
 │   ├── BoardView            # 4-column kanban (BACKLOG → DONE)
 │   ├── TaskInspector        # Docked details panel
-│   ├── ChatPanel            # Docked / fullscreen AI Panel
+│   ├── SessionOverlay       # Docked / fullscreen session surface
 │   └── PeekOverlay          # Task preview on P
 │
 ├── WorkspaceScreen          # Orchestrator-first workspace with session sidebar + full chat surface
@@ -93,7 +93,7 @@ KaganApp (Textual App)
 │   ├── WorktreePanel        # File-level diff stats per modified file
 │   ├── CommitsPanel         # Task-branch commits since base
 │   ├── DiffPreviewPanel     # Unified diff of selected file
-│   └── ChatPanel            # Docked / fullscreen AI Panel streaming from agent
+│   └── SessionOverlay       # Docked / fullscreen session surface
 │
 ├── RepoPickerModal          # Ctrl+R — switch project / repo
 ├── PairInstructionsModal    # Pre-launch backend readiness check
@@ -178,7 +178,7 @@ ______________________________________________________________________
 | `KanbanScreen`     | `tasks`         | `reactive[list[Task]]`      | Board tasks                  |
 | `KanbanScreen`     | `selected`      | `var[str \| None]`          | Selected task ID             |
 | `KanbanScreen`     | `filter_text`   | `var[str]`                  | Search filter                |
-| `KanbanScreen`     | `chat_visible`  | `var[bool]`                 | AI Panel open state          |
+| `KanbanScreen`     | `chat_visible`  | `var[bool]`                 | SessionOverlay open state    |
 | `WorkspaceScreen`  | `session_items` | `list[ChatSessionListItem]` | Orchestrator session sidebar |
 | `SessionDashboard` | `session`       | `reactive[Session \| None]` | Active execution run         |
 
@@ -312,7 +312,7 @@ Three TCSS layers, ascending specificity:
 styles/
 ├── app.tcss              # theme vars ($primary, $surface, etc.)
 ├── kanban.tcss           # board columns, card styles
-├── chat.tcss             # AI Panel, messages, input
+├── chat.tcss             # SessionOverlay, messages, input
 ├── task_screen.tcss      # task screen layout
 ├── session_dashboard.tcss # dashboard layout + panels
 └── workspace.tcss        # workspace layout + session sidebar

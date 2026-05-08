@@ -160,7 +160,7 @@ ______________________________________________________________________
 | `w`                | Switch to workspace                                  |
 | `a`                | Attach interactive run (stops managed run if active) |
 | `Space`            | Cycle AI split                                       |
-| `Ctrl+.`           | Toggle AI Panel                                      |
+| `Ctrl+.`           | Toggle SessionOverlay                                |
 | `p`                | Peek                                                 |
 | `e`                | Edit                                                 |
 | `x`                | Delete (confirm)                                     |

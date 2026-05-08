@@ -516,49 +516,23 @@ The function never raises. Frontends consume it via
 `client.resolve_active_session(task_id)`, which loads the history through
 `list_task_sessions` first.
 
-### `_sessions_query.list_running_agents(project_id=None)`
+### Unified Session Items
 
-Cross-task joined query that returns all sessions currently in
-`{PENDING, RUNNING}` paired with their owning task. Optionally scoped to a
-single project. Results are sorted by `started_at DESC`. Each row is an
-`ActiveAgentRow` (frozen `dataclass`):
+`client.list_session_items(project_id=None)` returns a unified read model for
+orchestrator, task, and general sessions. The server serializes these rows as
+`SessionItemResponse` values via `/api/v1/sessions`; each item carries its
+session type, task role when applicable, status, title, timestamps, and action
+capabilities.
 
-| Field                           | Type             |
-| ------------------------------- | ---------------- |
-| `task_id`, `task_title`         | `str`            |
-| `task_status`                   | `str`            |
-| `session_id`, `agent_backend`   | `str`            |
-| `agent_role`                    | `str \| None`    |
-| `session_status`                | `str`            |
-| `started_at`, `last_event_at`   | `datetime` (UTC) |
-| `input_tokens`, `output_tokens` | `int \| None`    |
+Task execution sessions remain owned by task lifecycle flows. Chat sessions are
+selected explicitly by their `SessionItem.id`; current clients no longer route
+chat through durable task-attachment columns.
 
-`ActiveAgentRow` is JSON-safe — server routes serialise it directly into
-`ActiveAgentRowResponse` (see `kagan.server.responses`).
+### Chat lifecycle notifications
 
-### `ChatSession.attached_session_id`
-
-`models.ChatSession` stores the durable routing target for the agent session a
-chat is tracking:
-
-- `attached_session_id: str | None` — `None` means orchestrator mode (default).
-
-Migration `migrations/versions/25420575c1aa_chat_session_attach_target.py` adds
-the column and the `attached_session_id` index. Migration
-`migrations/versions/7b1f4d96c2e1_drop_chat_sessions_attached_role.py` removes
-the former duplicate `attached_role` column; callers derive role from
-`Session.agent_role`. There is intentionally no SQLite FK constraint on
-`attached_session_id`: the `sessions` table is sometimes recreated via
-rename-and-recreate migrations, which corrupts SQLite's trigger-based FK
-enforcement. Referential integrity is enforced at the application layer.
-
-### `kagan.core.chat._attach`
-
-| Function                         | Purpose                                                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `attach_chat_to_session()`       | Set or clear `attached_session_id` on a ChatSession; passing `session_id=None` detaches.                      |
-| `record_agent_lifecycle_event()` | Append an `agent_lifecycle` `SessionEvent` for replay and UI surfaces without polluting chat message history. |
-| `notify_project_chat_sessions()` | Iterate every chat session in a project and record a lifecycle event for each one.                            |
+Session transition hooks append lifecycle events for replay and session
+surfaces without polluting chat message history. Project-wide notifications
+remain best-effort and are logged at warning level when they fail.
 
 ### Lifecycle hook in `transitions.transition_session`
 
@@ -577,15 +551,14 @@ e.g. `"Implement /attach (worker) finished"`.
 
 ### Public `KaganCore` surface
 
-| Method                                                                  | Purpose                                                           |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `await client.list_running_agents(project_id=None)`                     | List active sessions across the project as `ActiveAgentRow` rows. |
-| `await client.resolve_active_session(task_id)`                          | Pick "the most relevant" session for `task_id` (or `None`).       |
-| `await client.attach_chat(chat_session_id, session_id, agent_role=...)` | Attach (or, with `session_id=None`, detach) a chat from an agent. |
+| Method                                             | Purpose                                                         |
+| -------------------------------------------------- | --------------------------------------------------------------- |
+| `await client.list_session_items(project_id=None)` | List orchestrator, task, and general sessions as unified items. |
+| `await client.resolve_active_session(task_id)`     | Pick "the most relevant" session for `task_id` (or `None`).     |
 
 Internal cross-cutting helpers `db_async`, `db_sync`, `sa_col`, and
-`list_running_agents` are also re-exported from `kagan.core` so server route
-modules don't need to import private modules directly.
+session read helpers are also re-exported from `kagan.core` so server route
+modules do not need to import private modules directly.
 
 ______________________________________________________________________
 

@@ -72,13 +72,13 @@ Each client renders the task overview in its native idiom:
 
 ### TUI (`kg` / `kg tui`)
 
-- AI Panel already renders markdown tables via StreamingOutput
+- SessionOverlay already renders markdown tables via StreamingOutput
 
 - No new widgets needed — the old PlanDisplay/PlanApprovalWidget are deleted
 
 - If richer preview is desired later, add a TaskPreviewWidget (not blocking)
 
-- AI Panel already renders markdown tables via StreamingOutput
+- SessionOverlay already renders markdown tables via StreamingOutput
 
 - No new widgets needed — the old PlanDisplay/PlanApprovalWidget are deleted
 
@@ -98,7 +98,7 @@ Each client renders the task overview in its native idiom:
 
 ### Web (`kg web`)
 
-- AI Panel renders markdown tables via existing markdown-content component
+- SessionOverlay renders markdown tables via existing markdown-content component
 
 - Board shows tasks immediately (they're real BACKLOG tasks)
 
@@ -106,7 +106,7 @@ Each client renders the task overview in its native idiom:
 
 - Future enhancement: highlight "just created" tasks with a temporary badge
 
-- AI Panel renders markdown tables via existing markdown-content component
+- SessionOverlay renders markdown tables via existing markdown-content component
 
 - Board shows tasks immediately (they're real BACKLOG tasks)
 

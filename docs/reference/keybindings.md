@@ -55,14 +55,14 @@ The cycle keys walk `[Orchestrator, ...running workers/reviewers]` and match by 
 | ++slash++                        | Search                    |
 | ++f++                            | Expand description        |
 | ++ctrl+f++                       | Fullscreen AI chat        |
-| ++ctrl+period++                  | Toggle AI Panel           |
+| ++ctrl+period++                  | Toggle SessionOverlay     |
 | ++ctrl+k++                       | Session Switcher          |
-| ++esc++                          | Close AI Panel            |
+| ++esc++                          | Close SessionOverlay      |
 | ++b++                            | Set branch                |
 
 `Enter` is two-step on the TUI board: first press opens the inspector for the selected card; press `Enter` again to open the full task screen.
 
-Press `Ctrl+.` to open/close AI Panel, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
+Press `Ctrl+.` to open/close SessionOverlay, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
 
 Rare actions like GitHub import, repo sync, and AI review are available via Quick Actions (`Ctrl+Shift+P`).
 
@@ -99,34 +99,32 @@ AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 
 ## Session Dashboard
 
-| Key             | Action           |
-| --------------- | ---------------- |
-| ++enter++       | Start/focus      |
-| ++s++           | Start agent      |
-| ++x++           | Stop agent       |
-| ++r++           | Restart agent    |
-| ++ctrl+period++ | Toggle AI Panel  |
-| ++ctrl+k++      | Session Switcher |
-| ++esc++         | Back             |
+| Key             | Action                |
+| --------------- | --------------------- |
+| ++enter++       | Start/focus           |
+| ++s++           | Start agent           |
+| ++x++           | Stop agent            |
+| ++r++           | Restart agent         |
+| ++ctrl+period++ | Toggle SessionOverlay |
+| ++ctrl+k++      | Session Switcher      |
+| ++esc++         | Back                  |
 
-The Session Dashboard does not own a fullscreen-AI binding; use `Ctrl+F` from the Kanban board or the orchestrator overlay to fullscreen the chat surface.
+The Session Dashboard does not own a fullscreen chat binding; use `Ctrl+F` from the Kanban board or the SessionOverlay to fullscreen the chat surface.
 
-## Orchestrator Overlay
+## SessionOverlay
 
-Opened with `o` (or `Ctrl+Space`) from any TUI screen. The overlay attaches to the project orchestrator session by default and can re-stream a worker or reviewer via the running-agents bar.
+Opened with `o` (or `Ctrl+Space`) from any TUI screen. The overlay selects the project orchestrator session by default and can switch across orchestrator, task, and general sessions from the session list.
 
-| Key            | Action                                           |
-| -------------- | ------------------------------------------------ |
-| ++ctrl+up++    | Cycle attached agent stream — previous           |
-| ++ctrl+down++  | Cycle attached agent stream — next               |
-| ++down++       | Move focus from chat input to running-agents bar |
-| ++enter++      | Attach to highlighted agent (from bar)           |
-| ++esc++        | Detach (when attached) / close overlay           |
-| ++ctrl+space++ | Re-focus overlay input / mirror Esc              |
+| Key            | Action                              |
+| -------------- | ----------------------------------- |
+| ++ctrl+up++    | Cycle selected session — previous   |
+| ++ctrl+down++  | Cycle selected session — next       |
+| ++down++       | Move focus from chat input to list  |
+| ++enter++      | Open highlighted session            |
+| ++esc++        | Unwind input/list focus or close    |
+| ++ctrl+space++ | Re-focus overlay input / mirror Esc |
 
-Cycle order is `[Orchestrator, ...running workers/reviewers]` and is matched by `session_id` rather than list position. The footer is mode-aware: keys that the parent screen would handle (for example `Ctrl+.` and `Ctrl+J`) are dropped from the hint while the overlay is active so only keys that fire inside the overlay are advertised.
-
-## AI Panel
+Cycle order is matched by stable session ID rather than list position. The footer is mode-aware: keys that the parent screen would handle (for example `Ctrl+.` and `Ctrl+J`) are dropped from the hint while the overlay is active so only keys that fire inside the overlay are advertised.
 
 | Key             | Action              |
 | --------------- | ------------------- |

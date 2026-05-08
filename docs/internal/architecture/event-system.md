@@ -61,6 +61,6 @@ from kagan.core.events_common import MessageStart, ToolExecutionEnd
 
 ## Why four types?
 
-- `AgentEvent` and `ChatEvent` are separate because task-session events are DB-persisted and replayed on reconnect, while chat events are ephemeral streaming fragments — different lifecycles, different shapes.
+- `AgentEvent` and `ChatEvent` are separate because task execution session events are DB-persisted and replayed on reconnect, while chat events are ephemeral streaming fragments — different lifecycles, different shapes.
 - `events_common` prevents the `Message*` and `ToolExecution*` variants from diverging between the two surfaces.
 - `SessionEvent` is the ORM layer — it is not a domain type, just the persistence wrapper.

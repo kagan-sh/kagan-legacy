@@ -10,7 +10,7 @@ tags:
 
 # Chat & REPL
 
-Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI AI Panel** (`Ctrl+.` in Kanban/Task screens). Both share the same slash commands and session persistence.
+Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI SessionOverlay** (`Ctrl+.` in Kanban/Task screens). Both share the same slash commands and session persistence.
 
 ______________________________________________________________________
 
@@ -81,22 +81,22 @@ Tune the debounce window and item cap via [`KAGAN_BATCH_APPROVAL_DEBOUNCE_MS` an
 
 ______________________________________________________________________
 
-## AI Panel
+## SessionOverlay
 
-| Key                         | Action                                             |
-| --------------------------- | -------------------------------------------------- |
-| ++f4++ / ++ctrl+i++         | Toggle AI Panel                                    |
-| ++space++                   | Cycle split layout                                 |
-| ++ctrl+f++                  | Fullscreen chat                                    |
-| ++ctrl+up++ / ++ctrl+down++ | Cycle attached agent stream (orchestrator overlay) |
-| ++ctrl+k++                  | Session Switcher                                   |
-| ++esc++                     | Close Panel                                        |
+| Key                         | Action                 |
+| --------------------------- | ---------------------- |
+| ++f4++ / ++ctrl+i++         | Toggle SessionOverlay  |
+| ++space++                   | Cycle split layout     |
+| ++ctrl+f++                  | Fullscreen chat        |
+| ++ctrl+up++ / ++ctrl+down++ | Cycle selected session |
+| ++ctrl+k++                  | Session Switcher       |
+| ++esc++                     | Close overlay          |
 
-The AI Panel runs as an orchestrator session with access to all project tasks via MCP tools. Messages are persisted per-session.
+The SessionOverlay can show orchestrator, task, and general sessions. Orchestrator sessions have access to project tasks via MCP tools; general sessions are raw backend chats without Kagan project tools or task context. Messages are persisted per-session.
 
-In Kanban and Task screens, `Ctrl+.` opens or closes the panel. `Space` cycles `vertical -> horizontal -> vertical` while the AI Panel stays open. Use `Esc` to close it.
+In Kanban and Task screens, `Ctrl+.` opens or closes the overlay. `Space` cycles `vertical -> horizontal -> vertical` while the SessionOverlay stays open. Use `Esc` to close it.
 
-While the orchestrator overlay is attached to a worker or reviewer, `Ctrl+Up` / `Ctrl+Down` step through the active agent streams in order — `[Orchestrator, ...running agents]` — without leaving the overlay. The web dashboard exposes the same cycle as `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓`. See [keybindings reference](../reference/keybindings.md#orchestrator-overlay) for the full table.
+`Ctrl+Up` / `Ctrl+Down` step through available sessions by stable session ID rather than list position. The web dashboard exposes the same cycle as `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓`. See [keybindings reference](../reference/keybindings.md#sessionoverlay) for the full table.
 
 ______________________________________________________________________
 

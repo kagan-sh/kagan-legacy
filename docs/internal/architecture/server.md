@@ -154,22 +154,27 @@ Per-turn SSE connection. Streams chunks for a single chat turn:
 
 ______________________________________________________________________
 
-## Agent Session Endpoints
+## Session Endpoints
 
-The orchestrator-chat overlay (TUI / web / VS Code / CLI) drives two
-versioned routes registered from `src/kagan/server/_agent_routes.py`. Wire
-shapes live in `kagan.server.responses` (`RunningAgentsResponse`,
-`ActiveAgentRowResponse`, `SessionReplayPage`, `SessionReplayEvent`) and are
-re-emitted as TypeScript via `scripts/generate_wire_types.py`.
+The SessionOverlay surfaces in TUI, web, VS Code, and CLI use the versioned
+session routes. Wire shapes live in `kagan.server.responses`
+(`SessionsResponse`, `SessionItemResponse`, `SessionReplayPage`,
+`SessionReplayEvent`) and are re-emitted as TypeScript via
+`scripts/generate_wire_types.py`.
 
-| Method | Path                           | Purpose                                                                                          |
-| ------ | ------------------------------ | ------------------------------------------------------------------------------------------------ |
-| GET    | `/api/v1/agents/running`       | Snapshot of running worker/reviewer sessions; optional `?project_id=`.                           |
-| GET    | `/api/v1/sessions/{id}/replay` | Paginated `SessionEvent` history; `?cursor=`, `?limit=` (≤1000), `?direction=forward\|backward`. |
+| Method | Path                            | Purpose                                                                                   |
+| ------ | ------------------------------- | ----------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/sessions`              | Unified orchestrator, task, and general session list; optional `?project_id=`.            |
+| POST   | `/api/v1/sessions`              | Create a new orchestrator or general session.                                             |
+| GET    | `/api/v1/sessions/{id}/replay`  | Paginated session history; `?cursor=`, `?limit=` (≤1000), `?direction=forward\|backward`. |
+| POST   | `/api/v1/sessions/{id}/message` | Send a message to a chat-capable session.                                                 |
+| POST   | `/api/v1/sessions/{id}/stop`    | Stop a session when its capabilities allow it.                                            |
+| POST   | `/api/v1/sessions/{id}/close`   | Close a session when its capabilities allow it.                                           |
 
 The replay cursor is a stable `created_at|id` composite — it survives random
 hex IDs, and ascending vs descending traversal is selected via `direction`.
-Both routes are scoped behind `AccessTier.READ`.
+Read routes are scoped behind `AccessTier.READ`; mutating actions require the
+route-specific write tier.
 
 ______________________________________________________________________
 

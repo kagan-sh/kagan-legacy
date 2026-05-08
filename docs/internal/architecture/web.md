@@ -151,7 +151,7 @@ ______________________________________________________________________
 
 ## Routing
 
-- `/board` -- kanban board and inspector/AI Panel rails
+- `/board` -- kanban board, inspector, and SessionOverlay rails
 - `/workspace` -- orchestrator-first workspace with session sidebar and full-width conversation surface
 - `/task/:id` -- unified task workspace with 3 tabs: **Overview**, **Changes**, **Review**
 - `/task/:id?lane=worker|reviewer` -- deep-link that opens the task stream rail

@@ -110,13 +110,20 @@ class _TurnLiveState:
     Renders a status spinner plus, when composing, the uncommitted tail buffer
     so the user sees words appear as they stream within a paragraph (committed
     blocks are flushed above the Live region as formatted Markdown).
+
+    A small right-aligned single-line status Text (kimi-cli parity) may be
+    appended after the spinner via ``inline_status``.  This replaces the old
+    multi-line footer Group that caused the toolbar to jump mid-screen: Rich
+    Live writes inline at the cursor, not at the viewport bottom, so only a
+    compact single-line indicator belongs here.  The full 3-line toolbar lives
+    in prompt_toolkit's ``bottom_toolbar`` callback which is viewport-pinned.
     """
 
-    def __init__(self, footer: Callable[[], RenderableType | None] | None = None) -> None:
+    def __init__(self, inline_status: Callable[[], Text | None] | None = None) -> None:
         self._tracker = TurnPhaseTracker()
         self._spinner = Spinner("dots", "")
         self._tail = ""
-        self._footer = footer
+        self._inline_status = inline_status
 
     def set_phase(self, phase: str) -> None:
         self._tracker.set_phase(phase)
@@ -138,11 +145,10 @@ class _TurnLiveState:
             else:
                 spinner_content = Group(self._spinner, Text(self._tail, style="dim"))
 
-        if self._footer is not None:
-            footer_renderable = self._footer()
-            if footer_renderable is not None:
-                return Group(spinner_content, footer_renderable, Text(""))
-            return Group(spinner_content, Text(""))
+        if self._inline_status is not None:
+            status_text = self._inline_status()
+            if status_text is not None:
+                return Group(spinner_content, status_text)
         return spinner_content
 
 

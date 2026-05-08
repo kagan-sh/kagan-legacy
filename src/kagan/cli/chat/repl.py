@@ -20,7 +20,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 from rich import box
-from rich.console import Console, Group, RenderableType
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.text import Text
 
@@ -644,6 +644,10 @@ def _format_agent_mode(remaining_cols: int) -> str:
 
 
 def _bottom_toolbar() -> FormattedText:
+    # prompt_async is not active during streaming (streaming runs after prompt_async
+    # returns, in the REPL pump loop), so this early-exit is a defensive no-op.
+    # Keeping it avoids any edge-case double-render if the session is ever
+    # restarted mid-turn.
     if _TOOLBAR_STATE.is_streaming:
         return FormattedText([])
     _TIP_ROTATOR.maybe_rotate()
@@ -666,22 +670,31 @@ def _bottom_toolbar() -> FormattedText:
     )
 
 
-def build_live_footer() -> RenderableType | None:
+def build_live_status_inline() -> Text | None:
+    """Return a small right-aligned single-line status Text for use inside Rich Live.
+
+    Kimi-cli parity: during streaming we show only a compact context-usage
+    indicator inside the Live region (right-justified).  The full 3-line
+    toolbar (rule + status + tip) lives exclusively in prompt_toolkit's
+    ``bottom_toolbar`` callback, which is viewport-pinned by prompt_toolkit.
+    Rich Live writes inline at the cursor, so putting the multi-line toolbar
+    there caused it to jump mid-screen — this function is the replacement.
+    """
     if not _TOOLBAR_STATE.is_streaming:
         return None
-    _TIP_ROTATOR.maybe_rotate()
-    cols = shutil.get_terminal_size().columns
-    status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
-    if _supports_truecolor_terminal():
-        sep_style = f"color({_REPL_COLORS['separator']})"
-        line_style = f"color({_REPL_COLORS['text_soft']})"
-    else:
-        sep_style = "dim"
-        line_style = "dim"
-    sep = Text("─" * max(cols, 1), style=sep_style)
-    status = Text(_compose_toolbar_line(status_left, status_right, cols), style=line_style)
-    tip = Text(_compose_toolbar_line(tip_left, tip_right, cols), style=line_style)
-    return Group(sep, status, tip)
+    parts: list[str] = []
+    if _TOOLBAR_STATE.token_used_k is not None and _TOOLBAR_STATE.context_pct is not None:
+        parts.append(
+            f"~{_TOOLBAR_STATE.token_used_k:.1f}k tok · ctx {_TOOLBAR_STATE.context_pct:.0%}"
+        )
+    elif _TOOLBAR_STATE.token_used_k is not None:
+        parts.append(f"~{_TOOLBAR_STATE.token_used_k:.1f}k tok")
+    elif _TOOLBAR_STATE.context_pct is not None:
+        parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
+    if not parts:
+        return None
+    style = f"color({_REPL_COLORS['text_muted']})" if _supports_truecolor_terminal() else "dim"
+    return Text(parts[0], style=style, justify="right")
 
 
 def _toolbar_status_segments() -> tuple[str, str, str, str]:

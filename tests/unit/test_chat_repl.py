@@ -82,17 +82,20 @@ def test_bottom_toolbar_idle_is_non_empty_and_contains_rule_status_tip() -> None
     assert "session: smoke-session" in text, "toolbar must include the session label"
 
 
-def test_bottom_toolbar_streaming_returns_empty_for_rich_live_handoff() -> None:
+def test_bottom_toolbar_streaming_returns_empty_defensive_no_op() -> None:
     """When is_streaming=True the prompt-toolkit toolbar yields empty FormattedText.
 
-    During streaming, the footer is rendered by the Rich Live region; the
-    bottom_toolbar callback intentionally returns empty to avoid double-rendering.
+    prompt_async is not active while the Rich Live streaming loop runs, so
+    bottom_toolbar is not invoked during streaming.  The early-exit is kept as
+    a defensive no-op to avoid any edge-case double-render if the REPL loop is
+    ever restructured.  The full toolbar is rendered again once prompt_async
+    resumes after the turn completes.
     """
     _reset_toolbar_state(is_streaming=True)
     toolbar = _bottom_toolbar()
     assert isinstance(toolbar, FormattedText)
     text = "".join(fragment[1] for fragment in toolbar)
-    assert text == "", "toolbar must be empty during streaming (Rich Live owns it)"
+    assert text == "", "toolbar must be empty during streaming (defensive no-op)"
 
 
 def test_prompt_style_rules_truecolor_use_kagan_night_palette(

@@ -76,8 +76,26 @@ def test_status_text_no_queued_indicator_when_empty() -> None:
     assert "queued" not in raw
 
 
-def test_live_state_has_no_footer_group() -> None:
-    """_streaming.py MarkdownStreamingRegion is clean — no Rich Group footer."""
+def test_live_state_has_no_footer_attribute() -> None:
+    """_TurnLiveState uses inline_status (single-line Text), not a footer Group.
+
+    The old ``_footer`` callable returned a multi-line Rich Group that caused
+    the toolbar to jump mid-screen during streaming.  The replacement
+    ``_inline_status`` returns at most a single right-aligned Text line.
+    """
+    from kagan.cli.chat._streaming import _TurnLiveState
+
+    state = _TurnLiveState()
+    assert not hasattr(state, "_footer"), (
+        "_TurnLiveState must not have _footer; use _inline_status instead"
+    )
+    assert hasattr(state, "_inline_status"), (
+        "_TurnLiveState must have _inline_status for the compact single-line status"
+    )
+
+
+def test_markdown_streaming_region_has_no_footer_attribute() -> None:
+    """MarkdownStreamingRegion is clean — no footer-related attributes."""
     import io
 
     from rich.console import Console
@@ -87,8 +105,6 @@ def test_live_state_has_no_footer_group() -> None:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=80)
     region = MarkdownStreamingRegion(console)
-    # MarkdownStreamingRegion has no __rich__ method (no Rich renderable wrapper)
-    # and no footer-related attributes
     assert not hasattr(region, "__rich__"), (
         "MarkdownStreamingRegion should not be a Rich renderable (no footer group)"
     )

@@ -139,6 +139,11 @@ test.describe('Orchestrator Overlay', () => {
   // f825db9f) addressed the common non-streaming case but an edge case remains
   // when the session list is non-empty. Track the remaining fix in eng-core.
 
+  // Followup (2026-05-08): h11 fix landed in c5f65d6. Session-picker → click
+  // session → rail-opens flow does not wire the rail in the current SPA;
+  // RunningAgentsBar shows but `[data-overlay-mode="orchestrator"]` does not
+  // mount until a task is actually attached. Track in web followup: open the
+  // rail when a session is picked, even with no attached agent session.
   test.skip(
     'selecting a session from the picker opens the orchestrator chat rail',
     async ({ page, request }) => {
@@ -233,7 +238,7 @@ test.describe('Orchestrator Overlay', () => {
   // but has no effect until the backend lands on the refinements branch.
   // Also depends on the h11 fix above to open the rail first.
 
-  test.skip(
+  test(
     'refresh while attached restores attach state via ?chat=task:<id>:<session> URL param',
     async ({ page, request }) => {
       // Blocked (2026-05-08): eng-core fake-agent + h11 edge-case fix both required.
@@ -255,7 +260,7 @@ test.describe('Orchestrator Overlay', () => {
   //
   // Same fake-agent + h11 blockers as above.
 
-  test.skip(
+  test(
     'clicking an agent row attaches and shows "Worker · …" breadcrumb',
     async ({ page, request }) => {
       // Blocked (2026-05-08): eng-core fake-agent + h11 edge-case fix both required.
@@ -271,7 +276,7 @@ test.describe('Orchestrator Overlay', () => {
     },
   );
 
-  test.skip(
+  test(
     'Escape while attached returns to orchestrator mode without closing the rail',
     async ({ page, request }) => {
       // Blocked (2026-05-08): eng-core fake-agent + h11 edge-case fix both required.

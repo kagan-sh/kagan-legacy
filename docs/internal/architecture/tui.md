@@ -235,8 +235,17 @@ The overlay composes a breadcrumb header (`Orchestrator` /
 polls `client.list_running_agents()`, renders one row per active session, and
 on `Enter` posts an `AgentSelected` message carrying the target session id.
 From the chat input, `↓` focuses the bar; from the bar, `Esc` returns focus to
-the input. Keys are declared on `ORCHESTRATOR_OVERLAY_BINDINGS` /
+the input. `Ctrl+Up` and `Ctrl+Down` (declared with `priority=True` so they
+fire even when the bar is the focused descendant) cycle through
+`[Orchestrator, ...running workers/reviewers]`, matching by `session_id`
+rather than list index. Keys are declared on `ORCHESTRATOR_OVERLAY_BINDINGS` /
 `RUNNING_AGENTS_BAR_BINDINGS` in `keybindings.py`.
+
+Because `OrchestratorOverlay` is a `ModalScreen`, parent-screen bindings
+like `Ctrl+.` and `Ctrl+J` are shadowed while the overlay is mounted. The
+embedded `ChatPanel` runs in `set_footer_mode("overlay")` and rebuilds its
+hint string to advertise only keys that fire inside the overlay — the
+panel-level shortcuts that the parent owns are dropped from the hint.
 
 `TaskScreen` integrates with the overlay on show:
 

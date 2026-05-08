@@ -490,6 +490,7 @@ class StreamingOutput(Vertical):
         *,
         kind: ChunkKind = "assistant",
         merge: bool = False,
+        replay: bool = False,
     ) -> Widget:
         text = _sanitize_stream_text(text)
         if not text:
@@ -501,7 +502,13 @@ class StreamingOutput(Vertical):
                 if kind != "user"
                 else text
             )
-            self._last_chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
+            if replay:
+                self._last_chunk._accumulated_text = (
+                    f"{self._last_chunk._accumulated_text}{linked_text}"
+                )
+                self._last_chunk.update(self._last_chunk._accumulated_text)
+            else:
+                self._last_chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
             if self.is_mounted:
                 self._schedule_follow_scroll()
             if self._last_chunk_line_key is not None:
@@ -519,8 +526,12 @@ class StreamingOutput(Vertical):
         chunk = UserInputWidget(text) if kind == "user" else OutputChunk("", kind=kind)
         line_key = f"chunk:{self._counter + 1}"
         if isinstance(chunk, OutputChunk):
+            if replay:
+                chunk._accumulated_text = linked_text
+                chunk.update(linked_text)
             self._append_widget(chunk, line_key=line_key)
-            chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
+            if not replay:
+                chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
             self._push_line(chunk.rendered_text(), key=line_key)
         else:
             self._push_line(chunk.rendered_text(), key=line_key)

@@ -244,6 +244,7 @@ class OrchestratorOverlay(ModalScreen[None]):
         panel.styles.max_height = "1fr"  # override the 50% cap from global CSS
         panel.styles.border_top = ("none", "transparent")
         panel.set_visible(True)
+        panel.set_footer_mode("overlay")
         panel.set_mode_title(_ORCHESTRATOR_TITLE)
         panel.set_session_kind(SessionKind.ORCHESTRATOR)
         panel.hydrate_current_session_history(self._orchestrator_history)
@@ -387,6 +388,46 @@ class OrchestratorOverlay(ModalScreen[None]):
         else:
             # Second Esc: close overlay
             self.dismiss()
+
+    def action_cycle_agent_next(self) -> None:
+        """Ctrl+Down: rotate through running agents (None → row0 → row1 → … → None)."""
+        self._cycle_agent(direction=1)
+
+    def action_cycle_agent_prev(self) -> None:
+        """Ctrl+Up: rotate backwards through running agents."""
+        self._cycle_agent(direction=-1)
+
+    def _cycle_agent(self, *, direction: int) -> None:
+        try:
+            agents_bar = self.query_one("#orch-agents-bar", RunningAgentsBar)
+        except Exception:
+            return
+        rows = list(agents_bar._rows)
+        if not rows:
+            return
+
+        # States: 0=None, 1=rows[0], 2=rows[1], …, n=rows[n-1]
+        session_ids = [r.session_id for r in rows]
+        current_state = 0
+        if self._attached_session_id is not None:
+            try:
+                current_state = session_ids.index(self._attached_session_id) + 1
+            except ValueError:
+                current_state = 0
+
+        next_state = (current_state + direction) % (len(rows) + 1)
+        if next_state == 0:
+            # Synchronously clear attachment so callers see it immediately.
+            self._attached_session_id = None
+            self.run_worker(self.attach(None), exit_on_error=False)
+        else:
+            row = rows[next_state - 1]
+            # Synchronously set so callers see it immediately.
+            self._attached_session_id = row.session_id
+            self.run_worker(
+                self.attach(row.session_id, row.agent_role, task_id=row.task_id),
+                exit_on_error=False,
+            )
 
     def on_running_agents_bar_focus_input(self, _: RunningAgentsBar.FocusInput) -> None:
         self._focus_input()

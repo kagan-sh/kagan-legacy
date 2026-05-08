@@ -137,12 +137,19 @@ class LongLivedACPFactory:
         if not self._entered or self._conn is None or self._capture is None:
             raise RuntimeError("LongLivedACPFactory.prompt called before __aenter__")
 
+        full_blocks = await self._build_prompt_blocks(prompt_blocks)
+
+        if self._is_process_dead():
+            logger.debug("long-lived ACP process exited before prompt; restarting")
+            await self.restart()
+
+        if self._conn is None or self._capture is None:
+            raise RuntimeError("LongLivedACPFactory.prompt restart did not create a connection")
+
         # Reset per-turn state on the long-lived capture client.
         self._capture.text_chunks = []
         self._capture._on_update = on_update  # type: ignore[attr-defined]
         self._capture._permission_resolver = permission_resolver  # type: ignore[attr-defined]
-
-        full_blocks = await self._build_prompt_blocks(prompt_blocks)
 
         prompt_task = asyncio.create_task(
             self._conn.prompt(session_id=self._acp_session_id, prompt=full_blocks)
@@ -197,6 +204,12 @@ class LongLivedACPFactory:
         )
 
     # ---------------------------------------------------------------- internal
+
+    def _is_process_dead(self) -> bool:
+        proc = self._proc
+        if proc is None:
+            return False
+        return getattr(proc, "returncode", None) is not None
 
     async def _spawn_and_handshake(self, stack: AsyncExitStack) -> None:
         from kagan.cli.chat.acp import (

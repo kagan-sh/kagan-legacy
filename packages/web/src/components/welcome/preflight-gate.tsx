@@ -211,6 +211,25 @@ type PreflightState =
   | { kind: 'zero-ready'; checks: DoctorCheckResponse[] }
   | { kind: 'error' };
 
+/**
+ * A check is an "optional backend" WARN when:
+ *   1. Its name starts with `agent_backend:` (it is a per-backend check), AND
+ *   2. At least one other agent_backend check is passing — meaning the user has
+ *      at least one working backend and the WARNs are purely informational.
+ *
+ * Mirrors the TUI preflight filter: non-default backend WARNs are suppressed
+ * from the degraded banner when a default backend is healthy.
+ */
+function isOptionalBackendWarn(
+  check: DoctorCheckResponse,
+  allChecks: DoctorCheckResponse[],
+): boolean {
+  if (!check.name.startsWith('agent_backend:')) return false;
+  return allChecks.some(
+    (c) => c.name.startsWith('agent_backend:') && checkStatus(c) === 'pass',
+  );
+}
+
 export function PreflightGate() {
   const [state, setState] = useState<PreflightState>({ kind: 'idle' });
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -230,6 +249,7 @@ export function PreflightGate() {
           return;
         }
 
+        // All non-pass checks (used for the zero-ready dialog — unfiltered).
         const failing = report.checks.filter((c) => {
           const status = checkStatus(c);
           return status === 'fail' || status === 'warn';
@@ -238,8 +258,19 @@ export function PreflightGate() {
 
         if (hasFail) {
           setState({ kind: 'zero-ready', checks: failing });
-        } else {
+          return;
+        }
+
+        // Degraded banner: only show when at least one non-optional-backend check
+        // is not passing. Optional backend WARNs (non-default backends the user
+        // hasn't installed) are informational when another backend is working.
+        const functional = failing.filter(
+          (c) => !isOptionalBackendWarn(c, report.checks),
+        );
+        if (functional.length > 0) {
           setState({ kind: 'degraded', checks: failing });
+        } else {
+          setState({ kind: 'all-green' });
         }
       })
       .catch(() => {

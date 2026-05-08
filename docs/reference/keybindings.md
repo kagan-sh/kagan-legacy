@@ -20,17 +20,21 @@ Press `?` any time to open context-aware help for the current screen.
 
 ## Web Dashboard
 
-These shortcuts apply in the web dashboard (`kagan web`).
+These shortcuts apply in the web dashboard (`kagan web`). All Cmd/Ctrl bindings accept either modifier — `Cmd` on macOS, `Ctrl` elsewhere.
 
-| Key                   | Action                                          |
-| --------------------- | ----------------------------------------------- |
-| ++cmd+shift+w++       | Toggle Board / Workspace view                   |
-| ++cmd+shift+p++       | Open Quick Actions                              |
-| ++cmd+period++        | Cycle AI panel on Board / Task routes           |
-| ++cmd+shift+f++       | Toggle AI panel fullscreen off-workspace        |
-| ++cmd+k++             | Open session switcher                           |
-| ++question++ / ++f1++ | Open help overlay                               |
-| ++escape++            | Close AI panel off-workspace or dismiss overlay |
+| Key                                | Action                                          |
+| ---------------------------------- | ----------------------------------------------- |
+| ++cmd+shift+w++ / ++ctrl+shift+w++ | Toggle Board / Workspace view                   |
+| ++cmd+shift+p++ / ++ctrl+shift+p++ | Open Quick Actions                              |
+| ++cmd+period++ / ++ctrl+period++   | Cycle AI panel on Board / Task routes           |
+| ++cmd+shift+f++ / ++ctrl+shift+f++ | Toggle AI panel fullscreen off-workspace        |
+| ++cmd+up++ / ++ctrl+up++           | Cycle attached agent stream — previous          |
+| ++cmd+down++ / ++ctrl+down++       | Cycle attached agent stream — next              |
+| ++cmd+k++ / ++ctrl+k++             | Open session switcher                           |
+| ++question++ / ++f1++              | Open help overlay                               |
+| ++escape++                         | Close AI panel off-workspace or dismiss overlay |
+
+The cycle keys walk `[Orchestrator, ...running workers/reviewers]` and match by session id, so a stream stays selected even if its position in the list shifts. The help overlay lists the two `Esc` behaviors separately — "Detach to orchestrator" while attached, and "Stop & edit last message" while the chat input is streaming.
 
 ## Kanban Board
 
@@ -98,16 +102,32 @@ AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 
 ## Session Dashboard
 
-| Key              | Action             |
-| ---------------- | ------------------ |
-| ++enter++        | Start/focus        |
-| ++s++            | Start agent        |
-| ++x++            | Stop agent         |
-| ++r++            | Restart agent      |
-| ++ctrl+period++  | Toggle AI Panel    |
-| ++ctrl+shift+t++ | Fullscreen AI chat |
-| ++ctrl+k++       | Session Switcher   |
-| ++esc++          | Back               |
+| Key             | Action           |
+| --------------- | ---------------- |
+| ++enter++       | Start/focus      |
+| ++s++           | Start agent      |
+| ++x++           | Stop agent       |
+| ++r++           | Restart agent    |
+| ++ctrl+period++ | Toggle AI Panel  |
+| ++ctrl+k++      | Session Switcher |
+| ++esc++         | Back             |
+
+The Session Dashboard does not own a fullscreen-AI binding; use `Ctrl+F` from the Kanban board or the orchestrator overlay to fullscreen the chat surface.
+
+## Orchestrator Overlay
+
+Opened with `o` (or `Ctrl+Space`) from any TUI screen. The overlay attaches to the project orchestrator session by default and can re-stream a worker or reviewer via the running-agents bar.
+
+| Key            | Action                                           |
+| -------------- | ------------------------------------------------ |
+| ++ctrl+up++    | Cycle attached agent stream — previous           |
+| ++ctrl+down++  | Cycle attached agent stream — next               |
+| ++down++       | Move focus from chat input to running-agents bar |
+| ++enter++      | Attach to highlighted agent (from bar)           |
+| ++esc++        | Detach (when attached) / close overlay           |
+| ++ctrl+space++ | Re-focus overlay input / mirror Esc              |
+
+Cycle order is `[Orchestrator, ...running workers/reviewers]` and is matched by `session_id` rather than list position. The footer is mode-aware: keys that the parent screen would handle (for example `Ctrl+.` and `Ctrl+J`) are dropped from the hint while the overlay is active so only keys that fire inside the overlay are advertised.
 
 ## AI Panel
 

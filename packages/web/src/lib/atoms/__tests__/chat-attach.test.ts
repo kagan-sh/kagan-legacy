@@ -9,9 +9,12 @@ import { createStore } from 'jotai';
 import {
   chatAttachAtom,
   attachChatSessionAtom,
+  cycleChatAttachAtom,
   detachChatSessionAtom,
   type ChatAttachTarget,
 } from '@/lib/atoms/chat-attach';
+import { setRunningAgentsAtom } from '@/lib/atoms/running-agents';
+import type { ActiveAgentRowResponse } from '@kagan/shared-api-client';
 
 function makeTarget(overrides: Partial<ChatAttachTarget> = {}): ChatAttachTarget {
   return {
@@ -22,6 +25,22 @@ function makeTarget(overrides: Partial<ChatAttachTarget> = {}): ChatAttachTarget
     inputTokens: 1000,
     outputTokens: 500,
     ...overrides,
+  };
+}
+
+function makeAgent(sessionId: string, taskTitle: string): ActiveAgentRowResponse {
+  return {
+    task_id: `task-${sessionId}`,
+    task_title: taskTitle,
+    task_status: 'IN_PROGRESS',
+    session_id: sessionId,
+    agent_role: 'worker',
+    agent_backend: 'claude-code',
+    session_status: 'running',
+    started_at: new Date().toISOString(),
+    last_event_at: null,
+    input_tokens: 100,
+    output_tokens: 50,
   };
 }
 
@@ -70,5 +89,24 @@ describe('chatAttachAtom', () => {
     const result = store.get(chatAttachAtom);
     expect(result?.inputTokens).toBeNull();
     expect(result?.outputTokens).toBeNull();
+  });
+
+  it('cycleChatAttachAtom walks orchestrator and running agents by session id', () => {
+    store.set(setRunningAgentsAtom, [
+      makeAgent('session-1', 'Task A'),
+      makeAgent('session-2', 'Task B'),
+    ]);
+
+    store.set(cycleChatAttachAtom, 1);
+    expect(store.get(chatAttachAtom)?.attachedSessionId).toBe('session-1');
+
+    store.set(cycleChatAttachAtom, 1);
+    expect(store.get(chatAttachAtom)?.attachedSessionId).toBe('session-2');
+
+    store.set(cycleChatAttachAtom, 1);
+    expect(store.get(chatAttachAtom)).toBeNull();
+
+    store.set(cycleChatAttachAtom, -1);
+    expect(store.get(chatAttachAtom)?.attachedSessionId).toBe('session-2');
   });
 });

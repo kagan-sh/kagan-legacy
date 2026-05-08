@@ -80,17 +80,20 @@ ______________________________________________________________________
 
 ## AI Panel
 
-| Key                 | Action             |
-| ------------------- | ------------------ |
-| ++f4++ / ++ctrl+i++ | Toggle AI Panel    |
-| ++space++           | Cycle split layout |
-| ++ctrl+f++          | Fullscreen chat    |
-| ++ctrl+k++          | Session Switcher   |
-| ++esc++             | Close Panel        |
+| Key                         | Action                                             |
+| --------------------------- | -------------------------------------------------- |
+| ++f4++ / ++ctrl+i++         | Toggle AI Panel                                    |
+| ++space++                   | Cycle split layout                                 |
+| ++ctrl+f++                  | Fullscreen chat                                    |
+| ++ctrl+up++ / ++ctrl+down++ | Cycle attached agent stream (orchestrator overlay) |
+| ++ctrl+k++                  | Session Switcher                                   |
+| ++esc++                     | Close Panel                                        |
 
 The AI Panel runs as an orchestrator session with access to all project tasks via MCP tools. Messages are persisted per-session.
 
 In Kanban and Task screens, `Ctrl+.` opens or closes the panel. `Space` cycles `vertical -> horizontal -> vertical` while the AI Panel stays open. Use `Esc` to close it.
+
+While the orchestrator overlay is attached to a worker or reviewer, `Ctrl+Up` / `Ctrl+Down` step through the active agent streams in order — `[Orchestrator, ...running agents]` — without leaving the overlay. The web dashboard exposes the same cycle as `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓`. See [keybindings reference](../reference/keybindings.md#orchestrator-overlay) for the full table.
 
 ______________________________________________________________________
 

@@ -262,6 +262,12 @@ ______________________________________________________________________
 **When** `_OrchestratorACPClient` receives them
 **Then** each chunk is printed to the Rich console immediately with streaming animation, and turn finalization closes the live line without replaying the response.
 
+**Given** the user reattaches to a finished agent session in the
+orchestrator overlay
+**When** replay events arrive from `/api/v1/sessions/{id}/replay`
+**Then** the panel renders the recorded transcript instantly — the
+typewriter animation is reserved for live tokens and never replays history.
+
 ______________________________________________________________________
 
 ### Tool call rendering
@@ -300,6 +306,27 @@ ______________________________________________________________________
 **Given** the agent process exits during handshake
 **When** ACP handshake fails
 **Then** it shows an error with the agent's stderr output and terminates the turn.
+
+______________________________________________________________________
+
+### ACP factory reconnect
+
+**Given** the long-lived ACP factory raises `BrokenPipeError`,
+`ConnectionResetError`, or `acp.RequestError` mid-conversation
+**When** the next prompt is dispatched
+**Then** the factory is restarted once in place (tear-down + respawn) and
+the prompt is retried. A second consecutive failure is surfaced as an
+error rather than retried again.
+
+**Given** the agent subprocess has exited between turns
+**When** the next prompt is dispatched
+**Then** the factory detects the dead process via a liveness check before
+sending and rebuilds the connection rather than writing into a closed pipe.
+
+**Given** the orchestrator turn produces no assistant text
+**When** the turn finalizes
+**Then** no synthetic `"No response from orchestrator"` row is appended to
+chat history. Empty turns are dropped from the persisted transcript.
 
 ______________________________________________________________________
 

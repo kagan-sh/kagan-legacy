@@ -184,8 +184,9 @@ class ChatPanel(Vertical):
         self._pending_after_interrupt: str | None = None
         self._history_programmatic_update = False
         self._overlay_split_key = "Ctrl+."
-        self._overlay_fullscreen_key = "Ctrl+Shift+T"
+        self._overlay_fullscreen_key = "Ctrl+F"
         self._overlay_close_key = "Esc"
+        self._footer_mode: Literal["docked", "overlay"] = "docked"
         self._status_hint_override: str | None = None
         self._state_only_updates = 0
         # Cache of chat-session ids belonging to the active project, refreshed
@@ -484,6 +485,15 @@ class ChatPanel(Vertical):
         self._overlay_fullscreen_key = fullscreen.strip() or self._overlay_fullscreen_key
         if close is not None:
             self._overlay_close_key = close.strip() or self._overlay_close_key
+        self._refresh_status()
+
+    def set_footer_mode(self, mode: Literal["docked", "overlay"]) -> None:
+        """Switch hint display between docked and overlay layout.
+
+        - ``"docked"``  — shows split/fullscreen/files/sessions shortcuts
+        - ``"overlay"`` — shows Ctrl+Up/Down cycle-agent shortcuts
+        """
+        self._footer_mode = mode
         self._refresh_status()
 
     def set_status_hint_override(self, hint: str | None) -> None:
@@ -1567,8 +1577,6 @@ class ChatPanel(Vertical):
             status_bar.update_hint(self._status_hint_override)
             return
 
-        split_key = self._overlay_split_key
-        fullscreen_key = self._overlay_fullscreen_key
         close_key = self._overlay_close_key
         is_active = self._runtime_status in {"thinking", "initializing", "waiting"}
         if is_active:
@@ -1577,19 +1585,34 @@ class ChatPanel(Vertical):
             has_pending = bool(normalize_chat_input(value))
             esc_hint = "Esc stop+send" if has_pending else "Esc stop & edit last"
         else:
-            esc_hint = f"{close_key} close"
-        if bool(self._slash_matches or self._mention_matches):
-            right = (
-                f"Enter send · Tab complete · Ctrl+J timeline · "
-                f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
-                f"Ctrl+C clear · {esc_hint}"
-            )
+            esc_hint = f"{close_key} back"
+
+        if self._footer_mode == "overlay":
+            if bool(self._slash_matches or self._mention_matches):
+                right = (
+                    f"Enter send · Tab complete · Ctrl+Up/Down switch agent · "
+                    f"Ctrl+P files · Ctrl+K sessions · Ctrl+C clear · {esc_hint}"
+                )
+            else:
+                right = (
+                    f"Enter send · Up/Down history · Ctrl+Up/Down switch agent · "
+                    f"Ctrl+P files · Ctrl+K sessions · Ctrl+C clear · {esc_hint}"
+                )
         else:
-            right = (
-                f"Enter send · Up/Down history · Ctrl+J timeline · "
-                f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
-                f"Ctrl+C clear · {esc_hint}"
-            )
+            split_key = self._overlay_split_key
+            fullscreen_key = self._overlay_fullscreen_key
+            if bool(self._slash_matches or self._mention_matches):
+                right = (
+                    f"Enter send · Tab complete · "
+                    f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
+                    f"Ctrl+C clear · {esc_hint}"
+                )
+            else:
+                right = (
+                    f"Enter send · Up/Down history · "
+                    f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
+                    f"Ctrl+C clear · {esc_hint}"
+                )
         status_bar = self._status_bar()
         if status_bar is None:
             return

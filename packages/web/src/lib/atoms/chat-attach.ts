@@ -11,6 +11,7 @@
  */
 
 import { atom } from 'jotai';
+import { runningAgentsAtom } from '@/lib/atoms/running-agents';
 
 export type ChatAttachRole = 'worker' | 'reviewer';
 
@@ -44,3 +45,36 @@ export const attachChatSessionAtom = atom(
 export const detachChatSessionAtom = atom(null, (_get, set) => {
   set(chatAttachAtom, null);
 });
+
+export const cycleChatAttachAtom = atom(
+  null,
+  (get, set, direction: 1 | -1) => {
+    const agents = get(runningAgentsAtom).agents;
+    const current = get(chatAttachAtom);
+    if (agents.length === 0) {
+      if (current !== null) set(chatAttachAtom, null);
+      return;
+    }
+
+    const sessionIds = agents.map((agent) => agent.session_id);
+    const currentIndex =
+      current === null ? -1 : sessionIds.indexOf(current.attachedSessionId);
+    const currentState = currentIndex < 0 ? 0 : currentIndex + 1;
+    const nextState = (currentState + direction + agents.length + 1) % (agents.length + 1);
+
+    if (nextState === 0) {
+      set(chatAttachAtom, null);
+      return;
+    }
+
+    const agent = agents[nextState - 1]!;
+    set(chatAttachAtom, {
+      attachedSessionId: agent.session_id,
+      taskTitle: agent.task_title,
+      role: agent.agent_role === 'reviewer' ? 'reviewer' : 'worker',
+      startedAt: agent.started_at,
+      inputTokens: agent.input_tokens ?? null,
+      outputTokens: agent.output_tokens ?? null,
+    });
+  },
+);

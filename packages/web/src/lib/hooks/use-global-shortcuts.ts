@@ -18,6 +18,8 @@ import {
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { hasOpenOverlay, isEditableTarget } from '@/lib/utils/dom';
 import { type DockedChatRailMode, cycleDockMode } from '@/lib/layout/dock-mode';
+import { chatAttachAtom, cycleChatAttachAtom } from '@/lib/atoms/chat-attach';
+import { runningAgentsAtom } from '@/lib/atoms/running-agents';
 
 function isPeriodKey(event: KeyboardEvent): boolean {
   return event.key === '.' || event.code === 'Period' || event.code === 'NumpadDecimal';
@@ -46,6 +48,8 @@ export function useGlobalShortcuts(): void {
   const railMode = useAtomValue(rightRailModeAtom);
   const railTaskId = useAtomValue(rightRailTaskIdAtom);
   const railChatSessionId = useAtomValue(rightRailChatSessionIdAtom);
+  const chatAttach = useAtomValue(chatAttachAtom);
+  const runningAgents = useAtomValue(runningAgentsAtom);
   const setCommandOpen = useSetAtom(commandPaletteOpenAtom);
   const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
   const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
@@ -54,6 +58,7 @@ export function useGlobalShortcuts(): void {
   const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
   const dismissRightRailContext = useSetAtom(dismissRightRailContextAtom);
   const clearRightRailDismissal = useSetAtom(clearRightRailDismissalAtom);
+  const cycleChatAttach = useSetAtom(cycleChatAttachAtom);
   const lastDockModeRef = useRef<DockedChatRailMode>('chat-right');
 
   const currentTaskId = useMemo(() => {
@@ -211,6 +216,20 @@ export function useGlobalShortcuts(): void {
       if (
         !welcomeRoute &&
         hasModifier &&
+        !event.shiftKey &&
+        !event.altKey &&
+        (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+        (runningAgents.agents.length > 0 || chatAttach !== null)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        cycleChatAttach(event.key === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+
+      if (
+        !welcomeRoute &&
+        hasModifier &&
         event.shiftKey &&
         !event.altKey &&
         key === 'k'
@@ -257,9 +276,11 @@ export function useGlobalShortcuts(): void {
     };
   }, [
     clearRightRailDismissal,
+    chatAttach,
     closeChatRail,
     createOrGetSession,
     currentTaskId,
+    cycleChatAttach,
     isMobile,
     navigate,
     openChatRail,
@@ -273,6 +294,7 @@ export function useGlobalShortcuts(): void {
     setRailMode,
     setRailTaskId,
     setSessionPickerOpen,
+    runningAgents.agents.length,
     welcomeRoute,
     workspaceRoute,
   ]);

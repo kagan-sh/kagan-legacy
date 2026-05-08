@@ -353,6 +353,152 @@ describe('PreflightGate', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  // ── Optional backend WARN gate ──────────────────────────────────────────────
+
+  it('does not show degraded banner when only non-default backend WARNs exist and a backend PASS is present', async () => {
+    // Simulate: default backend passes, 4 non-default backends warn.
+    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeReport({
+        ok: false,
+        fail_count: 0,
+        warn_count: 4,
+        checks: [
+          {
+            name: 'agent_backend:claude-code',
+            status: 'pass',
+            message: 'Found',
+            fix_hint: '',
+            verify_hint: '',
+            category: 'backend',
+            is_blocking: false,
+          },
+          {
+            name: 'agent_backend:codex',
+            status: 'warn',
+            message: 'Not installed',
+            fix_hint: 'npm install -g @openai/codex',
+            verify_hint: 'codex --version',
+            category: 'backend',
+            is_blocking: false,
+          },
+          {
+            name: 'agent_backend:gemini',
+            status: 'WARN',
+            message: 'Not installed',
+            fix_hint: 'pip install gemini-cli',
+            verify_hint: 'gemini --version',
+            category: 'backend',
+            is_blocking: false,
+          },
+          {
+            name: 'agent_backend:amp',
+            status: 'WARN',
+            message: 'Not installed',
+            fix_hint: '',
+            verify_hint: '',
+            category: 'backend',
+            is_blocking: false,
+          },
+          {
+            name: 'agent_backend:aider',
+            status: 'warn',
+            message: 'Not installed',
+            fix_hint: 'pip install aider',
+            verify_hint: 'aider --version',
+            category: 'backend',
+            is_blocking: false,
+          },
+        ],
+      }),
+    );
+
+    const { container } = renderGate();
+
+    await waitFor(() => {
+      expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
+    });
+
+    // No banner — all non-passing checks are optional backend WARNs with a passing backend present.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('shows degraded banner when default backend WARNs and no backend is passing', async () => {
+    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeReport({
+        ok: false,
+        fail_count: 0,
+        warn_count: 2,
+        checks: [
+          {
+            name: 'agent_backend:claude-code',
+            status: 'WARN',
+            message: 'Not found in PATH',
+            fix_hint: 'npm install -g @anthropic-ai/claude-code',
+            verify_hint: 'claude --version',
+            category: 'backend',
+            is_blocking: false,
+          },
+          {
+            name: 'agent_backend:codex',
+            status: 'WARN',
+            message: 'Not found in PATH',
+            fix_hint: 'npm install -g @openai/codex',
+            verify_hint: 'codex --version',
+            category: 'backend',
+            is_blocking: false,
+          },
+        ],
+      }),
+    );
+
+    renderGate();
+
+    // All agent_backend checks are WARN with no backend passing → degraded banner must appear.
+    const alert = await screen.findByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows degraded banner when a non-backend check warns regardless of backend status', async () => {
+    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeReport({
+        ok: false,
+        fail_count: 0,
+        warn_count: 2,
+        checks: [
+          {
+            name: 'agent_backend:claude-code',
+            status: 'pass',
+            message: 'Found',
+            fix_hint: '',
+            verify_hint: '',
+            category: 'backend',
+            is_blocking: false,
+          },
+          {
+            name: 'git',
+            status: 'WARN',
+            message: 'git version is old',
+            fix_hint: 'brew upgrade git',
+            verify_hint: 'git --version',
+            category: 'tools',
+            is_blocking: false,
+          },
+        ],
+      }),
+    );
+
+    renderGate();
+
+    // The `git` WARN is not an optional backend WARN — degraded banner must show.
+    const alert = await screen.findByRole('alert');
+    expect(alert).toBeInTheDocument();
+    expect(screen.getByText('git')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('does not call getDoctorReport again when component re-renders', async () => {
     (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeReport({ ok: true }),

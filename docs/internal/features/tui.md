@@ -97,12 +97,43 @@ ______________________________________________________________________
 - A `RunningAgentsBar` under the chat input lists active sessions; `↓` from
   the input focuses the bar, `Enter` attaches, `Esc` returns focus to the
   input. *Tests:* `tests/tui/test_running_agents_bar.py`.
+- `Ctrl+Up` / `Ctrl+Down` cycle the attached stream through
+  `[Orchestrator, ...running workers/reviewers]`. Selection is matched by
+  `session_id`, so the choice is stable across polls even when the running
+  set reorders.
+- The overlay footer is mode-aware: when `ChatPanel` runs in `overlay`
+  footer mode, hint keys that the parent screen would shadow (for example
+  `Ctrl+.` and `Ctrl+J`) are dropped so the hint advertises only keys that
+  fire inside the overlay.
+- Replay of a finished agent session is rendered instantly — the typewriter
+  animation runs only on live tokens. Reattaching to a closed session no
+  longer re-animates its history.
 - `TaskScreen` auto-pushes the overlay for `BACKLOG` tasks and auto-attaches
   to the resolved active session for in-progress tasks.
   *Tests:* `tests/tui/test_task_screen_auto_attach.py`.
 - `TaskScreen` no longer embeds a chat panel — it is a header + Overview /
   Changes / Review tabs + `#ts-chat-hint` widget.
   *Tests:* `tests/tui/test_task_screen_no_embedded_chat.py`.
+
+### Long-lived ACP factory
+
+- `LongLivedACPFactory` (`src/kagan/core/chat/_factories.py`) auto-restarts
+  once on `BrokenPipeError`, `ConnectionResetError`, or `acp.RequestError`,
+  and probes process liveness before each prompt. After the second failure
+  in a row the factory surfaces the underlying error.
+- Empty turns no longer write a fabricated `"No response from orchestrator"`
+  history row. If the agent produced no response, the turn is dropped from
+  history rather than persisted as a placeholder.
+
+### Degraded-mode boot warning
+
+- `_is_optional_backend_warning` (`src/kagan/tui/app.py`) gates the boot
+  toast: a `WARN` row is treated as informational when it is a per-backend
+  check (`agent_backend:*`) **and** at least one other backend check is
+  passing. The "Degraded mode" toast no longer appears when the only
+  warnings are missing optional non-default backends.
+- Telemetry (`emit_doctor_warned_telemetry_async`) still fires on raw
+  counts so signal is preserved.
 
 ______________________________________________________________________
 
@@ -159,3 +190,12 @@ ______________________________________________________________________
 | `Ctrl+F`              | Fullscreen AI chat (when open)    |
 | `Ctrl+.`              | Toggle AI Panel                   |
 | `Esc`                 | Back                              |
+
+### Orchestrator Overlay
+
+| Key                     | Action                                      |
+| ----------------------- | ------------------------------------------- |
+| `Ctrl+Up` / `Ctrl+Down` | Cycle through orchestrator + running agents |
+| `↓` (from chat input)   | Move focus to running-agents bar            |
+| `Enter` (from bar)      | Attach to highlighted agent                 |
+| `Esc`                   | Detach (when attached) / close overlay      |

@@ -56,6 +56,25 @@ def _any_backend_available(checks: list[DoctorCheck]) -> bool:
     )
 
 
+def _is_optional_backend_warning(check: DoctorCheck, all_checks: list[DoctorCheck]) -> bool:
+    """Return True when a WARN check is informational rather than degrading.
+
+    A backend WARN is optional (non-degrading) when:
+    - the check name starts with "agent_backend:" or "agent backend:" (a per-backend row), AND
+    - at least one other check in the same list has category=="backend" and status=="pass".
+
+    Any other WARN — git, tmux, DB, integrations — is not optional.
+    """
+    if check.status != "warn":
+        return False
+    is_backend_check = check.name.startswith("agent_backend:") or check.name.startswith(
+        "agent backend:"
+    )
+    if not is_backend_check:
+        return False
+    return any(c.category == "backend" and c.status == "pass" for c in all_checks)
+
+
 class KaganApp(App[None]):
     BINDINGS = APP_BINDINGS
 
@@ -142,6 +161,7 @@ class KaganApp(App[None]):
             if has_fail or has_warn:
                 fail_count = sum(1 for c in checks if c.status == "fail")
                 warn_count = sum(1 for c in checks if c.status == "warn")
+                # Telemetry always fires on raw counts — we don't lose signal.
                 self.run_worker(
                     emit_doctor_warned_telemetry_async(
                         self.core,
@@ -157,12 +177,21 @@ class KaganApp(App[None]):
                 )
                 return
             if has_warn:
-                warn_count = sum(1 for c in checks if c.status == "warn")
-                noun = "check" if warn_count == 1 else "checks"
-                pending_warning = (
-                    f"Degraded mode: {warn_count} doctor {noun} returned warnings. "
-                    "Run 'kagan doctor' to fix."
-                )
+                # Suppress the "Degraded mode" toast when every WARN is an
+                # optional backend warning (a non-default backend not installed
+                # while at least one backend passes).
+                functional_warnings = [
+                    c
+                    for c in checks
+                    if c.status == "warn" and not _is_optional_backend_warning(c, checks)
+                ]
+                if functional_warnings:
+                    warn_count = len(functional_warnings)
+                    noun = "check" if warn_count == 1 else "checks"
+                    pending_warning = (
+                        f"Degraded mode: {warn_count} doctor {noun} returned warnings. "
+                        "Run 'kagan doctor' to fix."
+                    )
 
         settings = await self.core.settings.get()
         last_project_id = settings.get("ui.last_project_id")

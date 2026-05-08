@@ -25,9 +25,11 @@ const SHORTCUTS: ShortcutSection[] = [
       { keys: ['Cmd/Ctrl', 'Shift', 'P'], description: 'Open Quick Actions' },
       { keys: ['Cmd/Ctrl', 'K'], description: 'Open Session Switcher' },
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
-      { keys: ['Cmd/Ctrl', '.'], description: 'Toggle AI Panel' },
+      { keys: ['Cmd/Ctrl', '.'], description: 'Cycle AI panel dock mode' },
       { keys: ['Cmd/Ctrl', 'Shift', 'F'], description: 'Fullscreen AI Panel' },
-      { keys: ['Esc'], description: 'Stop agent + edit last message' },
+      { keys: ['Cmd/Ctrl', '↑', '↓'], description: 'Switch active agent' },
+      { keys: ['Esc', '(attached)'], description: 'Detach to orchestrator' },
+      { keys: ['Esc', '(chat input, streaming)'], description: 'Stop & edit last message' },
     ],
   },
   {

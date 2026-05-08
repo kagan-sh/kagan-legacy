@@ -67,6 +67,8 @@ APP_BINDINGS: list[BindingType] = [
 ORCHESTRATOR_OVERLAY_BINDINGS: list[BindingType] = [
     Binding("escape", "handle_esc", "Back / Close", priority=True),
     Binding("ctrl+space", "handle_esc", "", show=False, priority=True),
+    Binding("ctrl+down", "cycle_agent_next", "Next agent", key_display="Ctrl+↓", priority=True),
+    Binding("ctrl+up", "cycle_agent_prev", "Previous agent", key_display="Ctrl+↑", priority=True),
 ]
 
 RUNNING_AGENTS_BAR_BINDINGS: list[BindingType] = [
@@ -329,7 +331,7 @@ class FooterBuilder:
         return [
             ("Enter", "open"),
             ("Ctrl+.", "AI panel"),
-            ("P", "peek"),
+            ("p", "peek"),
             ("e", "edit"),
             ("x", "delete"),
             ("s", "start"),
@@ -345,8 +347,6 @@ class FooterBuilder:
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
-            ("Ctrl+.", "AI panel"),
-            ("Ctrl+F", "assistant full"),
             ("e", "edit"),
             ("d", "delete"),
             ("a", "approve"),

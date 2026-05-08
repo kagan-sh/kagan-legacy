@@ -10,15 +10,11 @@ POST /api/v1/sessions/:id/close          → close a session
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
-import acp
-from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from kagan.core.chat import TurnInProgressError, make_spawn_per_turn_acp_factory
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._chat_routes import (
     _broadcast,
@@ -26,6 +22,7 @@ from kagan.server._chat_routes import (
     _emit,
     _load_session_view,
     _parse_attachments,
+    _session_summary,
     _teardown_session_state,
 )
 from kagan.server._helpers import (
@@ -36,6 +33,7 @@ from kagan.server._helpers import (
     parse_body,
     require_context,
 )
+from kagan.server._sse_stream import _unified_sse_stream
 from kagan.server.responses import (
     CreateSessionRequest,
     SessionCapabilitiesResponse,
@@ -248,18 +246,18 @@ async def _session_event_created_at(
 ) -> datetime | None:
     from sqlmodel import select
 
-    from kagan.core._db_helpers import _db_async, _sa_col
+    from kagan.core import db_async, sa_col
     from kagan.core.models import SessionEvent
 
     def _query(s) -> datetime | None:
         stmt = select(SessionEvent).where(
-            _sa_col(SessionEvent.session_id) == session_id,
-            _sa_col(SessionEvent.id) == event_id,
+            sa_col(SessionEvent.session_id) == session_id,
+            sa_col(SessionEvent.id) == event_id,
         )
         event = s.exec(stmt).first()
         return event.created_at if event is not None else None
 
-    return await _db_async(engine, _query)
+    return await db_async(engine, _query)
 
 
 def _to_replay_event(row: SessionEvent) -> SessionReplayEvent:
@@ -356,120 +354,21 @@ async def _message_sse_stream(
     *,
     is_orchestrator: bool,
 ) -> AsyncIterator[str]:
-    engine = ctx.client.chat
-    try:
-        engine.try_claim_turn(session_id)
-    except TurnInProgressError:
-        err = {"t": "CHAT_ERROR", "error": "Turn already in progress for this session"}
-        _broadcast(session_id, err)
-        yield _emit(err)
-        return
-
-    stream_entered = False
-    turn_done = False
-    try:
-        await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
-
-        attachment_dicts: list[dict[str, str]] | None = (
-            [a.model_dump() for a in attachments] if attachments else None
-        )
-
-        user_msg = await engine.push_user(session_id, text, attachments=attachment_dicts)
-        user_msg_id = getattr(user_msg, "id", None)
-
-        user_event = {
-            "t": "CHAT_USER_MESSAGE",
-            "message_id": user_msg_id,
-            "content": text,
-        }
-        _broadcast(session_id, user_event)
-        yield _emit(user_event)
-
-        started_event = {
-            "t": "CHAT_TURN_STARTED",
-            "at": datetime.now(UTC).isoformat(),
-            "by_source": session.source,
-        }
-        _broadcast(session_id, started_event)
-        yield _emit(started_event)
-
-        settings = await ctx.client.settings.get()
-        project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
-        factory = make_spawn_per_turn_acp_factory(
-            client=ctx.client,
-            default_agent_backend=backend,
-            cwd=project_cwd,
-            attachments=attachment_dicts,
-            raw=not is_orchestrator,
-        )
-
-        if is_orchestrator:
-            from kagan.cli.chat.prompt import build_orchestrator_prompt
-
-            prior_history: list[tuple[str, str]] = [
-                (str(item[0]), str(item[1]))
-                for item in session.orchestrator_history
-                if isinstance(item, list | tuple) and len(item) == 2
-            ]
-            prompt_text = build_orchestrator_prompt(prior_history, text)
-            prompt_blocks = [acp.text_block(prompt_text)]
-        else:
-            prompt_blocks = [acp.text_block(text)]
-
-        stream_entered = True
-        async for event in engine.stream_assistant(
-            session_id,
-            prompt_blocks=prompt_blocks,
-            agent_backend=backend,
-            acp_factory=factory,
-        ):
-            frame = _chat_event_to_sse_frame(event)
-            if frame is None:
-                continue
-            _broadcast(session_id, frame)
-            yield _emit(frame)
-            if frame.get("t") == "CHAT_DONE":
-                turn_done = True
-    except TurnInProgressError:
-        raise
-    except (asyncio.CancelledError, GeneratorExit, ConnectionError):
-        logger.debug("Client disconnected during chat stream for session {}", session_id)
-        await engine.detach(session_id)
-        return
-    except Exception as exc:
-        logger.exception("Chat stream failed for session {}", session_id)
-        err = {"t": "CHAT_ERROR", "error": str(exc)}
-        _broadcast(session_id, err)
-        yield _emit(err)
-    finally:
-        if not stream_entered:
-            await engine.detach(session_id)
-
-    if turn_done:
-        try:
-            refreshed_pair = await ctx.client.chat_sessions.get_with_history(session_id)
-        except Exception:
-            logger.exception("Post-turn session refresh failed for {}", session_id)
-        else:
-            if refreshed_pair is not None:
-                from kagan.core.chat.sessions import chat_session_to_view
-
-                refreshed = chat_session_to_view(*refreshed_pair)
-                _broadcast(
-                    session_id,
-                    {
-                        "t": "CHAT_SESSION_UPDATED",
-                        "session": {
-                            "id": refreshed.id,
-                            "label": refreshed.label,
-                            "source": refreshed.source,
-                            "agent_backend": refreshed.agent_backend,
-                            "project_id": refreshed.project_id,
-                            "updated_at": refreshed.updated_at,
-                            "message_count": len(refreshed.orchestrator_history),
-                        },
-                    },
-                )
+    """Thin wrapper delegating to the shared SSE turn producer."""
+    async for chunk in _unified_sse_stream(
+        ctx,
+        session_id,
+        session,
+        text,
+        backend,
+        attachments,
+        is_orchestrator=is_orchestrator,
+        broadcast=_broadcast,
+        emit=_emit,
+        chat_event_to_sse_frame=_chat_event_to_sse_frame,
+        session_summary=_session_summary,
+    ):
+        yield chunk
 
 
 # ---------------------------------------------------------------------------
@@ -683,6 +582,7 @@ def register_session_routes(mcp: FastMCP) -> None:
 
     @mcp.custom_route("/api/v1/sessions/{session_id}/message", methods=["POST"])
     @require_context(mcp)
+    @handle_errors
     async def session_message(request: Request, *, ctx: ServerContext) -> Response:
         forbidden = _require_access(
             ctx, minimum_tier=AccessTier.STANDARD, operation="Send session message"

@@ -12,7 +12,7 @@ import acp
 import pytest
 
 import kagan.server._helpers as server_helpers
-import kagan.server._session_routes as session_routes
+import kagan.server._sse_stream as sse_stream
 from kagan.core import KaganCore
 from kagan.core._db_helpers import _db_async
 from kagan.core.chat import ACPTurnResult
@@ -322,7 +322,7 @@ async def test_message_general_session_uses_raw_factory(
 
         return _Factory()
 
-    monkeypatch.setattr(session_routes, "make_spawn_per_turn_acp_factory", fake_factory)
+    monkeypatch.setattr(sse_stream, "make_spawn_per_turn_acp_factory", fake_factory)
 
     async def fake_resolve_repo_path(**_kwargs: Any) -> Any:
         return None

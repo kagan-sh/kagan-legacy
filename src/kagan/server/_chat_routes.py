@@ -22,8 +22,6 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
-import acp
-from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from kagan.core import (
@@ -35,9 +33,7 @@ from kagan.core import (
 from kagan.core.chat import (
     ChatEvent,
     ChatSessionView,
-    TurnInProgressError,
     chat_session_to_view,
-    make_spawn_per_turn_acp_factory,
 )
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
@@ -233,151 +229,28 @@ async def _sse_stream(
     backend: str,
     attachments: list[Attachment] | None,
 ) -> AsyncIterator[str]:
-    """Drive a single chat turn through ``ChatEngine`` and yield SSE frames.
+    """Drive a single orchestrator chat turn and yield SSE frames.
 
+    Thin wrapper around :func:`_unified_sse_stream` with ``is_orchestrator=True``.
     Caller (``chat_stream``) has already verified the session exists and that
-    no turn is in flight (the latter via ``ChatEngine.stream_assistant``'s
-    own claim, surfaced as ``TurnInProgressError`` on first iteration).
+    no turn is in flight.
     """
-    engine = ctx.client.chat
+    from kagan.server._sse_stream import _unified_sse_stream
 
-    # Claim the engine slot BEFORE any side effects (push_user, broadcast,
-    # session metadata update). The claim is synchronous so it is atomic
-    # w.r.t. the asyncio scheduler; without it, a concurrent /stream request
-    # on the same session could slip past the pre-flight ``turn_status``
-    # check, persist a user row, broadcast CHAT_USER_MESSAGE +
-    # CHAT_TURN_STARTED, then trip TurnInProgressError inside
-    # ``stream_assistant`` — leaving an orphan user row in DB and /watch
-    # subscribers stuck without a recovery frame. (Greptile P1.)
-    try:
-        engine.try_claim_turn(session_id)
-    except TurnInProgressError:
-        err = {"t": "CHAT_ERROR", "error": "Turn already in progress for this session"}
-        _broadcast(session_id, err)
-        yield _emit(err)
-        return
-
-    # Update session metadata BEFORE persisting the user message. The legacy
-    # ``save_chat_session`` shim used ``upsert_with_history`` which DELETEs every
-    # ``ChatMessage`` row for the session and re-inserts only the snapshot —
-    # calling it after ``push_user`` would wipe the just-persisted user row.
-    # Use the metadata-only ``cs.update`` path instead. (Greptile P1 fix.)
-    session.agent_backend = backend
-    # The claimed slot must be released if ANYTHING between the claim and
-    # entering ``stream_assistant`` fails — including settings/cwd resolution,
-    # client disconnect at a yield, or push_user. Once ``stream_assistant``
-    # is entered it owns teardown via its own try/finally; ``detach`` is
-    # idempotent so double-teardown is safe.
-    stream_entered = False
-    turn_done = False
-    try:
-        await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
-
-        # Serialise typed Attachment models back to dicts for the downstream
-        # functions (spawn-per-turn ACP helper, engine.push_user) which still
-        # consume list[dict[str, str]]. The boundary-typed list is used for
-        # internal clarity; the wire shape is unchanged.
-        attachment_dicts: list[dict[str, str]] | None = (
-            [a.model_dump() for a in attachments] if attachments else None
-        )
-
-        # Persist user message and broadcast (transport owns user-row emission;
-        # see the note above ``UserMessagePersisted`` in core.chat.events).
-        user_msg = await engine.push_user(session_id, text, attachments=attachment_dicts)
-        user_msg_id = getattr(user_msg, "id", None)
-
-        user_event = {
-            "t": "CHAT_USER_MESSAGE",
-            "message_id": user_msg_id,
-            "content": text,
-        }
-        _broadcast(session_id, user_event)
-        yield _emit(user_event)
-
-        started_event = {
-            "t": "CHAT_TURN_STARTED",
-            "at": datetime.now(UTC).isoformat(),
-            "by_source": session.source,
-        }
-        _broadcast(session_id, started_event)
-        yield _emit(started_event)
-
-        # Build a per-request factory that captures cwd + attachments.
-        settings = await ctx.client.settings.get()
-        project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
-        factory = make_spawn_per_turn_acp_factory(
-            client=ctx.client,
-            default_agent_backend=backend,
-            cwd=project_cwd,
-            attachments=attachment_dicts,
-        )
-
-        # Build the prompt blocks. Today the spawn-per-turn factory only honours
-        # the user text (it reconstructs system + wrapper internally via
-        # ``run_orchestrator_turn``); we forward the prior conversation here so
-        # the orchestrator sees full context.
-        from kagan.cli.chat.prompt import build_orchestrator_prompt
-
-        prior_history: list[tuple[str, str]] = [
-            (str(item[0]), str(item[1]))
-            for item in session.orchestrator_history
-            if isinstance(item, list | tuple) and len(item) == 2
-        ]
-        prompt_text = build_orchestrator_prompt(prior_history, text)
-
-        stream_entered = True
-        async for event in engine.stream_assistant(
-            session_id,
-            prompt_blocks=[acp.text_block(prompt_text)],
-            agent_backend=backend,
-            acp_factory=factory,
-        ):
-            frame = _chat_event_to_sse_frame(event)
-            if frame is None:
-                continue
-            _broadcast(session_id, frame)
-            yield _emit(frame)
-            if frame.get("t") == "CHAT_DONE":
-                turn_done = True
-    except TurnInProgressError:
-        # Surfaced to the route caller via the wrapper below — no body here.
-        raise
-    except (asyncio.CancelledError, GeneratorExit, ConnectionError):
-        logger.debug("Client disconnected during chat stream for session {}", session_id)
-        # Starlette throws CancelledError at the active yield when the client
-        # drops; the inner stream_assistant generator is abandoned and its
-        # ``finally: _teardown`` only fires when Python's async-gen finalizer
-        # eventually calls aclose(). Until then the sentinel stays in
-        # engine._states and every subsequent /stream 409s. detach() is
-        # idempotent so this is safe even when stream_assistant cleaned up
-        # itself (Greptile P1).
-        await engine.detach(session_id)
-        return
-    except Exception as exc:
-        logger.exception("Chat stream failed for session {}", session_id)
-        err = {"t": "CHAT_ERROR", "error": str(exc)}
-        _broadcast(session_id, err)
-        yield _emit(err)
-    finally:
-        if not stream_entered:
-            await engine.detach(session_id)
-
-    # Post-turn metadata refresh OUTSIDE the error handler. A DB hiccup here
-    # must not emit a spurious CHAT_ERROR after the successful CHAT_DONE that
-    # already shipped — clients toggling spinners / turn counts would see
-    # success-then-error for the same turn (Greptile P1).
-    if turn_done:
-        try:
-            refreshed_pair = await ctx.client.chat_sessions.get_with_history(session_id)
-        except Exception:
-            logger.exception("Post-turn session refresh failed for {}", session_id)
-        else:
-            if refreshed_pair is not None:
-                refreshed = chat_session_to_view(*refreshed_pair)
-                _broadcast(
-                    session_id,
-                    {"t": "CHAT_SESSION_UPDATED", "session": _session_summary(refreshed)},
-                )
+    async for chunk in _unified_sse_stream(
+        ctx,
+        session_id,
+        session,
+        text,
+        backend,
+        attachments,
+        is_orchestrator=True,
+        broadcast=_broadcast,
+        emit=_emit,
+        chat_event_to_sse_frame=_chat_event_to_sse_frame,
+        session_summary=_session_summary,
+    ):
+        yield chunk
 
 
 # ---------------------------------------------------------------------------

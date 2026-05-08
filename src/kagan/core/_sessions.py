@@ -518,17 +518,31 @@ class Sessions:
             # that wait_idle() can synchronise callers waiting for the
             # session to finish processing (settlement rule).
             self._events.register_agent_end_subscriber(session_obj.id)
-            pid, reader_task = await spawn_agent_via_acp(
-                agent_backend,
-                Path(ws.worktree_path),
-                prompt,
-                session_id=session_obj.id,
-                task_id=task_id,
-                db_path=db_path_str,
-                project_id=task.project_id,
-                on_session_update=self._make_acp_callback(task_id, session_obj.id),
-                on_permission_grant=self._make_permission_grant_callback(task_id, session_obj.id),
+            from kagan.core._fake_agent import (
+                FAKE_AGENT_BACKEND,
+                spawn_fake_agent_via_acp,
             )
+
+            if agent_backend == FAKE_AGENT_BACKEND:
+                pid, reader_task = await spawn_fake_agent_via_acp(
+                    session_id=session_obj.id,
+                    task_id=task_id,
+                    on_session_update=self._make_acp_callback(task_id, session_obj.id),
+                )
+            else:
+                pid, reader_task = await spawn_agent_via_acp(
+                    agent_backend,
+                    Path(ws.worktree_path),
+                    prompt,
+                    session_id=session_obj.id,
+                    task_id=task_id,
+                    db_path=db_path_str,
+                    project_id=task.project_id,
+                    on_session_update=self._make_acp_callback(task_id, session_obj.id),
+                    on_permission_grant=self._make_permission_grant_callback(
+                        task_id, session_obj.id
+                    ),
+                )
             await self._update_session_pid(session_obj.id, pid)
             reader_task.add_done_callback(
                 lambda t: asyncio.create_task(

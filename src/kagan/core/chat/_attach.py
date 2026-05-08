@@ -128,25 +128,35 @@ async def notify_project_chat_sessions(
     session_id: str,
     summary: str,
 ) -> None:
-    """Inject an agent notification into all orchestrator chat sessions for a project.
+    """Inject an agent notification into relevant chat sessions for a project.
 
-    Strategy:
-    - Notify all ChatSessions where ``project_id`` matches AND the session is in
-      orchestrator mode (``attached_session_id IS NULL`` or matches the agent
-      session).  This intentionally excludes chat sessions attached to a *different*
-      agent session; those belong to a different task context.
-    - If no sessions match, the notification is silently dropped (best-effort).
+    Strategy — notify only chat sessions that care about this agent session:
+
+    - ChatSessions in **orchestrator mode** (``attached_session_id IS NULL``) for
+      the same project — keeps the orchestrator model informed of all transitions.
+    - ChatSessions **attached to this exact session** (``attached_session_id ==
+      session_id``) — the user is actively watching this stream.
+
+    ChatSessions attached to a *different* agent session are skipped entirely;
+    they belong to a separate stream context and injecting cross-session noise
+    would confuse both the model and the user.
+
+    If no sessions match, the notification is silently dropped (best-effort).
 
     This is wired into the session-status transition hooks so the orchestrator
     model always sees agent completions on the next turn.
     """
-    from sqlmodel import select
+    from sqlmodel import or_, select
 
     def _find_sessions(s) -> list[str]:
         from kagan.core.models import ChatSession as CS
 
         stmt = select(CS.id).where(  # type: ignore[attr-defined]
             CS.project_id == project_id,  # type: ignore[attr-defined]
+            or_(
+                CS.attached_session_id.is_(None),  # type: ignore[attr-defined]
+                CS.attached_session_id == session_id,  # type: ignore[attr-defined]
+            ),
         )
         ids = list(s.exec(stmt).all())
         return ids

@@ -5,11 +5,16 @@
 // They use the fake Kagan server from test/helpers/ — a real HTTP/SSE server,
 // not a pile of mocks.
 //
-// TODO(vscode-chat-invoke): VS Code stable (1.96+) does not expose a public API
-// to programmatically submit a prompt to a registered chat participant and inspect
-// its response stream. Participant requests can only be initiated from the Chat
-// panel UI. When vscode.chat.sendRequest() or equivalent becomes available in a
-// stable release, replace the skip block below with a real participant invocation.
+// TODO(vscode-chat-invoke): As of 2026-05-08, @types/vscode@1.115.0 exposes only
+// vscode.chat.createChatParticipant — there is no vscode.chat.sendRequest() or any
+// equivalent test-host API to programmatically submit a prompt to a registered chat
+// participant and collect its response stream. Participant requests can only be
+// initiated from the Chat panel UI in the Extension Development Host.
+// Investigated: vscode.commands.executeCommand, executeWorkbench, and the
+// @vscode/test-electron 2.5.2 API surface — none provide a programmatic path.
+// When the VS Code team ships a stable sendRequest()-equivalent (tracked at
+// https://github.com/microsoft/vscode/issues/199908), replace the skip block with
+// a real participant invocation against the fake chat server defined above.
 // See: https://code.visualstudio.com/api/extension-guides/chat
 
 import * as assert from "node:assert/strict";
@@ -315,22 +320,20 @@ suite("Chat participant", () => {
     assert.equal(envelope.data[0].id, CHAT_SESSION_ID);
   });
 
-  // TODO(vscode-chat-invoke): VS Code 1.96 stable does not expose a public API to
-  // programmatically submit a prompt to a registered chat participant and inspect
-  // its response stream. Participant requests can only be initiated from the Chat
-  // panel UI. When vscode.chat.sendRequest() or equivalent is available in a stable
-  // release, un-skip this test and wire it up against the fake chat server above.
-  //
-  // Expected shape:
-  //   1. Configure the extension to point at the chat-aware fake server.
+  // TODO(vscode-chat-invoke): As of 2026-05-08, vscode.chat.sendRequest() is not
+  // available in @types/vscode@1.115.0 or @vscode/test-electron@2.5.2.
+  // The vscode.chat namespace exports only createChatParticipant — there is no
+  // test-host path to invoke a participant and collect its response stream.
+  // When the API ships, un-skip and implement per the shape described below:
+  //   1. Point the extension at the chat-aware fake server on port 47867.
   //   2. Call vscode.chat.sendRequest("kagan.agent", { prompt: "hello" }, token).
-  //   3. Collect all markdown stream parts.
-  //   4. Assert the concatenated text contains "Hello, world".
+  //   3. Collect all MarkdownPart items from the response stream.
+  //   4. Assert concatenated text contains "Hello, world".
   //   5. Assert no error event was emitted during the stream.
   test.skip(
     "streams a response from the fake Kagan server via the @kagan chat participant",
     async () => {
-      // Blocked: vscode.chat.sendRequest() is not available in VS Code 1.96 stable.
+      // Blocked (2026-05-08): vscode.chat.sendRequest() not in @types/vscode@1.115.0.
     },
   );
 });

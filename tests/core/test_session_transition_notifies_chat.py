@@ -203,6 +203,67 @@ async def test_project_mismatch_chat_receives_no_notification(client: KaganCore)
     assert system_msgs == []
 
 
+async def test_only_orchestrator_and_attached_chat_notified(client: KaganCore) -> None:
+    """Notification lands in orchestrator and attached-matching chat; skips differently-attached.
+
+    Scenario: project P has three chat sessions —
+      - A: orchestrator mode (attached_session_id IS NULL)
+      - B: attached to session_X (the session being transitioned)
+      - C: attached to session_Y (a different session)
+
+    Transitioning session_X to COMPLETED must notify A and B; C must receive nothing.
+    """
+    project_id = client.active_project_id
+    assert project_id is not None
+
+    # Session Y — a different, unrelated agent session
+    task_y = await client.tasks.create("Task Y")
+    session_y_id = await _seed_session(client.engine, task_y.id, status=SessionStatus.RUNNING)
+
+    # Session X — the one we will transition
+    task_x = await client.tasks.create("Task X")
+    session_x_id = await _seed_session(client.engine, task_x.id, status=SessionStatus.RUNNING)
+
+    # Chat A: orchestrator mode (no attachment)
+    chat_a = await client.chat_sessions.create(
+        source="web", label="Orchestrator", project_id=project_id
+    )
+
+    # Chat B: attached to session_X
+    chat_b = await client.chat_sessions.create(
+        source="web", label="Watching X", project_id=project_id
+    )
+    await client.attach_chat(chat_b.id, session_x_id, agent_role="worker")
+
+    # Chat C: attached to session_Y (different session — must NOT be notified)
+    chat_c = await client.chat_sessions.create(
+        source="web", label="Watching Y", project_id=project_id
+    )
+    await client.attach_chat(chat_c.id, session_y_id, agent_role="worker")
+
+    # Transition session_X to COMPLETED
+    await transition_session(client, session_x_id, SessionStatus.COMPLETED)
+
+    msgs_a = await _chat_messages(client, chat_a.id)
+    msgs_b = await _chat_messages(client, chat_b.id)
+    msgs_c = await _chat_messages(client, chat_c.id)
+
+    sys_a = [m for m in msgs_a if m["role"] == "system"]
+    sys_b = [m for m in msgs_b if m["role"] == "system"]
+    sys_c = [m for m in msgs_c if m["role"] == "system"]
+
+    # A (orchestrator) and B (attached to X) must receive the notification
+    assert len(sys_a) == 1, "orchestrator chat should receive notification"
+    assert sys_a[0]["content"]["kind"] == "agent_finished"
+    assert sys_a[0]["content"]["session_id"] == session_x_id
+
+    assert len(sys_b) == 1, "chat attached to session_X should receive notification"
+    assert sys_b[0]["content"]["session_id"] == session_x_id
+
+    # C (attached to Y) must NOT receive the notification
+    assert sys_c == [], "chat attached to a different session must not receive notification"
+
+
 async def test_notification_does_not_block_transition(client: KaganCore) -> None:
     """Transition succeeds and returns updated session even if no chat sessions exist."""
     task = await client.tasks.create("Solo task")

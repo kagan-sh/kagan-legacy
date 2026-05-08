@@ -4,11 +4,13 @@
 // They use a custom fake server that adds /api/v1/agents/running and
 // /api/v1/sessions/:id/replay routes on top of the base fake server.
 //
-// TODO(vscode-chat-invoke): VS Code stable (1.96+) does not expose a public
-// API to programmatically submit a prompt to a registered chat participant.
+// TODO(vscode-chat-invoke): As of 2026-05-08, @types/vscode@1.115.0 only exposes
+// vscode.chat.createChatParticipant — there is no vscode.chat.sendRequest() or
+// any equivalent API to programmatically drive a participant from test code.
 // The tests below verify the fake-server routes and the commands registration.
-// When vscode.chat.sendRequest() is available, extend these tests to drive the
-// participant directly.
+// When vscode.chat.sendRequest() or equivalent becomes available (tracked at
+// https://github.com/microsoft/vscode/issues/199908), extend these tests to
+// drive the participant directly and assert the breadcrumb + replay markers.
 
 import * as assert from "node:assert/strict";
 import * as http from "node:http";
@@ -260,11 +262,11 @@ suite("Chat participant: /attach and /detach", () => {
     assert.equal(status, 404);
   });
 
-  // TODO(vscode-chat-invoke): The following test cases require
-  // vscode.chat.sendRequest() which is not available in VS Code 1.96 stable.
+  // TODO(vscode-chat-invoke): The following test cases require vscode.chat.sendRequest()
+  // which is not in @types/vscode@1.115.0 or @vscode/test-electron@2.5.2 (2026-05-08).
   //
-  // When available, un-skip and wire these scenarios:
-  //  1. /attach <session-id> → verify chat thread receives replay events + detach button.
+  // When available, un-skip and wire these scenarios against the attach-aware fake server:
+  //  1. /attach <session-id> → verify thread receives replay events + detach button.
   //  2. /attach <task-id-prefix> → verify resolution via running agents API.
   //  3. /attach <bad-id> → verify error message "Unknown task or session".
   //  4. /detach when not attached → verify "Not currently attached" message.
@@ -272,7 +274,7 @@ suite("Chat participant: /attach and /detach", () => {
   test.skip(
     "streams replay then live tail after /attach <session-id>",
     async () => {
-      // Blocked: vscode.chat.sendRequest() not available in VS Code 1.96 stable.
+      // Blocked (2026-05-08): vscode.chat.sendRequest() not in @types/vscode@1.115.0.
     },
   );
 });

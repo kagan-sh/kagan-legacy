@@ -14,7 +14,7 @@ import kagan.server._helpers as server_helpers
 from kagan.core import KaganCore
 from kagan.core._db_helpers import _db_async
 from kagan.core.enums import SessionStatus, TaskStatus
-from kagan.core.models import Session, Task
+from kagan.core.models import ChatSession, Session, Task
 from kagan.server.mcp.server import ServerOptions
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
@@ -96,6 +96,42 @@ async def test_list_sessions_returns_unified_session_items(
     ids = {s["id"] for s in sessions}
     assert f"orch:{chat.id}" in ids
     assert f"task:{session_id}" in ids
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_returns_general_session_after_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    setup: Any,
+) -> None:
+    """GET /api/v1/sessions preserves general chat sessions as gen-scoped raw sessions."""
+    core, project_id = setup
+    general = ChatSession(
+        label="Raw Backend",
+        source="general",
+        agent_backend="fake",
+        project_id=project_id,
+        session_type="general",
+    )
+
+    def _write(s) -> ChatSession:
+        s.add(general)
+        s.flush()
+        s.refresh(general)
+        s.expunge(general)
+        return general
+
+    row = await _db_async(core.engine, _write, commit=True)
+
+    mcp = make_api_server()
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
+
+    endpoint = get_http_endpoint(mcp, "/api/v1/sessions", "GET")
+    body = json_body(await endpoint(make_request("GET", "/api/v1/sessions")))
+
+    item = next(s for s in body["data"]["sessions"] if s["chat_session_id"] == row.id)
+    assert item["id"] == f"gen:{row.id}"
+    assert item["type"] == "general"
+    assert item["capabilities"]["has_kagan_tools"] is False
 
 
 @pytest.mark.asyncio

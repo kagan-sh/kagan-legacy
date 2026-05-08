@@ -52,19 +52,18 @@ def _format_dt(value: datetime | None) -> str:
 
 
 def _chat_to_item(chat: ChatSession) -> SessionItem:
-    # For now, ALL chat sessions are treated as orchestrator.
-    # A session_type column will be added later to distinguish orchestrator vs general.
+    is_general = chat.session_type == "general"
     capabilities = SessionCapabilities(
         can_chat=True,
         can_stream=True,
         can_replay=False,
         can_stop=True,
         can_close=True,
-        has_kagan_tools=True,
+        has_kagan_tools=not is_general,
     )
     return SessionItem(
-        id=f"orch:{chat.id}",
-        type="orchestrator",
+        id=f"{'gen' if is_general else 'orch'}:{chat.id}",
+        type="general" if is_general else "orchestrator",
         role=None,
         status="idle",
         title=chat.label,

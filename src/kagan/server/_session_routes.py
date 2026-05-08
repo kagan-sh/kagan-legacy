@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
 
-    from kagan.core.models import SessionEvent
+    from kagan.core.models import ChatSession, SessionEvent
     from kagan.server.mcp.server import ServerContext
 
 _MAX_REPLAY_LIMIT = 1000
@@ -76,6 +76,24 @@ def _parse_unified_session_id(session_id: str) -> tuple[str, str]:
     if session_id.startswith("task:"):
         return "task", session_id[5:]
     raise ValueError(f"Invalid session ID format: {session_id!r}")
+
+
+async def _load_bound_chat_session(
+    ctx: ServerContext, *, kind: str, raw_id: str
+) -> ChatSession | None:
+    session = await ctx.client.chat_sessions.get(raw_id)
+    if session is None:
+        return None
+
+    expected_type = "general" if kind == "gen" else "orchestrator"
+    if session.session_type != expected_type:
+        return None
+
+    bound_project_id = getattr(ctx, "bound_project_id", None)
+    if bound_project_id is not None and session.project_id != bound_project_id:
+        return None
+
+    return session
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +400,7 @@ async def _message_sse_stream(
             default_agent_backend=backend,
             cwd=project_cwd,
             attachments=attachment_dicts,
+            raw=not is_orchestrator,
         )
 
         if is_orchestrator:
@@ -572,6 +591,8 @@ async def _do_session_replay(request: Request, ctx: ServerContext) -> JSONRespon
         return _ok(page.model_dump(mode="json"))
 
     query = _parse_replay_query(request)
+    if await _load_bound_chat_session(ctx, kind=kind, raw_id=raw_id) is None:
+        return _err("Session not found", status=404)
     session = await _load_session_view(ctx.client, raw_id)
     if session is None:
         return _err("Session not found", status=404)
@@ -603,6 +624,8 @@ async def _do_session_stop(request: Request, ctx: ServerContext) -> Response:
             return _err(f"Session {session_id!r} not found", status=404)
         await ctx.client.tasks.cancel(task_id)
     else:
+        if await _load_bound_chat_session(ctx, kind=kind, raw_id=raw_id) is None:
+            return _err("Session not found", status=404)
         await ctx.client.chat.cancel(raw_id)
 
     return Response(status_code=204)
@@ -622,6 +645,8 @@ async def _do_session_close(request: Request, ctx: ServerContext) -> Response:
     if kind == "task":
         return _err("Task sessions cannot be closed, only stopped", status=400)
 
+    if await _load_bound_chat_session(ctx, kind=kind, raw_id=raw_id) is None:
+        return _err("Session not found", status=404)
     deleted = await ctx.client.chat_sessions.delete(raw_id)
     if not deleted:
         return _err("Session not found", status=404)
@@ -673,6 +698,9 @@ def register_session_routes(mcp: FastMCP) -> None:
 
         if kind == "task":
             return _err("Task sessions do not support direct messaging", status=400)
+
+        if await _load_bound_chat_session(ctx, kind=kind, raw_id=raw_id) is None:
+            return _err("Session not found", status=404)
 
         resolved = await _resolve_message_request(request, ctx, raw_id)
         if isinstance(resolved, Response):

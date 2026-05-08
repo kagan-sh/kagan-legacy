@@ -24,8 +24,14 @@ async def _seed_chat_session(
     label: str = "Test Chat",
     project_id: str | None = None,
     source: str = "test",
+    session_type: str = "orchestrator",
 ) -> str:
-    chat = ChatSession(label=label, source=source, project_id=project_id)
+    chat = ChatSession(
+        label=label,
+        source=source,
+        project_id=project_id,
+        session_type=session_type,
+    )
 
     def _write(s) -> ChatSession:
         s.add(chat)
@@ -161,6 +167,27 @@ async def test_session_items_have_stable_kind_scoped_ids(
 
     assert chat_item.id == f"orch:{chat_id}"
     assert task_item.id == f"task:{session_id}"
+
+
+async def test_session_items_preserve_general_session_type_after_refresh(
+    client_with_project: tuple[KaganCore, str],
+) -> None:
+    """General chat sessions remain gen-scoped raw sessions in the unified list."""
+    client, project_id = client_with_project
+    general_id = await _seed_chat_session(
+        client,
+        label="General Chat",
+        project_id=project_id,
+        source="general",
+        session_type="general",
+    )
+
+    items = await client.list_session_items(project_id=project_id)
+
+    general = next(i for i in items if i.chat_session_id == general_id)
+    assert general.id == f"gen:{general_id}"
+    assert general.type == "general"
+    assert general.capabilities.has_kagan_tools is False
 
 
 async def test_session_items_capabilities_match_session_type(

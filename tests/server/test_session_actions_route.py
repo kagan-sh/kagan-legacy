@@ -8,11 +8,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pathlib import Path
 
+import acp
 import pytest
 
 import kagan.server._helpers as server_helpers
+import kagan.server._session_routes as session_routes
 from kagan.core import KaganCore
 from kagan.core._db_helpers import _db_async
+from kagan.core.chat import ACPTurnResult
 from kagan.core.enums import SessionStatus, TaskStatus
 from kagan.core.models import ChatSession, Session, Task
 from kagan.server.mcp.server import ServerOptions
@@ -58,8 +61,15 @@ async def _seed_session(
     return result.id
 
 
-async def _seed_chat_session(engine, label: str, project_id: str) -> str:
-    chat = ChatSession(label=label, source="web", project_id=project_id)
+async def _seed_chat_session(
+    engine,
+    label: str,
+    project_id: str,
+    *,
+    session_type: str = "orchestrator",
+) -> str:
+    source = "general" if session_type == "general" else "web"
+    chat = ChatSession(label=label, source=source, project_id=project_id, session_type=session_type)
 
     def _w(s) -> ChatSession:
         s.add(chat)
@@ -133,6 +143,41 @@ async def test_stop_chat_session(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("prefix", "session_type"), [("orch", "orchestrator"), ("gen", "general")])
+async def test_stop_chat_session_requires_bound_project(
+    monkeypatch: pytest.MonkeyPatch,
+    setup: Any,
+    prefix: str,
+    session_type: str,
+) -> None:
+    """POST /api/v1/sessions/{id}/stop hides chat sessions from other projects."""
+    core, _project_id = setup
+    other = await core.projects.create("Other Project")
+    chat_id = await _seed_chat_session(
+        core.engine,
+        "Other Chat",
+        other.id,
+        session_type=session_type,
+    )
+
+    mcp = make_api_server()
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
+
+    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/stop", "POST")
+    response = await endpoint(
+        make_request(
+            "POST",
+            f"/api/v1/sessions/{prefix}:{chat_id}/stop",
+            path_params={"session_id": f"{prefix}:{chat_id}"},
+        )
+    )
+    body = json_body(response)
+
+    assert response.status_code == 404
+    assert body["ok"] is False
+
+
+@pytest.mark.asyncio
 async def test_close_chat_session(
     monkeypatch: pytest.MonkeyPatch,
     setup: Any,
@@ -161,6 +206,42 @@ async def test_close_chat_session(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("prefix", "session_type"), [("orch", "orchestrator"), ("gen", "general")])
+async def test_close_chat_session_requires_bound_project(
+    monkeypatch: pytest.MonkeyPatch,
+    setup: Any,
+    prefix: str,
+    session_type: str,
+) -> None:
+    """POST /api/v1/sessions/{id}/close hides chat sessions from other projects."""
+    core, _project_id = setup
+    other = await core.projects.create("Other Project")
+    chat_id = await _seed_chat_session(
+        core.engine,
+        "Other Chat",
+        other.id,
+        session_type=session_type,
+    )
+
+    mcp = make_api_server()
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
+
+    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/close", "POST")
+    response = await endpoint(
+        make_request(
+            "POST",
+            f"/api/v1/sessions/{prefix}:{chat_id}/close",
+            path_params={"session_id": f"{prefix}:{chat_id}"},
+        )
+    )
+    body = json_body(response)
+
+    assert response.status_code == 404
+    assert body["ok"] is False
+    assert await core.chat_sessions.get_with_history(chat_id) is not None
+
+
+@pytest.mark.asyncio
 async def test_close_task_session_returns_400(
     monkeypatch: pytest.MonkeyPatch,
     setup: Any,
@@ -186,3 +267,84 @@ async def test_close_task_session_returns_400(
     assert response.status_code == 400
     assert body["ok"] is False
     assert "cannot be closed" in body["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_message_chat_session_requires_bound_project(
+    monkeypatch: pytest.MonkeyPatch,
+    setup: Any,
+) -> None:
+    """POST /api/v1/sessions/{id}/message hides chat sessions from other projects."""
+    core, _project_id = setup
+    other = await core.projects.create("Other Project")
+    chat_id = await _seed_chat_session(core.engine, "Other Chat", other.id)
+
+    mcp = make_api_server()
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
+
+    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/message", "POST")
+    response = await endpoint(
+        make_request(
+            "POST",
+            f"/api/v1/sessions/orch:{chat_id}/message",
+            body={"text": "hello"},
+            path_params={"session_id": f"orch:{chat_id}"},
+        )
+    )
+    body = json_body(response)
+
+    assert response.status_code == 404
+    assert body["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_message_general_session_uses_raw_factory(
+    monkeypatch: pytest.MonkeyPatch,
+    setup: Any,
+) -> None:
+    """General session messages use a raw ACP factory with no Kagan MCP tooling."""
+    core, project_id = setup
+    chat_id = await _seed_chat_session(
+        core.engine,
+        "Raw Chat",
+        project_id,
+        session_type="general",
+    )
+    captured: dict[str, Any] = {}
+
+    def fake_factory(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+
+        class _Factory:
+            async def prompt(self, **prompt_kwargs: Any) -> ACPTurnResult:
+                captured["prompt_blocks"] = prompt_kwargs["prompt_blocks"]
+                return ACPTurnResult(full_response="raw reply", cancelled=False)
+
+        return _Factory()
+
+    monkeypatch.setattr(session_routes, "make_spawn_per_turn_acp_factory", fake_factory)
+
+    async def fake_resolve_repo_path(**_kwargs: Any) -> Any:
+        return None
+
+    monkeypatch.setattr(core.projects, "resolve_repo_path", fake_resolve_repo_path)
+
+    mcp = make_api_server()
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
+
+    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/message", "POST")
+    response = await endpoint(
+        make_request(
+            "POST",
+            f"/api/v1/sessions/gen:{chat_id}/message",
+            body={"text": "hello"},
+            path_params={"session_id": f"gen:{chat_id}"},
+        )
+    )
+
+    assert response.status_code == 200
+    async for _chunk in response.body_iterator:
+        pass
+
+    assert captured["raw"] is True
+    assert captured["prompt_blocks"] == [acp.text_block("hello")]

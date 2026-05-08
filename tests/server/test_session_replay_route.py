@@ -20,11 +20,11 @@ from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
 
 
-def _make_ctx(core: KaganCore) -> SimpleNamespace:
+def _make_ctx(core: KaganCore, *, bound_project_id: str | None = None) -> SimpleNamespace:
     return SimpleNamespace(
         client=core,
         opts=ServerOptions(),
-        bound_project_id=core.active_project_id,
+        bound_project_id=core.active_project_id if bound_project_id is None else bound_project_id,
     )
 
 
@@ -77,8 +77,15 @@ async def _seed_event(engine, task_id: str, session_id: str, event_type: str, pa
     return result.id
 
 
-async def _seed_chat_session(engine, label: str, project_id: str) -> str:
-    chat = ChatSession(label=label, source="web", project_id=project_id)
+async def _seed_chat_session(
+    engine,
+    label: str,
+    project_id: str,
+    *,
+    session_type: str = "orchestrator",
+) -> str:
+    source = "general" if session_type == "general" else "web"
+    chat = ChatSession(label=label, source=source, project_id=project_id, session_type=session_type)
 
     def _w(s) -> ChatSession:
         s.add(chat)
@@ -178,3 +185,39 @@ async def test_replay_chat_session_messages(
     assert events[0]["payload"]["content"] == "Hello"
     assert events[1]["payload"]["role"] == "assistant"
     assert events[1]["payload"]["content"] == "Hi there"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("prefix", "session_type"), [("orch", "orchestrator"), ("gen", "general")])
+async def test_replay_chat_session_requires_bound_project(
+    monkeypatch: pytest.MonkeyPatch,
+    setup: Any,
+    prefix: str,
+    session_type: str,
+) -> None:
+    """Chat session replay is hidden when the route context is bound to another project."""
+    core, _project_id = setup
+    other = await core.projects.create("Other Project")
+    chat_id = await _seed_chat_session(
+        core.engine,
+        "Other Chat",
+        other.id,
+        session_type=session_type,
+    )
+    await _seed_chat_message(core.engine, chat_id, "user", "secret")
+
+    mcp = make_api_server()
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
+
+    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
+    response = await endpoint(
+        make_request(
+            "GET",
+            f"/api/v1/sessions/{prefix}:{chat_id}/replay",
+            path_params={"session_id": f"{prefix}:{chat_id}"},
+        )
+    )
+    body = json_body(response)
+
+    assert response.status_code == 404
+    assert body["ok"] is False

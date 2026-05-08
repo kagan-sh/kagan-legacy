@@ -570,6 +570,65 @@ async def test_handle_slash_agents_without_arg_uses_picker_selection(monkeypatch
     assert selected == ["opencode"]
 
 
+@pytest.mark.asyncio
+async def test_handle_slash_agents_with_argument_switches_resolved_backend(monkeypatch) -> None:
+    client = _FakeClient()
+    selected: list[str] = []
+
+    async def _switch_agent(backend: str) -> bool:
+        selected.append(backend)
+        return True
+
+    monkeypatch.setattr(
+        "kagan.cli.chat.controller.list_registered_agent_backends",
+        lambda: ["claude-code", "opencode"],
+    )
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    monkeypatch.setattr(controller, "_switch_agent", _switch_agent)
+
+    should_exit = await controller._handle_slash("/agents 2")
+
+    assert should_exit is True
+    assert selected == ["opencode"]
+
+
+@pytest.mark.asyncio
+async def test_handle_slash_sessions_dispatches_query_to_session_picker(monkeypatch) -> None:
+    client = _FakeClient()
+    queries: list[str | None] = []
+
+    async def _open_sessions(query: str | None) -> bool:
+        queries.append(query)
+        return False
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    monkeypatch.setattr(controller, "_open_sessions", _open_sessions)
+
+    should_exit = await controller._handle_slash("/sessions recent bug")
+
+    assert should_exit is False
+    assert queries == ["recent bug"]
+
+
+@pytest.mark.asyncio
+async def test_handle_slash_tool_dispatches_query_to_tool_report(monkeypatch) -> None:
+    client = _FakeClient()
+    queries: list[str | None] = []
+
+    def _show_tool_report(renderer: Any, query: str | None) -> None:
+        assert renderer is controller._renderer
+        queries.append(query)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    monkeypatch.setattr("kagan.cli.chat.controller.show_tool_report", _show_tool_report)
+
+    should_exit = await controller._handle_slash("/tool t007")
+
+    assert should_exit is False
+    assert queries == ["t007"]
+
+
 def test_resolve_slash_input_new_requests_new_session() -> None:
     result = resolve_slash_input(
         "/new",

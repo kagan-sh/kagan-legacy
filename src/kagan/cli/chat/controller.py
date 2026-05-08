@@ -58,6 +58,7 @@ from kagan.cli.chat._streaming import _TurnLiveState
 from kagan.cli.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.cli.chat.commands import (
     SlashAction,
+    SlashCommandOutcome,
     build_slash_presentation_lines,
     resolve_slash_input,
 )
@@ -111,6 +112,28 @@ __all__ = [
     "_SendResult",
     "_WaveIndicator",
 ]
+
+
+_SLASH_ACTION_HANDLER_NAMES: dict[SlashAction, str] = {
+    SlashAction.CLEAR: "_handle_slash_clear",
+    SlashAction.SHOW_HELP: "_handle_slash_help",
+    SlashAction.SHOW_AGENTS: "_handle_slash_show_agents",
+    SlashAction.SWITCH_AGENT: "_handle_slash_switch_agent",
+    SlashAction.LIST_SESSIONS: "_handle_slash_list_sessions",
+    SlashAction.DELETE_SESSION: "_handle_slash_delete_session",
+    SlashAction.NEW_SESSION: "_handle_slash_new_session",
+    SlashAction.SHOW_TOOL: "_handle_slash_show_tool",
+    SlashAction.SHOW_STATUS: "_handle_slash_show_status",
+    SlashAction.SHOW_ANALYTICS: "_handle_slash_show_analytics",
+    SlashAction.SHOW_PROJECT: "_handle_slash_show_project",
+    SlashAction.SWITCH_PROJECT: "_handle_slash_switch_project",
+    SlashAction.SWITCH_REPO: "_handle_slash_switch_repo",
+    SlashAction.SHOW_REPO: "_handle_slash_show_repo",
+    SlashAction.SHOW_APPROVALS: "_handle_slash_show_approvals",
+    SlashAction.ATTACH_AGENT: "_handle_slash_attach_agent",
+    SlashAction.DETACH_AGENT: "_handle_slash_detach_agent",
+    SlashAction.CLOSE: "_handle_slash_close",
+}
 
 
 def _settings_flag_enabled(settings: dict[str, str], key: str, *, default: bool) -> bool:
@@ -1094,68 +1117,113 @@ class ChatController:
         if not result.handled:
             return False
 
+        self._print_slash_presentation(result)
+        return await self._dispatch_slash_action(result)
+
+    def _print_slash_presentation(self, result: SlashCommandOutcome) -> None:
         for line in build_slash_presentation_lines(result):
             if line.tone == "error":
                 _console.print(f"[red]{line.text}[/red]")
             else:
                 _console.print(line.text)
 
-        match result.action:
-            case SlashAction.CLEAR:
-                click.clear()
-            case SlashAction.SHOW_HELP:
-                print_help_documentation()
-            case SlashAction.SHOW_AGENTS:
-                return await self._show_agent_picker()
-            case SlashAction.SWITCH_AGENT:
-                return await self._switch_agent(result.data or result.selected_agent or "")
-            case SlashAction.LIST_SESSIONS:
-                return await self._handle_session_switch(
-                    self._open_sessions(result.data or result.sessions_query)
-                )
-            case SlashAction.DELETE_SESSION:
-                await self._delete_session(result.data or result.delete_session_query or "")
-            case SlashAction.NEW_SESSION:
-                return await self._handle_session_switch(self._create_new_session())
-            case SlashAction.SHOW_TOOL:
-                show_tool_report(self._renderer, result.data or result.tool_query)
-            case SlashAction.SHOW_STATUS:
-                print_status_panel(
-                    session_title=self._session_title,
-                    chat_session_id=self._chat_session_id,
-                    project_name=self._project_name,
-                    agent_backend=self.agent_backend,
-                    turn_count=self._turn_count,
-                )
-            case SlashAction.SHOW_ANALYTICS:
-                await self._handle_analytics(result.data)
-            case SlashAction.SHOW_PROJECT:
-                print_project_info(
-                    project_name=self._project_name,
-                    project_id=self.client.active_project_id,
-                )
-            case SlashAction.SWITCH_PROJECT:
-                await self._switch_project(result.data or result.project_switch_requested or "")
-            case SlashAction.SWITCH_REPO:
-                await self._switch_repo(result.data or result.repo_switch_requested or "")
-            case SlashAction.SHOW_REPO:
-                print_repo_info(
-                    repo_name=self._selected_repo_name,
-                    repo_id=self._selected_repo_id,
-                )
-            case SlashAction.SHOW_APPROVALS:
-                self._show_approvals(result.data or "")
-            case SlashAction.ATTACH_AGENT:
-                if result.data:
-                    await self._attach_agent(result.data)
-            case SlashAction.DETACH_AGENT:
-                await self._detach_agent()
-            case SlashAction.CLOSE:
-                return True
-            case _:
-                pass
+    async def _dispatch_slash_action(self, result: SlashCommandOutcome) -> bool:
+        handler_name = _SLASH_ACTION_HANDLER_NAMES.get(result.action)
+        if handler_name is None:
+            return False
+        handler = getattr(self, handler_name)
+        return await handler(result)
 
+    async def _handle_slash_clear(self, result: SlashCommandOutcome) -> bool:
+        del result
+        click.clear()
         return False
+
+    async def _handle_slash_help(self, result: SlashCommandOutcome) -> bool:
+        del result
+        print_help_documentation()
+        return False
+
+    async def _handle_slash_show_agents(self, result: SlashCommandOutcome) -> bool:
+        del result
+        return await self._show_agent_picker()
+
+    async def _handle_slash_switch_agent(self, result: SlashCommandOutcome) -> bool:
+        return await self._switch_agent(result.data or result.selected_agent or "")
+
+    async def _handle_slash_list_sessions(self, result: SlashCommandOutcome) -> bool:
+        return await self._handle_session_switch(
+            self._open_sessions(result.data or result.sessions_query)
+        )
+
+    async def _handle_slash_delete_session(self, result: SlashCommandOutcome) -> bool:
+        await self._delete_session(result.data or result.delete_session_query or "")
+        return False
+
+    async def _handle_slash_new_session(self, result: SlashCommandOutcome) -> bool:
+        del result
+        return await self._handle_session_switch(self._create_new_session())
+
+    async def _handle_slash_show_tool(self, result: SlashCommandOutcome) -> bool:
+        show_tool_report(self._renderer, result.data or result.tool_query)
+        return False
+
+    async def _handle_slash_show_status(self, result: SlashCommandOutcome) -> bool:
+        del result
+        print_status_panel(
+            session_title=self._session_title,
+            chat_session_id=self._chat_session_id,
+            project_name=self._project_name,
+            agent_backend=self.agent_backend,
+            turn_count=self._turn_count,
+        )
+        return False
+
+    async def _handle_slash_show_analytics(self, result: SlashCommandOutcome) -> bool:
+        await self._handle_analytics(result.data)
+        return False
+
+    async def _handle_slash_show_project(self, result: SlashCommandOutcome) -> bool:
+        del result
+        print_project_info(
+            project_name=self._project_name,
+            project_id=self.client.active_project_id,
+        )
+        return False
+
+    async def _handle_slash_switch_project(self, result: SlashCommandOutcome) -> bool:
+        await self._switch_project(result.data or result.project_switch_requested or "")
+        return False
+
+    async def _handle_slash_switch_repo(self, result: SlashCommandOutcome) -> bool:
+        await self._switch_repo(result.data or result.repo_switch_requested or "")
+        return False
+
+    async def _handle_slash_show_repo(self, result: SlashCommandOutcome) -> bool:
+        del result
+        print_repo_info(
+            repo_name=self._selected_repo_name,
+            repo_id=self._selected_repo_id,
+        )
+        return False
+
+    async def _handle_slash_show_approvals(self, result: SlashCommandOutcome) -> bool:
+        self._show_approvals(result.data or "")
+        return False
+
+    async def _handle_slash_attach_agent(self, result: SlashCommandOutcome) -> bool:
+        if result.data:
+            await self._attach_agent(result.data)
+        return False
+
+    async def _handle_slash_detach_agent(self, result: SlashCommandOutcome) -> bool:
+        del result
+        await self._detach_agent()
+        return False
+
+    async def _handle_slash_close(self, result: SlashCommandOutcome) -> bool:
+        del result
+        return True
 
     async def _handle_session_switch(self, action: Any) -> bool:
         """Run a session-changing slash action; detach engine state if it triggers a restart."""

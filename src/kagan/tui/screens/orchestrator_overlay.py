@@ -39,7 +39,9 @@ from kagan.tui.widgets.running_agents_bar import RunningAgentsBar
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
+    from kagan.core.models import SessionEvent
     from kagan.tui.app import KaganApp
+    from kagan.tui.widgets.streaming import ChunkKind, StreamingOutput
 
 _ORCHESTRATOR_TITLE = "Orchestrator"
 
@@ -283,17 +285,20 @@ class OrchestratorOverlay(ModalScreen[None]):
         task-event stream filtered by session_id.  task_id is needed for the
         stream subscription; if unknown we skip the live tail.
         """
-        from kagan.tui.screens._chat_runner import (
-            stream_chunk_kind,
-            stream_chunk_text,
-        )
-        from kagan.tui.widgets.streaming import UserInputWidget
-
         output = panel.stream_output()
         output.clear()
+        resolved_task_id = await self._resolve_agent_session_task_id(session_id, task_id)
+        if resolved_task_id is None:
+            return
 
-        # Replay: list_recent with session_id filter (needs task_id from DB)
-        # First resolve task_id if not supplied
+        await self._replay_agent_session_events(resolved_task_id, session_id, output)
+        await self._stream_live_agent_session_events(resolved_task_id, session_id, output)
+
+    async def _resolve_agent_session_task_id(
+        self,
+        session_id: str,
+        task_id: str | None,
+    ) -> str | None:
         resolved_task_id = task_id
         if resolved_task_id is None:
             try:
@@ -303,69 +308,102 @@ class OrchestratorOverlay(ModalScreen[None]):
                     resolved_task_id = match_row.task_id
             except Exception:
                 pass
+        return resolved_task_id
 
-        if resolved_task_id is not None:
-            try:
-                replay_events = await self.kagan_app.core.tasks.events.list_recent(
-                    resolved_task_id, limit=200, session_id=session_id
-                )
-            except Exception:
-                replay_events = []
+    async def _replay_agent_session_events(
+        self,
+        task_id: str,
+        session_id: str,
+        output: StreamingOutput,
+    ) -> None:
+        try:
+            replay_events = await self.kagan_app.core.tasks.events.list_recent(
+                task_id, limit=200, session_id=session_id
+            )
+        except Exception:
+            replay_events = []
 
-            for event in replay_events:
-                payload = event.payload or {}
-                match event.event_type:
-                    case "output_chunk":
-                        text = stream_chunk_text(payload)
-                        kind = stream_chunk_kind(payload)
-                        if text and kind in {"assistant", "thought", "note", "user"}:
-                            if kind == "user":
-                                output.append_widget(UserInputWidget(text))
-                            else:
-                                output.append_chunk(text, kind=kind, merge=True)
-                    case "agent_completed":
-                        output.post_note("Agent completed")
-                    case "agent_failed":
-                        output.post_note(stream_chunk_text(payload) or "Agent failed")
-                    case _:
-                        pass
+        for event in replay_events:
+            self._render_replay_agent_session_event(event, output)
 
-            # Live stream — filter by session_id
-            # TODO: Replace with server SSE GET /api/v1/sessions/{id}/events once
-            #       a TUI-side HTTP streaming helper is available.  For now we use
-            #       the core task event stream with session_id filtering.
-            try:
-                async for event in self.kagan_app.core.tasks.events.stream(
-                    resolved_task_id, replay=False
-                ):
-                    if event.session_id != session_id:
-                        continue
-                    payload = event.payload or {}
-                    match event.event_type:
-                        case "output_chunk":
-                            text = stream_chunk_text(payload)
-                            kind = stream_chunk_kind(payload)
-                            if text and kind in {"assistant", "thought", "note", "user"}:
-                                if kind == "user":
-                                    output.append_widget(UserInputWidget(text))
-                                else:
-                                    output.append_chunk(text, kind=kind)
-                        case "agent_completed":
-                            role_label = (self._attached_role or "Agent").capitalize()
-                            self._update_breadcrumb(f"{role_label} · done")
-                            output.post_note("Agent completed")
-                            break
-                        case "agent_failed":
-                            role_label = (self._attached_role or "Agent").capitalize()
-                            self._update_breadcrumb(f"{role_label} · failed")
-                            output.post_note(stream_chunk_text(payload) or "Agent failed")
-                            break
-                        case _:
-                            pass
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                output.post_note("Stream ended")
+    async def _stream_live_agent_session_events(
+        self,
+        task_id: str,
+        session_id: str,
+        output: StreamingOutput,
+    ) -> None:
+        # TODO: Replace with server SSE GET /api/v1/sessions/{id}/events once
+        #       a TUI-side HTTP streaming helper is available.  For now we use
+        #       the core task event stream with session_id filtering.
+        try:
+            async for event in self.kagan_app.core.tasks.events.stream(task_id, replay=False):
+                if event.session_id != session_id:
+                    continue
+                if self._render_live_agent_session_event(event, output):
+                    break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            output.post_note("Stream ended")
+
+    def _render_replay_agent_session_event(
+        self,
+        event: SessionEvent,
+        output: StreamingOutput,
+    ) -> None:
+        from kagan.tui.screens._chat_runner import stream_chunk_text
+
+        match event.event_type:
+            case "output_chunk":
+                self._render_agent_output_chunk(event.payload or {}, output, merge=True)
+            case "agent_completed":
+                output.post_note("Agent completed")
+            case "agent_failed":
+                output.post_note(stream_chunk_text(event.payload or {}) or "Agent failed")
+            case _:
+                pass
+
+    def _render_live_agent_session_event(
+        self,
+        event: SessionEvent,
+        output: StreamingOutput,
+    ) -> bool:
+        from kagan.tui.screens._chat_runner import stream_chunk_text
+
+        payload = event.payload or {}
+        match event.event_type:
+            case "output_chunk":
+                self._render_agent_output_chunk(payload, output, merge=False)
+            case "agent_completed":
+                role_label = (self._attached_role or "Agent").capitalize()
+                self._update_breadcrumb(f"{role_label} · done")
+                output.post_note("Agent completed")
+                return True
+            case "agent_failed":
+                role_label = (self._attached_role or "Agent").capitalize()
+                self._update_breadcrumb(f"{role_label} · failed")
+                output.post_note(stream_chunk_text(payload) or "Agent failed")
+                return True
+            case _:
+                pass
+        return False
+
+    def _render_agent_output_chunk(
+        self,
+        payload: dict,
+        output: StreamingOutput,
+        *,
+        merge: bool,
+    ) -> None:
+        from kagan.tui.screens._chat_runner import (
+            stream_chunk_kind,
+            stream_chunk_text,
+        )
+
+        text = stream_chunk_text(payload)
+        kind = stream_chunk_kind(payload)
+        if text and kind in {"assistant", "thought", "note", "user"}:
+            output.append_chunk(text, kind=cast("ChunkKind", kind), merge=merge)
 
     async def _cancel_sse(self) -> None:
         if self._sse_task is not None:

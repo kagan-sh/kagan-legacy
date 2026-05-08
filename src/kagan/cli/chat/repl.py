@@ -67,6 +67,7 @@ class ToolbarState:
     project_id: str = ""
     turn_count: int = 0
     session_label: str = "orchestrator"
+    session_type: str = "orchestrator"
     context_pct: float | None = None
     workspace_label: str = ""
     is_streaming: bool = False
@@ -725,7 +726,16 @@ def _toolbar_status_segments() -> tuple[str, str, str, str]:
     status_right = " · ".join(status_right_parts)
 
     tip_left = f"tip: {_TIP_ROTATOR.current()}"
-    tip_right = f"session: {_TOOLBAR_STATE.session_label}"
+    session_type = _TOOLBAR_STATE.session_type
+    if session_type == "orchestrator":
+        type_badge = "◈ ORCH"
+    elif session_type == "general":
+        type_badge = "○ GEN"
+    elif session_type == "task":
+        type_badge = "▸ TASK"
+    else:
+        type_badge = session_type
+    tip_right = f"{type_badge} · {_TOOLBAR_STATE.session_label}"
 
     return status_left, status_right, tip_left, tip_right
 

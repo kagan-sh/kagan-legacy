@@ -49,6 +49,7 @@ class ChatSessionView(BaseModel):
     source: str
     agent_backend: str | None
     project_id: str | None
+    session_type: str = "orchestrator"
     updated_at: str
     # Decoded message history as (role, content) pairs.
     orchestrator_history: list[list[str]]
@@ -74,6 +75,7 @@ def chat_session_to_view(
         label=row.label,
         source=row.source,
         agent_backend=row.agent_backend,
+        session_type=row.session_type,
         orchestrator_history=history,
         messages_rendered=[],
         updated_at=updated_at,

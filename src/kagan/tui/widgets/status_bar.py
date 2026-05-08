@@ -38,6 +38,8 @@ class StatusBar(Horizontal):
     hint: reactive[str] = reactive("")
     agent_backend: reactive[str] = reactive("")
     turn_count: reactive[int] = reactive(0)
+    access_mode: reactive[str] = reactive("")
+    branch_name: reactive[str] = reactive("")
 
     def __init__(self, *, id: str | None = None, classes: str | None = None) -> None:
         super().__init__(id=id or "agent-status-bar", classes=classes)
@@ -68,6 +70,12 @@ class StatusBar(Horizontal):
         self._update_display()
 
     def watch_hint(self, _hint: str) -> None:
+        self._update_display()
+
+    def watch_access_mode(self, _: str) -> None:
+        self._update_display()
+
+    def watch_branch_name(self, _: str) -> None:
         self._update_display()
 
     def update_status(self, status: str) -> None:
@@ -128,6 +136,13 @@ class StatusBar(Horizontal):
         else:
             symbol = STATUS_SYMBOLS.get(status, "○")
         extras: list[str] = []
+        if self.access_mode:
+            mode_color = "#fbbf24" if self.access_mode == "Full" else ""
+            mode_start = f"[{mode_color}]" if mode_color else ""
+            mode_end = "[/]" if mode_color else ""
+            extras.append(f"{mode_start}[{self.access_mode} ▾]{mode_end}")
+        if self.branch_name:
+            extras.append(self.branch_name)
         if self.agent_backend:
             extras.append(self.agent_backend)
         if self.turn_count > 0:

@@ -538,7 +538,10 @@ class KanbanScreen(Screen[None]):
             for row in get_global_shortcut_help_rows()
             if row[1].lower() not in {"help", "quick actions"}
         ]
-        return rows[:3]
+        base = rows[:2]
+        base.append(("Ctrl+W", "view"))
+        base.append(("Ctrl+K", "palette"))
+        return base
 
     def _mode_label(self) -> str:
         if self.search_visible:
@@ -1298,12 +1301,13 @@ class KanbanScreen(Screen[None]):
         hint_bar = self.query_one(KanbanHintBar)
         task = self._selected_task()
         actions = self._task_actions(task)
-        if self._inline_action_message:
-            actions = [("", self._inline_action_message), *actions]
+        navigation = self._navigation_hints()
+        global_hints = self._global_hints()
+
         hint_bar.show_kanban_hints(
-            navigation=self._navigation_hints() if task is not None else [],
+            navigation=navigation,
             actions=actions,
-            global_hints=self._global_hints(),
+            global_hints=global_hints,
             mode_label=self._mode_label(),
         )
 

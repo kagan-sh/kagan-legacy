@@ -45,6 +45,16 @@ function AppLayout() {
     const overlay = useSessionOverlay();
     const workspaceRoute = location.pathname.startsWith("/workspace") || location.pathname.startsWith("/chat");
 
+    // Dark mode is the default — add .dark class on mount if not explicitly light
+    useEffect(() => {
+        const stored = localStorage.getItem("kagan-theme");
+        if (stored === "light") {
+            document.documentElement.classList.remove("dark");
+        } else {
+            document.documentElement.classList.add("dark");
+        }
+    }, []);
+
     // Reset project check when project switches (e.g. from welcome page)
     const prevProjectVersionRef = useRef(projectVersion);
     useEffect(() => {
@@ -83,6 +93,33 @@ function AppLayout() {
         if (workspaceRoute) return;
         overlay.toggle();
     }, [overlay, workspaceRoute]);
+
+    // Global keyboard shortcuts (only when no input/textarea is focused)
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            const tag = (document.activeElement?.tagName || "").toLowerCase();
+            if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+            const meta = e.metaKey || e.ctrlKey;
+            if (meta && e.shiftKey && e.key === "L") {
+                e.preventDefault();
+                const html = document.documentElement;
+                if (html.classList.contains("dark")) {
+                    html.classList.remove("dark");
+                    localStorage.setItem("kagan-theme", "light");
+                } else {
+                    html.classList.add("dark");
+                    localStorage.setItem("kagan-theme", "dark");
+                }
+            }
+            if (meta && e.key === "k") {
+                e.preventDefault();
+                setCommandOpen(true);
+            }
+        };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
+    }, [setCommandOpen]);
 
     if (!projectChecked) {
         return (

@@ -1,4 +1,5 @@
 import inspect
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -172,7 +173,8 @@ class KaganApp(App[None]):
                 logger.warning("Failed to load last project: {}", exc)
             else:
                 await self.activate_project(project)
-                self.push_screen("kanban-screen")
+                default_screen = os.environ.get("KAGAN_DEFAULT_SCREEN", "workspace-screen")
+                self.push_screen(default_screen)
                 return
 
         self.push_screen(OnboardingFlow(mode="project-picker", dismissible=False))
@@ -360,4 +362,5 @@ class KaganApp(App[None]):
         if isinstance(self.screen, KanbanScreen):
             self.switch_screen("workspace-screen")
         else:
-            self.push_screen("kanban-screen")
+            default_screen = os.environ.get("KAGAN_DEFAULT_SCREEN", "workspace-screen")
+            self.push_screen(default_screen)

@@ -92,6 +92,11 @@ class WorkspaceScreen(Screen[None]):
                         "Select a conversation from the sidebar or press n to start one.",
                         id="workspace-main-subtitle",
                     )
+                    yield Static(
+                        "",
+                        id="workspace-open-task",
+                        classes="workspace-open-task",
+                    )
                 yield ChatPanel(id="workspace-chat", classes="workspace-chat")
         yield Static("", id="workspace-footer")
 
@@ -198,7 +203,7 @@ class WorkspaceScreen(Screen[None]):
             return
         if isinstance(row, _GroupHeader):
             if row.group_key == "__new_chat__":
-                self.action_new_session()
+                self._request_new_session_kind()
             return
         self._chat_session_switch_token += 1
         token = self._chat_session_switch_token
@@ -214,6 +219,24 @@ class WorkspaceScreen(Screen[None]):
 
     def action_new_session(self) -> None:
         self.run_worker(self._create_new_session(), exit_on_error=False)
+
+    def _request_new_session_kind(self) -> None:
+        def _on_kind(confirmed: bool) -> None:
+            session_kind = "orchestrator" if confirmed else "general"
+            self.run_worker(
+                self._create_new_session(session_kind=session_kind),
+                exit_on_error=False,
+            )
+
+        self.app.push_screen(
+            ConfirmModal(
+                title="New chat",
+                message="Orchestrator session has Kagan tools. General chat is raw agent access.",
+                confirm_label="Orchestrator",
+                cancel_label="General",
+            ),
+            callback=_on_kind,
+        )
 
     def action_delete_session(self) -> None:
         selected = self._selected_session_item()
@@ -436,7 +459,7 @@ class WorkspaceScreen(Screen[None]):
             exit_on_error=False,
         )
 
-    async def _create_new_session(self) -> None:
+    async def _create_new_session(self, session_kind: str = "orchestrator") -> None:
         panel = self.query_one(ChatPanel)
         await self.kagan_app.orchestrator_sessions.persist_active(
             history=self._chat_orchestrator_history,
@@ -444,7 +467,8 @@ class WorkspaceScreen(Screen[None]):
             agent_backend=panel.preferred_agent_backend(),
         )
         next_key = await self.kagan_app.orchestrator_sessions.create_new(
-            agent_backend=panel.preferred_agent_backend()
+            agent_backend=panel.preferred_agent_backend(),
+            session_type=session_kind,
         )
         await self._load_workspace_panel_state(panel, requested_key=next_key, focus_chat=True)
         panel.add_system_message("New session started.")
@@ -485,6 +509,9 @@ class WorkspaceScreen(Screen[None]):
         self._refresh_header_backend(session_backend or "")
         self._render_session_list(prefer_key=active_key)
         self._refresh_main_header(active_key)
+        # Update composer context with access mode and branch
+        branch = self.query_one(KaganHeader).git_branch or ""
+        panel.set_composer_context(access_mode="Full", branch=f"  {branch}" if branch else "")
         if focus_chat:
             self.call_after_refresh(self.action_focus_chat)
 
@@ -721,10 +748,12 @@ class WorkspaceScreen(Screen[None]):
     def _refresh_main_header(self, active_key: str | None = None) -> None:
         title = self.query_one("#workspace-main-title", Static)
         subtitle = self.query_one("#workspace-main-subtitle", Static)
+        task_btn = self.query_one("#workspace-open-task", Static)
         item = self._active_session_item(active_key)
         if item is None:
             title.update("No conversation selected")
             subtitle.update("Select a conversation from the sidebar or press n to start one.")
+            task_btn.display = False
             return
 
         title.update(item.label)
@@ -736,12 +765,12 @@ class WorkspaceScreen(Screen[None]):
         parts.append("Ctrl+. to type")
         parts.append("Esc to step back")
         subtitle.update(" · ".join(parts))
+        task_btn.display = False
 
     def _update_footer(self, focused: Widget | None = None) -> None:
         keys = {
             "focus_search": get_key_for_action(WORKSPACE_BINDINGS, "focus_search", default="/"),
             "new_session": get_key_for_action(WORKSPACE_BINDINGS, "new_session", default="n"),
-            "delete_session": get_key_for_action(WORKSPACE_BINDINGS, "delete_session", default="x"),
             "toggle_board": get_key_for_action(WORKSPACE_BINDINGS, "toggle_board", default="w"),
             "focus_chat": get_key_for_action(WORKSPACE_BINDINGS, "focus_chat", default="Ctrl+."),
             "switch_session": get_key_for_action(
@@ -749,32 +778,31 @@ class WorkspaceScreen(Screen[None]):
             ),
             "open_session": get_key_for_action(WORKSPACE_BINDINGS, "open_session", default="Enter"),
         }
-        search_key = keys["focus_search"]
         new_key = keys["new_session"]
-        delete_key = keys["delete_session"]
+        search_key = keys["focus_search"]
         board_key = keys["toggle_board"]
-        chat_key = keys["focus_chat"]
         switch_key = keys["switch_session"]
         open_key = keys["open_session"]
+
         widget = focused or self.focused
         search = self.query_one("#workspace-search", Input)
         chat = self.query_one("#workspace-chat", ChatPanel)
 
         if widget is search:
             footer = (
-                f"Type to filter · {board_key} board · Esc clear"
+                f"Type to filter  {board_key} board  Esc clear"
                 if search.value
-                else f"Type to filter · {open_key} open · Esc list"
+                else f"Type to filter  {open_key} open  Esc list"
             )
         elif widget is not None and chat in widget.ancestors:
             footer = (
-                f"{open_key} send · Shift+Enter newline · "
-                f"{switch_key} sessions · Esc sidebar · {board_key} board"
+                f"{open_key} send  Shift+Enter newline  "
+                f"{switch_key} sessions  Esc sidebar  Ctrl+W mode"
             )
         else:
             footer = (
-                f"{open_key} open · {new_key} new · {delete_key} delete · "
-                f"{search_key} filter · {chat_key} chat · Ctrl+W mode"
+                f"j/k nav  {search_key} search  {new_key} new  "
+                f"Ctrl+W view  {switch_key} palette  Esc back"
             )
 
         self.query_one("#workspace-footer", Static).update(footer)

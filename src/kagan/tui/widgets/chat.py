@@ -501,6 +501,14 @@ class ChatPanel(Vertical):
         self._status_hint_override = normalized or None
         self._refresh_status()
 
+    def set_composer_context(self, *, access_mode: str = "", branch: str = "") -> None:
+        """Update the composer footer with access mode and branch info."""
+        status_bar = self._status_bar()
+        if status_bar is None:
+            return
+        status_bar.access_mode = access_mode
+        status_bar.branch_name = branch
+
     def set_project_id(self, project_id: str, *, persist: bool = True) -> None:
         """Attach a file-backed history store for *project_id*.
 

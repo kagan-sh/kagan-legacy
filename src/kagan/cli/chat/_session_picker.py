@@ -46,6 +46,7 @@ class ChatSessionListItem:
     source: str
     agent_backend: str | None
     project_id: str | None
+    session_type: str
     updated_at: str
     updated_relative: str
     is_current: bool
@@ -91,6 +92,7 @@ def build_chat_session_list_items(
                 source=source,
                 agent_backend=backend_value,
                 project_id=session.project_id,
+                session_type=session.session_type,
                 updated_at=updated_at,
                 updated_relative=updated_relative,
                 is_current=bool(current_session_id) and sid == current_session_id,

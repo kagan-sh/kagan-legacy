@@ -22,6 +22,10 @@ def pytest_configure(config: pytest.Config) -> None:
     # (especially on macOS where platformdirs doesn't respect XDG_*_HOME)
     os.environ["KAGAN_DATA_DIR"] = os.path.join(_kagan_test_root, "data")
     os.environ["KAGAN_CONFIG_DIR"] = os.path.join(_kagan_test_root, "config")
+    # Preserve kanban as default startup screen for existing test suite
+    os.environ["KAGAN_DEFAULT_SCREEN"] = "kanban-screen"
+    # Preserve kanban as default startup screen for existing test suite
+    os.environ["KAGAN_DEFAULT_SCREEN"] = "kanban-screen"
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

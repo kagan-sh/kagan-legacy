@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kagan.core.enums import AgentRole
+from kagan.server.mcp.toolsets import INTEGRATION_READ_TOOL_NAMES, INTEGRATION_WRITE_TOOL_NAMES
 
 if TYPE_CHECKING:
     from kagan.server.mcp.server import ServerOptions
@@ -29,9 +30,8 @@ _WORKER_TOOLS = frozenset(
         "review_conflicts",
         # settings (1 read tool)
         "settings_get",
-        # integrations (2 read tools)
-        "integration_preflight",
-        "integration_preview",
+        # integrations (read tools)
+        *INTEGRATION_READ_TOOL_NAMES,
         # verification (2 tools — session-scoped)
         "verify_step",
         "verification_summary",
@@ -78,8 +78,8 @@ _ORCHESTRATOR_TOOLS = _REVIEWER_TOOLS | frozenset(
         "settings_set",
         # diagnostics (1 tool)
         "audit_list",
-        # integrations (1 write tool)
-        "integration_sync",
+        # integrations (write tools)
+        *INTEGRATION_WRITE_TOOL_NAMES,
         # personas (4 tools)
         "persona_inspect",
         "persona_import",

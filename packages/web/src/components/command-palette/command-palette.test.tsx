@@ -39,7 +39,8 @@ describe('CommandPalette', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /command palette/i });
     expect(within(dialog).getByRole('option', { name: /Go to Board/i })).toBeVisible();
-    expect(within(dialog).getByRole('option', { name: /Go to Analytics/i })).toBeVisible();
+    // Analytics page was removed (commit 89b31fe6); nav-workspace replaced it.
+    expect(within(dialog).getByRole('option', { name: /Go to Workspace/i })).toBeVisible();
     expect(within(dialog).getByRole('option', { name: /Go to Settings/i })).toBeVisible();
     expect(within(dialog).getByRole('option', { name: /Create task/i })).toBeVisible();
   });
@@ -68,6 +69,7 @@ describe('CommandPalette', () => {
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Create task/i })).toBeVisible();
     });
+    // "Go to Analytics" was removed; the workspace command does not match "new".
     expect(screen.queryByRole('option', { name: /Go to Analytics/i })).not.toBeInTheDocument();
   });
 

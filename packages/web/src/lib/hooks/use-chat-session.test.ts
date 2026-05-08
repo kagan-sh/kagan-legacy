@@ -25,6 +25,7 @@ import {
   chatMessagesAtom,
   enqueuePendingAtom,
 } from '@/lib/atoms/chat';
+import { CHAT_WATCH_TYPE } from '@kagan/shared-api-client';
 import type { ChatWatchEvent } from '@kagan/shared-api-client';
 
 // ---------------------------------------------------------------------------
@@ -140,7 +141,7 @@ describe('useChatSession — chunk dispatch', () => {
     renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_CHUNK', content: 'hello', thought: false });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'hello', thought: false });
 
     expect(store.get(isStreamingAtom)).toBe(true);
     const entries = store.get(streamEntriesAtom);
@@ -154,7 +155,7 @@ describe('useChatSession — chunk dispatch', () => {
     renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_CHUNK', content: 'thinking…', thought: true });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'thinking…', thought: true });
 
     const entries = store.get(streamEntriesAtom);
     expect(entries.some((e) => e.kind === 'thought')).toBe(true);
@@ -166,7 +167,7 @@ describe('useChatSession — chunk dispatch', () => {
     renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_DONE', full_response: 'final text' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_DONE, full_response: 'final text' });
 
     expect(store.get(isStreamingAtom)).toBe(false);
     expect(store.get(streamEntriesAtom)).toHaveLength(0);
@@ -184,7 +185,7 @@ describe('useChatSession — chunk dispatch', () => {
       renderWithStore(() => useChatSession('session-1'), store);
       await act(async () => {});
 
-      fireWatchEvent({ t: 'CHAT_DONE', full_response: 'final text' });
+      fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_DONE, full_response: 'final text' });
       await act(async () => {
         vi.runOnlyPendingTimers();
         await Promise.resolve();
@@ -223,7 +224,7 @@ describe('useChatSession — tool start / done', () => {
     renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_TOOL_START', tool: 'shell' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_START, tool: 'shell' });
 
     const entries = store.get(streamEntriesAtom);
     const tool = entries.find((e) => e.kind === 'tool');
@@ -239,8 +240,8 @@ describe('useChatSession — tool start / done', () => {
     renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_TOOL_START', tool: 'shell' });
-    fireWatchEvent({ t: 'CHAT_TOOL_PROGRESS', tool: 'shell', status: 'done' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_START, tool: 'shell' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_PROGRESS, tool: 'shell', status: 'done' });
 
     const entries = store.get(streamEntriesAtom);
     const tool = entries.find((e) => e.kind === 'tool');
@@ -262,7 +263,7 @@ describe('useChatSession — error', () => {
     renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_ERROR', error: 'backend crashed' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_ERROR, error: 'backend crashed' });
 
     expect(store.get(isStreamingAtom)).toBe(false);
     const entries = store.get(streamEntriesAtom);
@@ -281,7 +282,7 @@ describe('useChatSession — takeover', () => {
     renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_TURN_TERMINATED', reason: 'takeover' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' });
 
     expect(store.get(takeoverBannerAtom)).toMatch(/taken over/i);
     expect(store.get(isStreamingAtom)).toBe(false);
@@ -292,7 +293,7 @@ describe('useChatSession — takeover', () => {
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: 'CHAT_TURN_TERMINATED', reason: 'takeover' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' });
     expect(store.get(takeoverBannerAtom)).not.toBeNull();
 
     act(() => { result.current.onDismissTakeover(); });

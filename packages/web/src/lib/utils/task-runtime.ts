@@ -1,12 +1,11 @@
+import { EVENT_TYPE } from '@kagan/shared-api-client';
 import type { TaskStatus, WireEvent } from '@kagan/shared-api-client';
-
-const TASK_STATUS_CHANGED = 'TASK_STATUS_CHANGED';
 
 export function deriveTaskRunningSince(events: WireEvent[], currentStatus: string): string | null {
   let runningSince: string | null = null;
 
   for (const event of events) {
-    if (event.type !== TASK_STATUS_CHANGED || !event.payload) {
+    if (event.type !== EVENT_TYPE.TASK_STATUS_CHANGED || !event.payload) {
       continue;
     }
 

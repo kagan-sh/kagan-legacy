@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useSessionStream } from '@/lib/hooks/use-session-stream';
+import { EVENT_TYPE } from '@kagan/shared-api-client';
 import type { WireEvent } from '@kagan/shared-api-client';
 
 function dispatchSessionEvent(taskId: string, event: WireEvent) {
@@ -15,7 +16,7 @@ function mockEvent(overrides: Partial<WireEvent> = {}): WireEvent {
   return {
     id: 'evt-1',
     session_id: 's-1',
-    type: 'OUTPUT_CHUNK',
+    type: EVENT_TYPE.OUTPUT_CHUNK,
     payload: { text: 'reading files' },
     created_at: new Date().toISOString(),
     ...overrides,
@@ -123,7 +124,7 @@ describe('useSessionStream', () => {
     act(() => {
       dispatchSessionEvent(
         't-1',
-        mockEvent({ type: 'AGENT_COMPLETED', payload: {} }),
+        mockEvent({ type: EVENT_TYPE.AGENT_COMPLETED, payload: {} }),
       );
       vi.advanceTimersByTime(1000);
     });

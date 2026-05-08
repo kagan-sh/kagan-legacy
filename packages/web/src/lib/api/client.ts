@@ -85,7 +85,7 @@ export class KaganApiClient extends BaseClient {
    * Override to return a relative path (no protocol + host) in bundled mode.
    * The base class always prepends `${protocol}://${host}`.
    */
-  protected override getFullUrl(path: string): string {
+  override getFullUrl(path: string): string {
     if (this._bundledWeb || !super.isConfigured()) return path;
     return super.getFullUrl(path);
   }

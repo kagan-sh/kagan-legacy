@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '@/lib/api/client';
+import { CHAT_WATCH_TYPE } from '@kagan/shared-api-client';
 import type { ChatWatchEvent } from '@kagan/shared-api-client';
 
 const BACKOFF_BASE_MS = 1_000;
@@ -70,11 +71,10 @@ export function useChatWatch(
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const baseUrl = apiClient.getBaseUrl();
-    const url = `${baseUrl}/api/chat/sessions/${sessionId}/watch`;
+    const url = apiClient.getFullUrl(`/api/chat/sessions/${sessionId}/watch`);
 
     try {
-      const response = await fetch(url, {
+      const response = await apiClient.streamRequest(url, {
         signal: controller.signal,
         headers: { Accept: 'text/event-stream' },
       });
@@ -109,8 +109,8 @@ export function useChatWatch(
             const event = JSON.parse(dataLine.slice(6)) as ChatWatchEvent;
             // Track the last message id from persisted message events.
             if (
-              (event.t === 'CHAT_USER_MESSAGE' ||
-                event.t === 'CHAT_ASSISTANT_MESSAGE') &&
+              (event.t === CHAT_WATCH_TYPE.CHAT_USER_MESSAGE ||
+                event.t === CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE) &&
               event.message_id > lastSeenIdRef.current
             ) {
               lastSeenIdRef.current = event.message_id;

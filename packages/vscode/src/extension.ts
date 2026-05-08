@@ -38,9 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const { serverUrl, protocol, authToken: token } = readConnectionConfig();
 
   const client = new KaganClient(serverUrl, protocol, token || undefined);
-  const sse = new SSEStream(client.getHostPort());
-  sse.setProtocol(protocol);
-  if (token) sse.setToken(token);
+  const sse = new SSEStream(client);
   const boardProvider = new BoardTreeProvider(client);
   const scmProvider = new TaskScmProvider(client);
   const diffProvider = new KaganDiffContentProvider(client);
@@ -178,10 +176,6 @@ export function activate(context: vscode.ExtensionContext): void {
     client.setBaseUrl(nextUrl);
     client.setProtocol(nextProtocol);
     client.setToken(nextToken || undefined);
-
-    sse.setBaseUrl(nextUrl);
-    sse.setProtocol(nextProtocol);
-    sse.setToken(nextToken || undefined);
 
     const wasStarted = sse.isStarted();
     sse.stop();

@@ -1,4 +1,5 @@
 import { Activity, ArrowUpRight, Copy, Pencil, Plus, X } from 'lucide-react';
+import { EVENT_TYPE } from '@kagan/shared-api-client';
 import type { TaskStatus, WireEvent, WireTask } from '@kagan/shared-api-client';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { STATUS_LABELS } from '@/lib/utils/constants';
@@ -23,34 +24,34 @@ interface BoardTaskInspectorProps extends BoardTaskActions {
 }
 
 /** Event types worth surfacing in the board-level activity summary. */
-const INSPECTOR_EVENT_TYPES = new Set([
-  'TASK_STATUS_CHANGED',
-  'PLAN_UPDATE',
-  'AGENT_COMPLETED',
-  'AGENT_FAILED',
-  'AUTO_REVIEW_STARTED',
-  'CRITERION_VERDICT',
-  'MERGE_COMPLETED',
-  'MERGE_FAILED',
+const INSPECTOR_EVENT_TYPES: ReadonlySet<string> = new Set([
+  EVENT_TYPE.TASK_STATUS_CHANGED,
+  EVENT_TYPE.PLAN_UPDATE,
+  EVENT_TYPE.AGENT_COMPLETED,
+  EVENT_TYPE.AGENT_FAILED,
+  EVENT_TYPE.AUTO_REVIEW_STARTED,
+  EVENT_TYPE.CRITERION_VERDICT,
+  EVENT_TYPE.MERGE_COMPLETED,
+  EVENT_TYPE.MERGE_FAILED,
 ]);
 
 function formatEventSummary(event: WireEvent) {
-  if (event.type === 'TASK_STATUS_CHANGED') {
+  if (event.type === EVENT_TYPE.TASK_STATUS_CHANGED) {
     const from = typeof event.payload?.from === 'string' ? event.payload.from : '?';
     const to = typeof event.payload?.to === 'string' ? event.payload.to : '?';
     return `Status changed from ${from.replaceAll('_', ' ')} to ${to.replaceAll('_', ' ')}`;
   }
-  if (event.type === 'PLAN_UPDATE') return 'Execution plan updated';
-  if (event.type === 'AGENT_COMPLETED') return 'Agent completed the current run';
-  if (event.type === 'AUTO_REVIEW_STARTED') return 'Auto-review started';
-  if (event.type === 'AGENT_FAILED') return 'Agent reported a failure';
-  if (event.type === 'CRITERION_VERDICT') {
+  if (event.type === EVENT_TYPE.PLAN_UPDATE) return 'Execution plan updated';
+  if (event.type === EVENT_TYPE.AGENT_COMPLETED) return 'Agent completed the current run';
+  if (event.type === EVENT_TYPE.AUTO_REVIEW_STARTED) return 'Auto-review started';
+  if (event.type === EVENT_TYPE.AGENT_FAILED) return 'Agent reported a failure';
+  if (event.type === EVENT_TYPE.CRITERION_VERDICT) {
     const criterion = typeof event.payload?.criterion === 'string' ? event.payload.criterion : '';
     const passed = event.payload?.passed;
     return criterion ? `Criterion ${passed ? 'passed' : 'failed'}: ${criterion}` : 'Criterion verdict';
   }
-  if (event.type === 'MERGE_COMPLETED') return 'Merge completed';
-  if (event.type === 'MERGE_FAILED') return 'Merge failed';
+  if (event.type === EVENT_TYPE.MERGE_COMPLETED) return 'Merge completed';
+  if (event.type === EVENT_TYPE.MERGE_FAILED) return 'Merge failed';
   return event.type.replaceAll('_', ' ').toLowerCase();
 }
 

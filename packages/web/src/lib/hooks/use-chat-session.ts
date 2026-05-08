@@ -30,6 +30,7 @@ import {
   type TurnConflict,
 } from '@/lib/atoms/chat';
 import { useChatWatch } from '@/lib/hooks/use-chat-watch';
+import { CHAT_WATCH_TYPE } from '@kagan/shared-api-client';
 import type { ChatWatchEvent, WireChatMessage } from '@kagan/shared-api-client';
 import type { Attachment } from '@/lib/chat-attachments';
 import type { PermissionRequest } from '@/components/PermissionDialog';
@@ -212,7 +213,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   const handleWatchEvent = useCallback(
     (event: ChatWatchEvent) => {
       switch (event.t) {
-        case 'CHAT_CHUNK': {
+        case CHAT_WATCH_TYPE.CHAT_CHUNK: {
           setIsStreaming(true);
           const content = event.content ?? '';
           if (content) {
@@ -228,24 +229,24 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }
           break;
         }
-        case 'CHAT_TOOL_START': {
+        case CHAT_WATCH_TYPE.CHAT_TOOL_START: {
           setIsStreaming(true);
           addToolStart({ tool: event.tool ?? 'tool' });
           break;
         }
-        case 'CHAT_TOOL_PROGRESS': {
+        case CHAT_WATCH_TYPE.CHAT_TOOL_PROGRESS: {
           updateToolProgress({
             tool: event.tool ?? 'tool',
             status: event.status ?? undefined,
           });
           break;
         }
-        case 'CHAT_ERROR': {
+        case CHAT_WATCH_TYPE.CHAT_ERROR: {
           addError({ message: event.error ?? 'An error occurred' });
           setIsStreaming(false);
           break;
         }
-        case 'CHAT_DONE': {
+        case CHAT_WATCH_TYPE.CHAT_DONE: {
           resetStream();
           localStreamingRef.current = false;
           if (id) {
@@ -264,11 +265,11 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }, 0);
           break;
         }
-        case 'CHAT_SESSION_UPDATED': {
+        case CHAT_WATCH_TYPE.CHAT_SESSION_UPDATED: {
           if (typeof event.session?.label === 'string') setLabel(event.session.label);
           break;
         }
-        case 'CHAT_USER_MESSAGE': {
+        case CHAT_WATCH_TYPE.CHAT_USER_MESSAGE: {
           // Message from another client — add to persisted list only when this
           // tab did not initiate the stream.
           if (!localStreamingRef.current) {
@@ -279,7 +280,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }
           break;
         }
-        case 'CHAT_ASSISTANT_MESSAGE': {
+        case CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE: {
           if (event.terminated) {
             setMessages((prev) => [
               ...prev,
@@ -288,7 +289,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }
           break;
         }
-        case 'CHAT_TURN_TERMINATED': {
+        case CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED: {
           setIsStreaming(false);
           resetStream();
           localStreamingRef.current = false;
@@ -299,13 +300,13 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }
           break;
         }
-        case 'CHAT_TURN_STARTED': {
+        case CHAT_WATCH_TYPE.CHAT_TURN_STARTED: {
           // Clear thinking timer so a new turn whose first chunk is a thought
           // doesn't inherit the previous turn's startedAt.
           thinkingStartRef.current = null;
           break;
         }
-        case 'CHAT_PERMISSION_REQUEST': {
+        case CHAT_WATCH_TYPE.CHAT_PERMISSION_REQUEST: {
           setPermissionRequest({
             futureId: event.future_id,
             toolName: event.tool_name,

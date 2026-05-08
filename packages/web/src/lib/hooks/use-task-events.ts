@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
+import { EVENT_TYPE } from "@kagan/shared-api-client";
 import type { WireEvent, WireTask, WireTaskSession } from "@kagan/shared-api-client";
 import { mergeWireEvents } from "@/lib/utils/events";
 import { deriveTaskRunningSince } from "@/lib/utils/task-runtime";
@@ -145,7 +146,7 @@ export function useTaskEvents(
                 return;
 
             setEvents((prev) => mergeWireEvents(prev, [nextEvent]));
-            if (nextEvent.type === "TASK_STATUS_CHANGED") {
+            if (nextEvent.type.toLowerCase() === EVENT_TYPE.TASK_STATUS_CHANGED) {
                 const to = nextEvent.payload?.to;
                 if (typeof to === "string") {
                     setTask((prev) => (prev ? { ...prev, status: to } : prev));
@@ -235,13 +236,13 @@ export function useTaskEvents(
         // If the most recent session-level event signals the agent stopped,
         // treat the task as idle even though its status hasn't transitioned yet.
         for (let i = events.length - 1; i >= 0; i--) {
-            const t = events[i]?.type;
-            if (t === "AGENT_FAILED" || t === "AGENT_COMPLETED") return false;
+            const t = events[i]?.type.toLowerCase();
+            if (t === EVENT_TYPE.AGENT_FAILED || t === EVENT_TYPE.AGENT_COMPLETED) return false;
             if (
-                t === "AGENT_STATUS" ||
-                t === "OUTPUT_CHUNK" ||
-                t === "TOOL_CALL_START" ||
-                t === "TOOL_CALL_UPDATE"
+                t === EVENT_TYPE.AGENT_STATUS ||
+                t === EVENT_TYPE.OUTPUT_CHUNK ||
+                t === EVENT_TYPE.TOOL_CALL_START ||
+                t === EVENT_TYPE.TOOL_CALL_UPDATE
             )
                 return true;
         }

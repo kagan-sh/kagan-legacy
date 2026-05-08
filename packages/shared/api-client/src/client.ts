@@ -180,7 +180,7 @@ export class KaganApiClient {
 
   // -- Core HTTP Methods ----------------------------------------------------
 
-  protected getFullUrl(path: string): string {
+  getFullUrl(path: string): string {
     return `${this._protocol}://${this._baseUrl}${path}`;
   }
 
@@ -246,6 +246,20 @@ export class KaganApiClient {
 
   protected async del<T>(path: string): Promise<T> {
     return this.request<T>("DELETE", path);
+  }
+
+  /**
+   * Raw fetch with auth headers appended — for streaming paths (SSE) that must
+   * bypass envelope unwrapping. Returns the raw Response.
+   *
+   * @param url  Full URL (protocol + host + path). Use getFullUrl() to build it.
+   * @param init Optional RequestInit. Auth headers are merged in automatically.
+   */
+  public streamRequest(url: string, init?: RequestInit): Promise<Response> {
+    return this._fetchImpl(url, {
+      ...init,
+      headers: { ...init?.headers, ...this.getAuthHeaders() },
+    });
   }
 
   // -- Tasks ----------------------------------------------------------------

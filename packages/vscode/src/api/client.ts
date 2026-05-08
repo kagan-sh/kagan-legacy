@@ -332,16 +332,4 @@ export class KaganClient extends KaganApiClient {
     return this.post<void>(`/api/v1/sessions/${sessionId}/close`, {});
   }
 
-  // ── Private ────────────────────────────────────────────────────────────
-
-  /**
-   * Raw fetch with auth headers appended — for streaming paths (SSE, /health)
-   * that must bypass the envelope-unwrapping request() pipeline.
-   */
-  private async streamRequest(url: string, init?: RequestInit): Promise<Response> {
-    return this._fetchImpl(url, {
-      ...init,
-      headers: { ...init?.headers, ...this.getAuthHeaders() },
-    });
-  }
 }

@@ -11,8 +11,8 @@ export async function* streamSSE<T>(
   path: string,
   options?: RequestInit,
 ): AsyncGenerator<T> {
-  const baseUrl = apiClient.getBaseUrl();
-  const response = await fetch(`${baseUrl}${path}`, {
+  const url = apiClient.getFullUrl(path);
+  const response = await apiClient.streamRequest(url, {
     ...options,
     headers: {
       ...options?.headers,

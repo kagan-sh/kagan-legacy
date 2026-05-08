@@ -28,6 +28,7 @@ def print_help_documentation() -> None:
     sections = [
         ("Global", ["help", "flow", "status", "analytics", "clear", "exit"]),
         ("Sessions", ["new", "sessions", "delete"]),
+        ("Agents", ["attach", "detach"]),
         ("Workspace", ["project", "agents", "tool"]),
     ]
 

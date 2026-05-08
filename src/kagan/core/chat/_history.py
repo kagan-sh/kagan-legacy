@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 from platformdirs import user_data_dir
+from prompt_toolkit.history import History as _PromptToolkitHistory
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -154,13 +155,13 @@ class _HistoryCursor:
         return list(self._history)
 
 
-class KaganFileHistory:
+class KaganFileHistory(_PromptToolkitHistory):
     """File-backed history shared between TUI and CLI chat for a project.
 
-    Satisfies prompt_toolkit's duck-typed ``History`` protocol via
-    ``append_string`` / ``get_strings``, so it can be passed directly to
-    ``PromptSession(history=...)``.  Also exposes ``cycle_up`` / ``cycle_down``
-    for manual cursor navigation used by the TUI.
+    Subclasses prompt_toolkit's ``History`` so the modern ``Buffer.load_history``
+    coroutine path works.  ``store_string`` and ``load_history_strings`` carry
+    the file IO; the in-memory cursor still backs ``cycle_up`` / ``cycle_down``
+    for the TUI.
 
     ``persist`` maps to the ``persist_input_history`` settings flag.
     ``history_dir`` overrides the default platformdirs location (useful for tests).
@@ -173,6 +174,7 @@ class KaganFileHistory:
         persist: bool = True,
         history_dir: Path | None = None,
     ) -> None:
+        super().__init__()
         self._project_id = project_id
         self._persist = persist
         self._history_dir = history_dir
@@ -188,10 +190,21 @@ class KaganFileHistory:
         if self._persist:
             save_entry(self._project_id, text, history_dir=self._history_dir)
 
-    # --- prompt_toolkit History protocol (duck-typed) ------------------------
+    # --- prompt_toolkit History protocol -------------------------------------
+
+    def load_history_strings(self):
+        # prompt_toolkit expects newest first.
+        yield from reversed(self._cursor.entries)
+
+    def store_string(self, string: str) -> None:
+        if self._persist:
+            save_entry(self._project_id, string, history_dir=self._history_dir)
 
     def append_string(self, string: str) -> None:
+        # Mirror push so cursor + on-disk + parent's cache all stay in sync.
         self.push(string)
+        if hasattr(self, "_loaded_strings"):
+            self._loaded_strings.insert(0, string)
 
     def get_strings(self) -> list[str]:
         return self._cursor.entries

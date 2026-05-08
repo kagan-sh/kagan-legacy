@@ -221,10 +221,10 @@ the overlay while it is already active simply re-focuses its input.
 
 Two modes:
 
-| Mode             | Behaviour                                                                                                                         |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator** | Sends messages to the project orchestrator chat session.                                                                          |
-| **Attached**     | Re-streams a worker or reviewer session: replay via `/api/v1/sessions/{id}/replay`, live tail via `/api/v1/sessions/{id}/events`. |
+| Mode             | Behaviour                                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator** | Sends messages to the project orchestrator chat session.                                                          |
+| **Attached**     | Re-streams a worker or reviewer session: replay from persisted events, live tail from the core task event stream. |
 
 `Esc` is layered: from an attached stream it detaches back to orchestrator
 mode; from orchestrator mode it closes the overlay. `Ctrl+Space` mirrors `Esc`.

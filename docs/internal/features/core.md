@@ -172,12 +172,12 @@ ______________________________________________________________________
   `started_at DESC`; optionally scoped to a project.
   *Tests:* `tests/core/test_running_agents_listing.py`.
 - `client.attach_chat(chat_session_id, session_id, agent_role=...)` writes
-  `attached_session_id` / `attached_role` on the ChatSession; `session_id=None`
-  detaches and clears the role. *Tests:* `tests/core/test_chat_attachment.py`.
-- `transition_session` injects an `agent_started` / `agent_finished` /
-  `agent_stopped` system message into every project chat session when a
-  session enters `RUNNING` or a terminal status. Failures are logged and
-  never block the transition.
+  `attached_session_id` on the ChatSession; role is derived from
+  `Session.agent_role`, and `session_id=None` detaches. *Tests:*
+  `tests/core/test_chat_attachment.py`.
+- `transition_session` records an `agent_lifecycle` session event for every
+  project chat session when an agent session enters `RUNNING` or a terminal
+  status. Failures are logged and never block the transition.
   *Tests:* `tests/core/test_session_transition_notifies_chat.py`.
 
 ______________________________________________________________________

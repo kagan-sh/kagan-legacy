@@ -559,8 +559,8 @@ class PermissionUI:
 
         Resolves the decision via :meth:`ChatEngine.resolve_permission`. The
         coroutine returns once the decision has been *dispatched* — fast for
-        non-interactive / yolo paths; for interactive paths it returns once
-        the modal flow finishes and the engine has been notified.
+        non-interactive denial paths; for interactive paths it returns once the
+        modal flow finishes and the engine has been notified.
         """
         if self._engine is None:
             raise RuntimeError("PermissionUI.handle_request called before bind_engine")

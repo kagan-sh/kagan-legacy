@@ -10,7 +10,7 @@ Surfaces:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from starlette.responses import JSONResponse
@@ -93,9 +93,27 @@ def _parse_replay_cursor(cursor: str | None) -> _ReplayCursor:
 
     ts_part, id_part = cursor.split("|", 1)
     try:
-        return _ReplayCursor(created_at=datetime.fromisoformat(ts_part), event_id=id_part)
+        return _ReplayCursor(
+            created_at=_normalize_replay_timestamp(datetime.fromisoformat(ts_part)),
+            event_id=id_part,
+        )
     except ValueError:
         return _ReplayCursor(created_at=None, event_id=cursor)
+
+
+def _normalize_replay_timestamp(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def _format_replay_timestamp(value: datetime | str) -> str:
+    if isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        normalized = _normalize_replay_timestamp(parsed)
+    else:
+        normalized = _normalize_replay_timestamp(value)
+    return f"{normalized.isoformat()}Z"
 
 
 def _parse_replay_limit(raw_limit: str | None) -> int:
@@ -139,7 +157,7 @@ async def _query_forward_events(
     if cursor.created_at is not None and cursor.event_id is not None:
         return await ctx.client.tasks.events.list_after(
             task_id,
-            after_ts=cursor.created_at.isoformat(),
+            after_ts=_format_replay_timestamp(cursor.created_at),
             after_id=cursor.event_id,
             limit=page_limit,
             session_id=query.session_id,
@@ -158,7 +176,7 @@ async def _query_backward_events(
     if cursor.created_at is not None and cursor.event_id is not None:
         rows = await ctx.client.tasks.events.list_before(
             task_id,
-            before=cursor.created_at.isoformat(),
+            before=_format_replay_timestamp(cursor.created_at),
             before_id=cursor.event_id,
             limit=page_limit,
             session_id=query.session_id,
@@ -202,7 +220,7 @@ def _next_replay_cursor(events: list[SessionReplayEvent], has_more: bool) -> str
     if not has_more or not events:
         return None
     last = events[-1]
-    return f"{last.created_at.replace('+00:00', 'Z')}|{last.id}"
+    return f"{_format_replay_timestamp(last.created_at)}|{last.id}"
 
 
 async def _session_replay_response(request: Request, ctx: ServerContext) -> JSONResponse:

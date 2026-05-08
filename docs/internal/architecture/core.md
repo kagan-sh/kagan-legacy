@@ -536,28 +536,29 @@ single project. Results are sorted by `started_at DESC`. Each row is an
 `ActiveAgentRow` is JSON-safe — server routes serialise it directly into
 `ActiveAgentRowResponse` (see `kagan.server.responses`).
 
-### `ChatSession.attached_session_id` / `attached_role`
+### `ChatSession.attached_session_id`
 
-`models.ChatSession` gains two columns to record which agent session a chat is
-tracking:
+`models.ChatSession` stores the durable routing target for the agent session a
+chat is tracking:
 
 - `attached_session_id: str | None` — `None` means orchestrator mode (default).
-- `attached_role: str | None` — `"worker"` / `"reviewer"` / `None`.
 
 Migration `migrations/versions/25420575c1aa_chat_session_attach_target.py` adds
-the columns and the `attached_session_id` index. There is intentionally no
-SQLite FK constraint on `attached_session_id`: the `sessions` table is
-sometimes recreated via rename-and-recreate migrations, which corrupts SQLite's
-trigger-based FK enforcement. Referential integrity is enforced at the
-application layer.
+the column and the `attached_session_id` index. Migration
+`migrations/versions/7b1f4d96c2e1_drop_chat_sessions_attached_role.py` removes
+the former duplicate `attached_role` column; callers derive role from
+`Session.agent_role`. There is intentionally no SQLite FK constraint on
+`attached_session_id`: the `sessions` table is sometimes recreated via
+rename-and-recreate migrations, which corrupts SQLite's trigger-based FK
+enforcement. Referential integrity is enforced at the application layer.
 
 ### `kagan.core.chat._attach`
 
-| Function                         | Purpose                                                                                                                                                                                   |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `attach_chat_to_session()`       | Set or clear `attached_session_id` / `attached_role` on a ChatSession; passing `session_id=None` detaches.                                                                                |
-| `inject_agent_notification()`    | Append a `system` `ChatMessage` whose body is a JSON-encoded `agent_started` / `agent_finished` / `agent_stopped` payload, so the orchestrator sees the lifecycle event on its next turn. |
-| `notify_project_chat_sessions()` | Iterate every chat session in a project and call `inject_agent_notification` on each one.                                                                                                 |
+| Function                         | Purpose                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `attach_chat_to_session()`       | Set or clear `attached_session_id` on a ChatSession; passing `session_id=None` detaches.                      |
+| `record_agent_lifecycle_event()` | Append an `agent_lifecycle` `SessionEvent` for replay and UI surfaces without polluting chat message history. |
+| `notify_project_chat_sessions()` | Iterate every chat session in a project and record a lifecycle event for each one.                            |
 
 ### Lifecycle hook in `transitions.transition_session`
 

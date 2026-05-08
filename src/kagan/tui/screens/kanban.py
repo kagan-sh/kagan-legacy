@@ -1138,11 +1138,13 @@ class KanbanScreen(Screen[None]):
 
         target = order[target_index]
 
-        # Optimistic: move card to new column immediately
+        # Optimistic: move card to new column immediately.
+        # Use model_copy so we never mutate the Task model outside a DB callback
+        # (CLAUDE.md anti-pattern: task.status = X is forbidden outside _db_sync).
         prev_status = task.status
-        for t in self._all_tasks:
+        for i, t in enumerate(self._all_tasks):
             if t.id == task.id:
-                t.status = target
+                self._all_tasks[i] = t.model_copy(update={"status": target})
                 break
         self._apply_filter()
 
@@ -1150,9 +1152,9 @@ class KanbanScreen(Screen[None]):
             await self.kagan_app.core.tasks.set_status(task.id, target)
         except KaganError as exc:
             # Revert optimistic update on failure
-            for t in self._all_tasks:
+            for i, t in enumerate(self._all_tasks):
                 if t.id == task.id:
-                    t.status = prev_status
+                    self._all_tasks[i] = t.model_copy(update={"status": prev_status})
                     break
             self._apply_filter()
             self.app.notify(f"Unable to move task: {exc}", severity="warning")

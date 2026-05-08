@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createStore } from "jotai";
 import { renderWithProviders } from "@/test/render";
@@ -272,6 +272,35 @@ describe("ChatInputBar", () => {
 
             expect(store.get(pendingQueueAtom)).toHaveLength(0);
             expect(screen.queryByText(/queued/i)).toBeNull();
+        });
+
+        it('queues attachments with the pending message during streaming', async () => {
+            const user = userEvent.setup();
+            const store = connectedStore(true);
+            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store });
+
+            await user.click(screen.getByRole('button', { name: 'Add attachment' }));
+            await user.click(screen.getByText('Add files or photos'));
+
+            const file = new File(['hello'], 'notes.txt', { type: 'text/plain' });
+            const input = screen.getByLabelText('Upload files');
+            await user.upload(input, file);
+
+            await waitFor(() => {
+                expect(screen.getByText('notes.txt')).toBeVisible();
+            });
+            await user.type(
+                screen.getByPlaceholderText('Type a message or / for commands...'),
+                'read this',
+            );
+            await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+            expect(store.get(pendingQueueAtom)).toMatchObject([
+                {
+                    text: 'read this',
+                    attachments: [{ name: 'notes.txt', type: 'file', content: 'hello' }],
+                },
+            ]);
         });
     });
 });

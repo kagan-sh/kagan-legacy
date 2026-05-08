@@ -19,15 +19,9 @@ export function PermissionDialog({ request, onResolved }: Props) {
 
   async function resolve(outcome: string) {
     if (!request) return;
-    // Map "Allow all for session" to allow_always — the ACP layer only accepts
-    // allow_once / allow_always / deny / deny_feedback. True session-wide
-    // grants for all tools require server-side approval state (not yet wired);
-    // until then, allow_always at least keeps the agent unblocked for this
-    // tool instead of being silently cancelled.
-    const wireOutcome = outcome === 'allow_all_session' ? 'allow_always' : outcome;
     setLoading(true);
     try {
-      await apiClient.resolvePermission(request.sessionId, request.futureId, wireOutcome);
+      await apiClient.resolvePermission(request.sessionId, request.futureId, outcome);
       onResolved();
     } finally {
       setLoading(false);
@@ -49,9 +43,6 @@ export function PermissionDialog({ request, onResolved }: Props) {
           </Button>
           <Button variant="outline" onClick={() => void resolve('allow_always')} disabled={loading}>
             Allow tool for session
-          </Button>
-          <Button variant="outline" onClick={() => void resolve('allow_all_session')} disabled={loading}>
-            Allow all for session
           </Button>
           <Button variant="destructive" onClick={() => void resolve('deny')} disabled={loading}>
             Reject

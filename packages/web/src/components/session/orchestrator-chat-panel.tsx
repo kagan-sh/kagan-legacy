@@ -66,6 +66,7 @@ export function OrchestratorChatPanel({
         isStreaming,
         loading,
         label,
+        projectId,
         agentBackend,
         availableBackends,
         editPrefill,
@@ -248,6 +249,7 @@ export function OrchestratorChatPanel({
                 ) : (
                     <ChatView
                         sessionId={sessionId}
+                        projectId={projectId}
                         messages={messages}
                         streamEntries={streamEntries}
                         isStreaming={isStreaming}

@@ -2,9 +2,10 @@ import { useMemo, type RefObject } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { ChatMessage } from '@/components/chat/chat-message';
 import { ChatStreamEntries } from '@/components/chat/chat-stream-entries';
-import { ChatInputBar, type Attachment } from '@/components/chat/chat-input-bar';
+import { ChatInputBar } from '@/components/chat/chat-input-bar';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import type { ChatStreamEntry } from '@/lib/atoms/chat';
+import type { Attachment } from '@/lib/chat-attachments';
 import type { WireChatMessage } from '@kagan/shared-api-client';
 
 // ---------------------------------------------------------------------------
@@ -14,6 +15,8 @@ import type { WireChatMessage } from '@kagan/shared-api-client';
 export interface ChatViewProps {
   /** Session id, used for stable message keys. */
   sessionId: string;
+  /** Project id used to scope input history persistence. */
+  projectId?: string | null;
   messages: WireChatMessage[];
   streamEntries: ChatStreamEntry[];
   isStreaming: boolean;
@@ -59,6 +62,7 @@ const DEFAULT_EMPTY = (
 
 export function ChatView({
   sessionId,
+  projectId,
   messages,
   streamEntries,
   isStreaming,
@@ -162,6 +166,7 @@ export function ChatView({
         onPrefillConsumed={onPrefillConsumed}
         disableSend={disableSend}
         placeholder={placeholder}
+        projectId={projectId ?? undefined}
       />
     </div>
   );

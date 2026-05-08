@@ -23,6 +23,7 @@ import {
   takeoverBannerAtom,
   turnConflictAtom,
   chatMessagesAtom,
+  enqueuePendingAtom,
 } from '@/lib/atoms/chat';
 import type { ChatWatchEvent } from '@kagan/shared-api-client';
 
@@ -45,6 +46,7 @@ vi.mock('@/lib/api/client', async () => {
         messages: [{ role: 'assistant', content: 'Hello' }],
         label: 'Test Session',
         agent_backend: 'claude',
+        project_id: 'project-1',
       }),
       getTurnStatus: vi.fn().mockResolvedValue({ active: false }),
       getChatAgents: vi.fn().mockResolvedValue({ backends: [] }),
@@ -107,6 +109,7 @@ describe('useChatSession — connect', () => {
 
     expect(result.current.loading).toBe(false);
     expect(result.current.label).toBe('Test Session');
+    expect(result.current.projectId).toBe('project-1');
     expect(result.current.agentBackend).toBe('claude');
     expect(store.get(chatMessagesAtom)).toEqual([{ role: 'assistant', content: 'Hello' }]);
   });
@@ -167,6 +170,45 @@ describe('useChatSession — chunk dispatch', () => {
 
     expect(store.get(isStreamingAtom)).toBe(false);
     expect(store.get(streamEntriesAtom)).toHaveLength(0);
+  });
+
+  it('drains queued attachments into the next stream after CHAT_DONE', async () => {
+    vi.useFakeTimers();
+    try {
+      const { streamSSE } = await import('@/lib/api/sse');
+      const store = createStore();
+      store.set(enqueuePendingAtom, {
+        text: 'follow up',
+        attachments: [{ id: 'att-1', name: 'notes.txt', type: 'file', content: 'hello' }],
+      });
+      renderWithStore(() => useChatSession('session-1'), store);
+      await act(async () => {});
+
+      fireWatchEvent({ t: 'CHAT_DONE', full_response: 'final text' });
+      await act(async () => {
+        vi.runOnlyPendingTimers();
+        await Promise.resolve();
+      });
+
+      expect(streamSSE).toHaveBeenCalledWith(
+        '/api/chat/session-1/stream',
+        expect.objectContaining({
+          body: JSON.stringify({
+            text: 'follow up',
+            attachments: [
+              {
+                type: 'file',
+                name: 'notes.txt',
+                mime_type: 'text/plain',
+                data: 'hello',
+              },
+            ],
+          }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -295,6 +337,34 @@ describe('useChatSession — 409 conflict', () => {
     expect(conflict?.pendingText).toBe('hello world');
     expect(conflict?.partialChars).toBe(42);
     expect(store.get(isStreamingAtom)).toBe(false);
+  });
+
+  it('stores original attachments for takeover retry after a 409', async () => {
+    const { apiClient, ApiError } = await import('@/lib/api/client');
+    const { streamSSE } = await import('@/lib/api/sse');
+    const attachment = { id: 'att-1', name: 'notes.txt', type: 'file', content: 'hello' };
+
+    (apiClient.getTurnStatus as Mock).mockResolvedValue({
+      active: true,
+      running_since: '2026-01-01T00:00:00Z',
+      partial_chars: 42,
+    });
+    (streamSSE as Mock).mockImplementation(async function* () {
+      throw new ApiError(409, 'Turn in progress');
+    });
+
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
+    await act(async () => {});
+
+    await act(async () => {
+      result.current.onSend('hello world', [attachment]);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(store.get(turnConflictAtom)?.pendingAttachments).toEqual([attachment]);
   });
 
   it('onDismissConflict clears the conflict state', async () => {

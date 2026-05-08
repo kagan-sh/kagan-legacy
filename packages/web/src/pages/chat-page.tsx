@@ -120,6 +120,7 @@ export function Component() {
             onInterrupt={session.onInterrupt}
             externalPrefill={session.editPrefill ?? undefined}
             onPrefillConsumed={session.onPrefillConsumed}
+            projectId={session.projectId ?? undefined}
           />
         </div>
       </div>

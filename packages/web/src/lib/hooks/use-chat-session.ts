@@ -31,7 +31,7 @@ import {
 } from '@/lib/atoms/chat';
 import { useChatWatch } from '@/lib/hooks/use-chat-watch';
 import type { ChatWatchEvent, WireChatMessage } from '@kagan/shared-api-client';
-import type { Attachment } from '@/components/chat/chat-input-bar';
+import type { Attachment } from '@/lib/chat-attachments';
 import type { PermissionRequest } from '@/components/PermissionDialog';
 
 /** Optional context passed to onSlashCommand by panel consumers. */
@@ -43,6 +43,7 @@ export interface SlashCommandExtra {
 export interface ChatSessionState {
   loading: boolean;
   label: string;
+  projectId: string | null;
   agentBackend: string | null;
   availableBackends: string[];
   messages: WireChatMessage[];
@@ -89,6 +90,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   // ── Local state ────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [agentBackend, setAgentBackend] = useState<string | null>(null);
   const [availableBackends, setAvailableBackends] = useState<string[]>([]);
   const [lastSentText, setLastSentText] = useState('');
@@ -149,6 +151,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         if (cancelled) return;
         setMessages(session.messages);
         setLabel(session.label || 'Chat');
+        setProjectId(session.project_id ?? null);
         setAgentBackend(session.agent_backend ?? null);
 
         const turnStatus = await apiClient.getTurnStatus(id);
@@ -256,7 +259,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           setTimeout(() => {
             const next = dequeue();
             if (next) {
-              doSendStreamRef.current?.(next.text);
+              doSendStreamRef.current?.(next.text, next.attachments);
             }
           }, 0);
           break;
@@ -403,14 +406,14 @@ export function useChatSession(id: string | undefined): ChatSessionState {
                 runningSince: statusResp.running_since ?? new Date().toISOString(),
                 partialChars: statusResp.partial_chars ?? 0,
                 pendingText: text,
-                pendingAttachments: wireAttachments,
+                pendingAttachments: attachments,
               });
             } catch {
               setTurnConflict({
                 runningSince: new Date().toISOString(),
                 partialChars: 0,
                 pendingText: text,
-                pendingAttachments: wireAttachments,
+                pendingAttachments: attachments,
               });
             }
             setIsStreaming(false);
@@ -471,7 +474,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     const { pendingText, pendingAttachments } = turnConflict;
     setTurnConflict(null);
     setTimeout(() => {
-      doSendStream(pendingText, pendingAttachments as Attachment[] | undefined);
+      doSendStream(pendingText, pendingAttachments);
     }, 300);
   }, [id, turnConflict, setTurnConflict, doSendStream]);
 
@@ -539,6 +542,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   return {
     loading,
     label,
+    projectId,
     agentBackend,
     availableBackends,
     messages,

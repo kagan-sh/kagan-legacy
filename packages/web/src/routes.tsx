@@ -43,6 +43,11 @@ export const routes: RouteObject[] = [
             errorElement: <RouteError />,
           },
           {
+            path: 'analytics',
+            element: <Navigate to="/workspace" replace />,
+            errorElement: <RouteError />,
+          },
+          {
             path: 'task/:id',
             lazy: () => import('@/pages/task-detail-page'),
             errorElement: <RouteError />,

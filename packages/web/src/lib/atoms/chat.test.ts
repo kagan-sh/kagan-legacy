@@ -142,6 +142,32 @@ describe('pendingQueueAtom', () => {
     expect(store.get(pendingQueueAtom)[0]?.text).toBe('hello');
   });
 
+  it('enqueue preserves attachments with the pending message', () => {
+    const store = createStore();
+    const ok = store.set(enqueuePendingAtom, {
+      text: 'hello',
+      attachments: [{ id: 'att-1', name: 'notes.txt', type: 'file', content: 'body' }],
+    });
+    expect(ok).toBe(true);
+    expect(store.get(pendingQueueAtom)[0]).toMatchObject({
+      text: 'hello',
+      attachments: [{ name: 'notes.txt', type: 'file', content: 'body' }],
+    });
+  });
+
+  it('dequeue returns attachments with the first pending message', () => {
+    const store = createStore();
+    store.set(enqueuePendingAtom, {
+      text: 'first',
+      attachments: [{ id: 'att-1', name: 'notes.txt', type: 'file', content: 'body' }],
+    });
+    const msg = store.set(dequeuePendingAtom);
+    expect(msg).toMatchObject({
+      text: 'first',
+      attachments: [{ name: 'notes.txt', type: 'file', content: 'body' }],
+    });
+  });
+
   it('dequeue removes and returns the first message', () => {
     const store = createStore();
     store.set(enqueuePendingAtom, 'first');

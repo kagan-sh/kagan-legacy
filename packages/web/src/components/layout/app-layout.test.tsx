@@ -5,6 +5,7 @@ import { renderWithProviders } from '@/test/render';
 import { Component as AppLayout } from '@/components/layout/app-layout';
 import {
   rightRailDismissalKey,
+  rightRailChatSessionIdAtom,
   rightRailDismissalsAtom,
   rightRailModeAtom,
   rightRailTaskIdAtom,
@@ -32,6 +33,12 @@ vi.mock('@/components/session/chat-side-panel', () => ({
       <span>{taskId}</span>
       <button type="button" onClick={onClose}>Close chat</button>
     </div>
+  ),
+}));
+
+vi.mock('@/components/session/orchestrator-chat-panel', () => ({
+  OrchestratorChatPanel: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="orchestrator-chat-panel">{sessionId}</div>
   ),
 }));
 
@@ -74,5 +81,16 @@ describe('AppLayout', () => {
     expect(store.get(rightRailDismissalsAtom)).toEqual({
       [rightRailDismissalKey({ kind: 'task', id: 'task-456' })]: true,
     });
+  });
+
+  it('does not mount a duplicate orchestrator rail for the active full chat route', async () => {
+    const store = createStore();
+    store.set(rightRailModeAtom, 'chat-right');
+    store.set(rightRailChatSessionIdAtom, 'chat-123');
+
+    renderWithProviders(<AppLayout />, { store, initialEntries: ['/chat/chat-123'] });
+
+    expect(await screen.findByRole('main')).toBeInTheDocument();
+    expect(screen.queryByTestId('orchestrator-chat-panel')).not.toBeInTheDocument();
   });
 });

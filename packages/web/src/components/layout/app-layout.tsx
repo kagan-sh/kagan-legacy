@@ -138,7 +138,15 @@ function AppLayout() {
         if (sessionMatch) return sessionMatch[1];
         return null;
     }, [location.pathname]);
+    const currentChatSessionId = useMemo(() => {
+        const chatMatch = /^\/chat\/([^/?]+)/.exec(location.pathname);
+        return chatMatch?.[1] ?? null;
+    }, [location.pathname]);
     const workspaceRoute = location.pathname.startsWith("/workspace");
+    const rightRailVisible = !workspaceRoute &&
+        railMode !== "none" &&
+        Boolean(railTaskId || railChatSessionId) &&
+        !(currentChatSessionId && railChatSessionId === currentChatSessionId);
 
     const closeChatRail = useCallback(() => {
         dismissRightRailContext();
@@ -172,8 +180,7 @@ function AppLayout() {
 
     const toggleAIPanel = useCallback(async () => {
         if (workspaceRoute) return;
-        const railOpen =
-            railMode !== "none" && Boolean(railTaskId || railChatSessionId);
+        const railOpen = rightRailVisible;
         const hasTask = Boolean(currentTaskId ?? railTaskId);
         if (
             railOpen &&
@@ -212,6 +219,7 @@ function AppLayout() {
         railChatSessionId,
         railMode,
         railTaskId,
+        rightRailVisible,
         setChatRailLayout,
         setRailChatSessionId,
         setRailMode,
@@ -260,8 +268,7 @@ function AppLayout() {
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
-            const railOpen =
-                railMode !== "none" && Boolean(railTaskId || railChatSessionId);
+            const railOpen = rightRailVisible;
 
             // Esc — close chat rail (interrupt-first: chat-input-bar stops propagation when busy)
             if (event.key === "Escape" && railOpen) {
@@ -272,7 +279,7 @@ function AppLayout() {
 
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [closeChatRail, railChatSessionId, railMode, railTaskId]);
+    }, [closeChatRail, rightRailVisible]);
 
     if (!projectChecked) {
         return (
@@ -312,11 +319,7 @@ function AppLayout() {
                                 }
                             }}
                             aiPanelAvailable={!workspaceRoute}
-                            aiPanelOpen={
-                                !workspaceRoute &&
-                                railMode !== "none" &&
-                                Boolean(railTaskId || railChatSessionId)
-                            }
+                            aiPanelOpen={rightRailVisible}
                             aiPanelFullscreen={
                                 !workspaceRoute &&
                                 railMode === "chat-fullscreen"
@@ -339,9 +342,8 @@ function AppLayout() {
                             </main>
 
                             {!isMobile &&
-                            !workspaceRoute &&
-                            railMode === "chat-right" &&
-                            (railTaskId || railChatSessionId) ? (
+                            rightRailVisible &&
+                            railMode === "chat-right" ? (
                                 <div
                                     className="relative hidden shrink-0 lg:block"
                                     style={{ width: railWidth }}
@@ -381,9 +383,8 @@ function AppLayout() {
                         </div>
 
                         {!isMobile &&
-                        !workspaceRoute &&
-                        railMode === "chat-bottom" &&
-                        (railTaskId || railChatSessionId) ? (
+                        rightRailVisible &&
+                        railMode === "chat-bottom" ? (
                             <div
                                 className="relative hidden shrink-0 lg:block"
                                 style={{ height: railHeight }}
@@ -427,9 +428,7 @@ function AppLayout() {
             </div>
 
             {isMobile &&
-            !workspaceRoute &&
-            railMode !== "none" &&
-            (railTaskId || railChatSessionId) ? (
+            rightRailVisible ? (
                 <div className="fixed inset-0 z-50 flex flex-col bg-[color:var(--surface-0)]">
                     {railTaskId ? (
                         <ErrorBoundary level="widget">
@@ -454,9 +453,8 @@ function AppLayout() {
             ) : null}
 
             {!isMobile &&
-            !workspaceRoute &&
-            railMode === "chat-fullscreen" &&
-            (railTaskId || railChatSessionId) ? (
+            rightRailVisible &&
+            railMode === "chat-fullscreen" ? (
                 <div className="glass-surface pointer-events-none fixed inset-0 z-40 hidden p-4 lg:block">
                     <div className="pointer-events-auto flex h-full w-full overflow-hidden">
                         {railTaskId ? (

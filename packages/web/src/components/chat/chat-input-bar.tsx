@@ -15,6 +15,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { ChatHistory, HistoryCursor } from '@/lib/chat-history';
+import type { Attachment } from '@/lib/chat-attachments';
 
 const SLASH_COMMANDS = [
   { command: '/help', description: 'Show available commands' },
@@ -27,14 +28,6 @@ const SLASH_COMMANDS = [
   { command: '/flow', description: 'Guided Plan → Execute → Orchestrate flow' },
   { command: '/exit', description: 'Exit the chat session' },
 ];
-
-export interface Attachment {
-  id: string;
-  type: string;
-  name: string;
-  content?: string;
-  file?: File;
-}
 
 interface ChatInputBarProps {
   onSend: (text: string, attachments?: Attachment[]) => void;
@@ -128,7 +121,9 @@ export function ChatInputBar({
     } else {
       onSend(trimmed, atts.length > 0 ? atts : undefined);
     }
-    historyRef.current?.push(trimmed);
+    if (trimmed.length > 0) {
+      historyRef.current?.push(trimmed);
+    }
     cursorRef.current.reset();
     setText('');
     setAttachments([]);
@@ -139,11 +134,18 @@ export function ChatInputBar({
     if (!canSend) return;
     // If the agent is currently streaming, queue the message instead.
     if (isStreaming) {
-      const ok = enqueue(text.trim());
+      const ok = enqueue({
+        text: text.trim(),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      });
       if (!ok) {
         toast.error(`Queue full — max ${PENDING_QUEUE_MAX} messages`);
         return;
       }
+      if (text.trim().length > 0) {
+        historyRef.current?.push(text.trim());
+      }
+      cursorRef.current.reset();
       setText('');
       setAttachments([]);
       setShowCommands(false);

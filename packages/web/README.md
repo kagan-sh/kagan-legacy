@@ -47,3 +47,4 @@ Equivalent script:
 - `src/components/shared/workspace.tsx` contains the reusable IDE-style panel primitives
 - `src/pages/` contains the route-level workspaces: board, task, session redirect, chat, and settings
 - global design tokens, typography, and shell styling live in `src/app.css`
+- `/analytics` is intentionally not a standalone surface; legacy links redirect to `/workspace`.

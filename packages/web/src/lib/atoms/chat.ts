@@ -1,5 +1,6 @@
 import { atom } from 'jotai';
 import type { WireChatMessage } from '@kagan/shared-api-client';
+import type { Attachment } from '@/lib/chat-attachments';
 
 // ---------------------------------------------------------------------------
 // Persisted history (loaded on session open, refreshed on CHAT_DONE)
@@ -119,7 +120,7 @@ export interface TurnConflict {
   partialChars: number;
   /** The text the user wanted to send (so we can retry after interrupt). */
   pendingText: string;
-  pendingAttachments?: unknown[];
+  pendingAttachments?: Attachment[];
 }
 
 export const turnConflictAtom = atom<TurnConflict | null>(null);
@@ -135,6 +136,12 @@ export const PENDING_QUEUE_MAX = 10;
 export interface PendingMessage {
   id: string;
   text: string;
+  attachments?: Attachment[];
+}
+
+export interface PendingMessageInput {
+  text: string;
+  attachments?: Attachment[];
 }
 
 /** Queue of messages submitted while the agent was streaming. Drained FIFO. */
@@ -146,11 +153,17 @@ export const pendingQueueLengthAtom = atom((get) => get(pendingQueueAtom).length
 /** Append a message to the queue. No-op if the queue is already at max depth. */
 export const enqueuePendingAtom = atom(
   null,
-  (get, set, text: string): boolean => {
+  (get, set, input: string | PendingMessageInput): boolean => {
+    const payload = typeof input === 'string' ? { text: input } : input;
     const queue = get(pendingQueueAtom);
     if (queue.length >= PENDING_QUEUE_MAX) return false;
     const id = `pq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    set(pendingQueueAtom, [...queue, { id, text }]);
+    set(pendingQueueAtom, [
+      ...queue,
+      payload.attachments && payload.attachments.length > 0
+        ? { id, text: payload.text, attachments: payload.attachments }
+        : { id, text: payload.text },
+    ]);
     return true;
   },
 );

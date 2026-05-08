@@ -15,17 +15,18 @@ Manage tasks, stream live agent output, send follow-ups to a watched task, revie
 
 ## Features
 
-| Feature           | VS Code Surface  | How to access                              |
-| ----------------- | ---------------- | ------------------------------------------ |
-| Orchestrator chat | Chat Participant | `@kagan <message>` in Chat panel           |
-| Watch task output | Chat Participant | `@kagan /watch` or click chat icon on task |
-| Board status      | Chat Participant | `@kagan /status`                           |
-| Kanban board      | Sidebar TreeView | Click the Kagan icon in the Activity Bar   |
-| Task diffs        | SCM diff editor  | Right-click task > View Diff               |
-| Review verdicts   | Comments panel   | Open a task in Review status               |
-| Agent terminal    | Terminal         | Right-click running task > Attach Terminal |
-| Diagnostic log    | Output Channel   | Command: Show Agent Output                 |
-| Settings commands | Command Palette  | Cmd/Ctrl+Shift+P → type "Kagan"            |
+| Feature           | VS Code Surface  | How to access                                                  |
+| ----------------- | ---------------- | -------------------------------------------------------------- |
+| Orchestrator chat | Chat Participant | `@kagan <message>` in Chat panel                               |
+| Watch task output | Chat Participant | `@kagan /watch` or click chat icon on task                     |
+| Attach to session | Chat Participant | `@kagan /attach <session-or-task-id>` or click a running agent |
+| Board status      | Chat Participant | `@kagan /status`                                               |
+| Kanban board      | Sidebar TreeView | Click the Kagan icon in the Activity Bar                       |
+| Task diffs        | SCM diff editor  | Right-click task > View Diff                                   |
+| Review verdicts   | Comments panel   | Open a task in Review status                                   |
+| Agent terminal    | Terminal         | Right-click running task > Attach Terminal                     |
+| Diagnostic log    | Output Channel   | Command: Show Agent Output                                     |
+| Settings commands | Command Palette  | Cmd/Ctrl+Shift+P → type "Kagan"                                |
 
 ## Install
 

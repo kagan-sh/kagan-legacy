@@ -9,7 +9,6 @@ import { SSE_TYPE, CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
 import { formatToolName, renderEvent, type RenderableEvent } from "@kagan/shared-api-client";
 import type { ChatStreamEvent, ChatWatchEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "@kagan/shared-api-client";
 import { parseAttachPrompt, pickReusableChatSessionId, resolveAgentSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
-import { attachState } from "./attach-state.js";
 
 // ── Participant state ──────────────────────────────────────────────────────
 // Collected in a single class so deactivate() can reset it cleanly via
@@ -19,7 +18,7 @@ class ChatParticipantState implements vscode.Disposable {
   activeChatSessionId: string | null = null;
   sessionCreating: Promise<string> | null = null;
   watchingTaskId: string | null = null;
-  /** Session currently attached via /attach or tree-view click. */
+  /** Session currently attached via /attach. */
   attachedSessionId: string | null = null;
 
   private watchUnsubscribe: (() => void) | null = null;
@@ -121,7 +120,6 @@ export function registerChatParticipant(
         taskTitle?: string;
       };
       if (item.kind === "attach" && item.sessionId) {
-        attachState.setGlobal({ sessionId: item.sessionId, taskTitle: item.taskTitle ?? "" });
         query = `@kagan /attach ${item.sessionId}`;
       } else if (item.kind === "task" && (item.task?.id || item.task?.title)) {
         query = `@kagan /watch ${item.task.id ?? item.task.title}`;
@@ -133,7 +131,7 @@ export function registerChatParticipant(
   // kagan.attachToSession — internal command invoked by running-agent tree clicks.
   const attachToSession = vscode.commands.registerCommand(
     "kagan.attachToSession",
-    (sessionId: unknown, taskTitle?: unknown) => {
+    (sessionId: unknown) => {
       const id = typeof sessionId === "string" ? sessionId.trim() : "";
       if (!id) {
         void vscode.window.showWarningMessage(
@@ -141,8 +139,6 @@ export function registerChatParticipant(
         );
         return;
       }
-      const title = typeof taskTitle === "string" ? taskTitle : "";
-      attachState.setGlobal({ sessionId: id, taskTitle: title });
       vscode.commands.executeCommand("workbench.action.chat.open", {
         query: `@kagan /attach ${id}`,
       });
@@ -151,7 +147,6 @@ export function registerChatParticipant(
 
   // kagan.detachFromSession — command palette + tree-node context menu.
   const detachFromSession = vscode.commands.registerCommand("kagan.detachFromSession", () => {
-    attachState.clearGlobal();
     state.attachedSessionId = null;
     vscode.commands.executeCommand("workbench.action.chat.open", {
       query: `@kagan /detach`,
@@ -178,14 +173,6 @@ async function handleRequest(
   );
   state.activeChatSessionId = next.activeChatSessionId;
   state.watchingTaskId = next.watchingTaskId;
-  // Preserve attachedSessionId across turns — detach is explicit only.
-  // But on a brand-new conversation, also check global attach state.
-  if (!state.attachedSessionId) {
-    const global = attachState.get("global");
-    if (global) {
-      state.attachedSessionId = global.sessionId;
-    }
-  }
 
   switch (request.command) {
     case "status":
@@ -438,7 +425,6 @@ async function handleAttach(
   }
 
   state.attachedSessionId = resolvedSessionId;
-  attachState.setGlobal({ sessionId: resolvedSessionId, taskTitle: sessionTitle });
 
   stream.markdown(`**Attached to session** \`${resolvedSessionId.slice(0, 8)}\` — ${sessionTitle}\n\n`);
 
@@ -469,7 +455,6 @@ async function handleAttach(
 
   stream.button({ command: "kagan.detachFromSession", title: "Detach" });
 
-  // Subscribe to live tail
   if (!token.isCancellationRequested) {
     stream.progress("Live...");
     await streamSessionLive(resolvedSessionId, client, stream, token);
@@ -488,7 +473,6 @@ async function handleDetach(
   }
   const prev = state.attachedSessionId;
   state.attachedSessionId = null;
-  attachState.clearGlobal();
   stream.markdown(`Detached from session \`${prev.slice(0, 8)}\`. Back in orchestrator mode.\n`);
   stream.button({ command: "kagan.board.refresh", title: "Refresh Board" });
 }
@@ -507,16 +491,11 @@ async function handleAttachedTurn(
   await streamSessionLive(sessionId, client, stream, token);
 }
 
-// ── Session live tail via SSE ──────────────────────────────────────────────
+// ── Session live tail via replay polling ───────────────────────────────────
 
 /**
- * Stream live events from a worker/reviewer session via
- * GET /api/v1/sessions/{id}/events?since=.
- *
- * Currently implemented via getSessionReplay polling (SSE for per-session
- * events is a future work item — the global SSE doesn't expose per-session
- * events in a way that's consumable here without filtering on session_id).
- * The poll resolves when the session ends or the cancellation token fires.
+ * Stream live worker/reviewer events by polling the supported session replay
+ * endpoint forward from the last rendered event.
  */
 async function streamSessionLive(
   sessionId: string,
@@ -524,7 +503,6 @@ async function streamSessionLive(
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<void> {
-  // Poll for new events every 3 s until session ends or cancelled.
   let cursor: string | undefined;
   let sessionActive = true;
 

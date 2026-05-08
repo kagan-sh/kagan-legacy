@@ -14,7 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { ChatHistory, HistoryCursor } from '@/lib/chat-history';
+import { useChatInputHistory } from '@/lib/hooks/use-chat-input-history';
 import type { Attachment } from '@/lib/chat-attachments';
 
 const SLASH_COMMANDS = [
@@ -85,16 +85,7 @@ export function ChatInputBar({
 
   // ── History ────────────────────────────────────────────────────────────────
 
-  const historyRef = useRef<ChatHistory | null>(null);
-  const cursorRef = useRef<HistoryCursor>(new HistoryCursor());
-
-  // (Re-)create the ChatHistory instance when projectId or persistHistory changes.
-  useEffect(() => {
-    const pid = projectId ?? '__default__';
-    const persist = persistHistory && pid !== '__default__';
-    historyRef.current = new ChatHistory(pid, persist);
-    cursorRef.current.reset();
-  }, [projectId, persistHistory]);
+  const history = useChatInputHistory(projectId, persistHistory);
 
   // ── External prefill ───────────────────────────────────────────────────────
 
@@ -102,7 +93,7 @@ export function ChatInputBar({
     if (externalPrefill != null) {
       setText(externalPrefill);
       onPrefillConsumed?.();
-      cursorRef.current.reset();
+      history.reset();
       inputRef.current?.focus();
     }
   }, [externalPrefill, onPrefillConsumed]);
@@ -122,9 +113,9 @@ export function ChatInputBar({
       onSend(trimmed, atts.length > 0 ? atts : undefined);
     }
     if (trimmed.length > 0) {
-      historyRef.current?.push(trimmed);
+      history.push(trimmed);
     }
-    cursorRef.current.reset();
+    history.reset();
     setText('');
     setAttachments([]);
     setShowCommands(false);
@@ -143,9 +134,9 @@ export function ChatInputBar({
         return;
       }
       if (text.trim().length > 0) {
-        historyRef.current?.push(text.trim());
+        history.push(text.trim());
       }
-      cursorRef.current.reset();
+      history.reset();
       setText('');
       setAttachments([]);
       setShowCommands(false);
@@ -198,8 +189,7 @@ export function ChatInputBar({
     // Arrow key history navigation — only when the command menu is not open.
     if (!showCommands || filteredCommands.length === 0) {
       if (e.key === 'ArrowUp') {
-        const entries = historyRef.current?.getEntries() ?? [];
-        const entry = cursorRef.current.up(text, entries);
+        const entry = history.navigateUp(text);
         if (entry !== null) {
           e.preventDefault();
           setText(entry);
@@ -207,8 +197,7 @@ export function ChatInputBar({
         return;
       }
       if (e.key === 'ArrowDown') {
-        const entries = historyRef.current?.getEntries() ?? [];
-        const entry = cursorRef.current.down(entries);
+        const entry = history.navigateDown();
         if (entry !== null) {
           e.preventDefault();
           setText(entry);

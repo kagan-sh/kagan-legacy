@@ -15,16 +15,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from kagan.server._access import AccessTier, is_access_allowed
-from kagan.server._chat_routes import (
-    _broadcast,
-    _chat_event_to_sse_frame,
-    _emit,
-    _load_session_view,
-    _parse_attachments,
-    _session_summary,
-    _teardown_session_state,
-)
+from kagan.server._access import AccessTier
 from kagan.server._helpers import (
     _err,
     _ok,
@@ -32,6 +23,15 @@ from kagan.server._helpers import (
     handle_errors,
     parse_body,
     require_context,
+)
+from kagan.server._sse_fanout import (
+    _broadcast,
+    _chat_event_to_sse_frame,
+    _emit,
+    _load_session_view,
+    _session_summary,
+    _teardown_session_state,
+    resolve_sse_parameters,
 )
 from kagan.server._sse_stream import _unified_sse_stream
 from kagan.server.responses import (
@@ -41,7 +41,6 @@ from kagan.server.responses import (
     SessionReplayEvent,
     SessionReplayPage,
     SessionsResponse,
-    TurnInProgressResponse,
 )
 
 if TYPE_CHECKING:
@@ -304,46 +303,6 @@ async def _query_chat_replay(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_message_request(
-    request: Request, ctx: ServerContext, session_id: str
-) -> Response | tuple[Any, str, str, list[Any] | None]:
-    if not is_access_allowed(ctx, AccessTier.STANDARD):
-        return _err("Insufficient access tier for chat", status=403)
-    body = await request.json()
-    if not isinstance(body, dict):
-        return _err("Request body must be a JSON object", status=400)
-    text = cast("str", body.get("text", "")).strip()
-    if not text:
-        return _err("text is required", status=400)
-    agent_backend = cast("str | None", body.get("agent_backend"))
-    attachments = _parse_attachments(body)
-
-    session = await _load_session_view(ctx.client, session_id)
-    if session is None:
-        return _err("Session not found", status=404)
-    settings = await ctx.client.settings.get()
-    if agent_backend or session.agent_backend:
-        backend = agent_backend or session.agent_backend
-    else:
-        from kagan.cli.chat.agents import resolve_available_chat_backend
-
-        backend = resolve_available_chat_backend(settings)
-
-    status = ctx.client.chat.turn_status(session_id)
-    if status.active:
-        return JSONResponse(
-            TurnInProgressResponse(
-                running_since=(
-                    status.started_at.isoformat() if status.started_at is not None else None
-                ),
-                partial_chars=status.partial_chars,
-            ).model_dump(mode="json"),
-            status_code=409,
-        )
-
-    return session, text, cast("str", backend), attachments
-
-
 async def _message_sse_stream(
     ctx: ServerContext,
     session_id: str,
@@ -602,8 +561,8 @@ def register_session_routes(mcp: FastMCP) -> None:
         if await _load_bound_chat_session(ctx, kind=kind, raw_id=raw_id) is None:
             return _err("Session not found", status=404)
 
-        resolved = await _resolve_message_request(request, ctx, raw_id)
-        if isinstance(resolved, Response):
+        resolved = await resolve_sse_parameters(request, ctx, raw_id)
+        if isinstance(resolved, JSONResponse):
             return resolved
         session, text, backend, attachments = resolved
 

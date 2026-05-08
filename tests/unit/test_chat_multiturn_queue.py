@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kagan.cli.chat._permission_ui import _SendResult
+from kagan.cli.chat._approval_types import _SendResult
 from kagan.cli.chat.repl import _TOOLBAR_STATE
 
 pytestmark = [pytest.mark.unit]

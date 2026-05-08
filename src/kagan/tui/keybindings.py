@@ -61,13 +61,33 @@ APP_BINDINGS: list[BindingType] = [
     Binding("ctrl+q", "quit", "Quit", key_display="Ctrl+Q"),
     Binding("o", "open_orchestrator", "AI Overlay", key_display="o"),
     Binding("ctrl+space", "open_orchestrator", "", show=False),
+    Binding("ctrl+w", "toggle_mode", "Toggle Chat/Board", key_display="Ctrl+W"),
 ]
 
 ORCHESTRATOR_OVERLAY_BINDINGS: list[BindingType] = [
     Binding("escape", "handle_esc", "Back / Close", priority=True),
     Binding("ctrl+space", "handle_esc", "", show=False, priority=True),
-    Binding("ctrl+down", "cycle_agent_next", "Next agent", key_display="Ctrl+↓", priority=True),
-    Binding("ctrl+up", "cycle_agent_prev", "Previous agent", key_display="Ctrl+↑", priority=True),
+    Binding(
+        "ctrl+down",
+        "cycle_agent_next",
+        "Next agent",
+        key_display="Ctrl+downarrow",
+        priority=True,
+    ),
+    Binding(
+        "ctrl+up",
+        "cycle_agent_prev",
+        "Previous agent",
+        key_display="Ctrl+uparrow",
+        priority=True,
+    ),
+    Binding(
+        "ctrl+shift+f",
+        "toggle_fullscreen",
+        "Fullscreen",
+        key_display="Ctrl+Shift+F",
+        priority=True,
+    ),
 ]
 
 CHECK_ROW_BINDINGS: list[BindingType] = [
@@ -83,6 +103,7 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("n", "new_task", "New Task"),
     Binding("enter", "open_task", "Open"),
     Binding("w", "toggle_workspace", "Workspace"),
+    Binding("ctrl+w", "toggle_mode", "Chat/Board", key_display="Ctrl+W"),
     Binding("i", "open_analytics", "Analytics"),
     Binding("e", "edit_task", "Edit"),
     Binding("x", "delete_task", "Delete"),
@@ -90,8 +111,8 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("s", "start_agent", "Start"),
     Binding("a", "attach_agent", "Attach"),
     Binding("shift+s", "stop_agent", "Stop", key_display="Shift+S"),
-    Binding("shift+left", "move_left", "Move Left", key_display="Shift+←"),
-    Binding("shift+right", "move_right", "Move Right", key_display="Shift+→"),
+    Binding("shift+left", "move_left", "Move Left", key_display="Shift+leftarrow"),
+    Binding("shift+right", "move_right", "Move Right", key_display="Shift+rightarrow"),
     Binding("slash", "search", "Search", key_display="/"),
     Binding("f", "expand_description", "Expand Description"),
     Binding("p", "peek_task", "Peek"),
@@ -142,6 +163,7 @@ WORKSPACE_BINDINGS: list[BindingType] = [
     Binding("ctrl+period,ctrl+i,f4", "focus_chat", "Chat", key_display="Ctrl+."),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("w", "toggle_board", "Board"),
+    Binding("ctrl+w", "toggle_mode", "Chat/Board", key_display="Ctrl+W"),
     Binding("escape", "back", "Back"),
 ]
 

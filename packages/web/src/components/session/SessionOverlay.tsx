@@ -4,6 +4,7 @@ import { useSessionOverlay } from '@/lib/hooks/use-session-overlay';
 import { useSessionList } from '@/lib/hooks/use-session-list';
 import { useSessionActions } from '@/lib/hooks/use-session-actions';
 import { cn } from '@/lib/utils';
+import { parseScopedSessionId } from '@/lib/api/session-id';
 import { OrchestratorSessionBody } from './OrchestratorSessionBody';
 import { TaskSessionBody } from './TaskSessionBody';
 import { GeneralSessionBody } from './GeneralSessionBody';
@@ -196,7 +197,7 @@ function SessionBodyRouter({ session }: { session: SessionItemResponse }) {
     case 'task':
       return (
         <TaskSessionBody
-          taskId={session.task_id ?? rawScopedId(session.id, 'task')}
+          taskId={session.task_id ?? renderRawId(session.id)}
           sessionId={rawTaskSessionId(session)}
         />
       );
@@ -205,15 +206,14 @@ function SessionBodyRouter({ session }: { session: SessionItemResponse }) {
   }
 }
 
-function rawChatSessionId(session: SessionItemResponse, prefix: string): string {
-  return session.chat_session_id ?? rawScopedId(session.id, prefix);
+function rawChatSessionId(session: SessionItemResponse, _prefix: string): string {
+  return session.chat_session_id ?? renderRawId(session.id);
 }
 
 function rawTaskSessionId(session: SessionItemResponse): string {
-  return session.session_id ?? rawScopedId(session.id, 'task');
+  return session.session_id ?? renderRawId(session.id);
 }
 
-function rawScopedId(id: string, prefix: string): string {
-  const marker = `${prefix}:`;
-  return id.startsWith(marker) ? id.slice(marker.length) : id;
+function renderRawId(id: string): string {
+  return parseScopedSessionId(id)?.rawId ?? id;
 }

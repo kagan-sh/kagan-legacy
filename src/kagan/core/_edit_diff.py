@@ -1,4 +1,4 @@
-"""kagan.server.mcp.toolsets._edit_diff -- CRLF/BOM/overlap edit helpers.
+"""kagan.core._edit_diff -- CRLF/BOM/overlap edit helpers.
 
 Pure helper module -- no MCP coupling.
 

@@ -2,11 +2,9 @@ import { NavLink } from 'react-router';
 import { LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Analytics is intentionally excluded from primary nav.
-// Access it via Quick Actions or /settings#advanced.
 const ITEMS = [
+  { to: '/chat', label: 'Chat', icon: MessageSquareText },
   { to: '/board', label: 'Board', icon: LayoutDashboard },
-  { to: '/workspace', label: 'Workspace', icon: MessageSquareText },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 

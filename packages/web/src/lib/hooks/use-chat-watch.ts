@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '@/lib/api/client';
+import { parseSSEFrames } from '@/lib/api/sse-parser';
 import { CHAT_WATCH_TYPE } from '@kagan/shared-api-client';
 import type { ChatWatchEvent } from '@kagan/shared-api-client';
 
@@ -86,40 +87,18 @@ export function useChatWatch(
       // Reset backoff on a successful connection.
       attemptRef.current = 0;
 
-      const reader = response.body
-        .pipeThrough(new TextDecoderStream())
-        .getReader();
-      let buffer = '';
+      const reader = response.body!.getReader();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (unmountedRef.current) {
-          reader.cancel().catch(() => {});
-          break;
+      for await (const event of parseSSEFrames<ChatWatchEvent>(reader)) {
+        if (unmountedRef.current) break;
+        if (
+          (event.t === CHAT_WATCH_TYPE.CHAT_USER_MESSAGE ||
+            event.t === CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE) &&
+          event.message_id > lastSeenIdRef.current
+        ) {
+          lastSeenIdRef.current = event.message_id;
         }
-        buffer += value;
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop()!;
-        for (const part of parts) {
-          // Skip keepalive comments (lines starting with ':')
-          const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
-          if (!dataLine) continue;
-          try {
-            const event = JSON.parse(dataLine.slice(6)) as ChatWatchEvent;
-            // Track the last message id from persisted message events.
-            if (
-              (event.t === CHAT_WATCH_TYPE.CHAT_USER_MESSAGE ||
-                event.t === CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE) &&
-              event.message_id > lastSeenIdRef.current
-            ) {
-              lastSeenIdRef.current = event.message_id;
-            }
-            onEventRef.current(event);
-          } catch {
-            // Malformed event — skip it.
-          }
-        }
+        onEventRef.current(event);
       }
     } catch (err) {
       // AbortError is an intentional teardown — do not reconnect.

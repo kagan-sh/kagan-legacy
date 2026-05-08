@@ -9,6 +9,7 @@ from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Input, OptionList, Static
+from textual.widgets.option_list import Option
 
 from kagan.cli.chat import (
     ChatSessionListItem,
@@ -25,7 +26,16 @@ from kagan.tui.widgets.chat import ChatPanel
 from kagan.tui.widgets.header import KaganHeader
 
 if TYPE_CHECKING:
+    from kagan.core._session_items import SessionItem
     from kagan.tui.app import KaganApp
+
+
+class _GroupHeader:
+    __slots__ = ("group_key", "label")
+
+    def __init__(self, label: str, group_key: str) -> None:
+        self.label = label
+        self.group_key = group_key
 
 
 class WorkspaceScreen(Screen[None]):
@@ -39,6 +49,9 @@ class WorkspaceScreen(Screen[None]):
         self._session_items: list[ChatSessionListItem] = []
         self._visible_session_items: list[ChatSessionListItem] = []
         self._footer_keys: dict[str, str] = {}
+        self._unified_session_items: list[SessionItem] = []
+        self._poll_task: asyncio.Task[None] | None = None
+        self._row_map: list[ChatSessionListItem | _GroupHeader] = []
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -57,6 +70,10 @@ class WorkspaceScreen(Screen[None]):
                     yield Static(
                         "n new  / filter  Enter open",
                         id="workspace-sidebar-hint",
+                    )
+                    yield Static(
+                        "Ctrl+W toggle mode",
+                        id="workspace-sidebar-mode-hint",
                     )
                 yield Input(
                     placeholder="Filter conversations",
@@ -100,6 +117,9 @@ class WorkspaceScreen(Screen[None]):
             exclusive=False,
             exit_on_error=False,
         )
+        self._poll_task = asyncio.create_task(
+            self._poll_unified_sessions(), name="workspace-session-poll"
+        )
 
     async def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
         panel = self.query_one(ChatPanel)
@@ -125,6 +145,11 @@ class WorkspaceScreen(Screen[None]):
         self._focus_sidebar()
 
     async def on_unmount(self) -> None:
+        if self._poll_task is not None:
+            self._poll_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._poll_task
+            self._poll_task = None
         if self._chat_message_task is not None:
             self._chat_message_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -140,6 +165,9 @@ class WorkspaceScreen(Screen[None]):
             )
 
     def action_toggle_board(self) -> None:
+        self.app.switch_screen("kanban-screen")
+
+    def action_toggle_mode(self) -> None:
         self.app.switch_screen("kanban-screen")
 
     def action_back(self) -> None:
@@ -165,15 +193,19 @@ class WorkspaceScreen(Screen[None]):
         self.app.push_screen("settings-modal", callback=self._on_settings_dismissed)
 
     def action_open_session(self) -> None:
-        selected = self._selected_session_item()
-        if selected is None:
+        row = self._selected_row()
+        if row is None:
+            return
+        if isinstance(row, _GroupHeader):
+            if row.group_key == "__new_chat__":
+                self.action_new_session()
             return
         self._chat_session_switch_token += 1
         token = self._chat_session_switch_token
         self.run_worker(
             self._switch_orchestrator_session(
                 self.query_one(ChatPanel),
-                self._session_key_for_item(selected),
+                self._session_key_for_item(row),
                 token=token,
                 focus_chat=True,
             ),
@@ -490,42 +522,107 @@ class WorkspaceScreen(Screen[None]):
         else:
             normalized_query = self.query_one("#workspace-search", Input).value
         needle = normalized_query.strip().lower()
+
+        option_list = self.query_one("#workspace-session-list", OptionList)
+        subtitle = self.query_one("#workspace-sidebar-subtitle", Static)
+        option_list.clear_options()
+        self._row_map = []
+
+        # "+ New chat" button at top
+        option_list.add_option(Option("[+ New chat]", id="__new_chat__"))
+        self._row_map.append(_GroupHeader("[+ New chat]", "__new_chat__"))
+
+        # Group orchestrator sessions by project
+        groups: dict[str, list[ChatSessionListItem]] = {}
+        ungrouped: list[ChatSessionListItem] = []
+        for item in self._session_items:
+            pid = (item.project_id or "").strip()
+            if pid:
+                groups.setdefault(pid, []).append(item)
+            else:
+                ungrouped.append(item)
+
+        active_key = prefer_key or self.kagan_app.orchestrator_sessions.active_key()
+
+        # Render project groups
+        project_name = self.kagan_app.project.name if self.kagan_app.project else "Sessions"
+        project_id = self.kagan_app.project.id if self.kagan_app.project else ""
+
+        if groups or ungrouped:
+            # Project header
+            option_list.add_option(Option(f"▸ {project_name}", id=f"__group__{project_id}"))
+            self._row_map.append(_GroupHeader(project_name, f"__group__{project_id}"))
+
+        # Orchestrator sessions under project
+        all_items = list(ungrouped)
+        for _pid, items in groups.items():
+            all_items.extend(items)
+
         if needle:
-            self._visible_session_items = [
+            filtered = [
                 item
-                for item in self._session_items
+                for item in all_items
                 if needle in item.label.lower()
                 or needle in item.session_id.lower()
                 or needle in (item.agent_backend or "").lower()
             ]
         else:
-            self._visible_session_items = list(self._session_items)
+            filtered = all_items
 
-        option_list = self.query_one("#workspace-session-list", OptionList)
-        subtitle = self.query_one("#workspace-sidebar-subtitle", Static)
-        option_list.clear_options()
+        self._visible_session_items = filtered
 
-        if self._visible_session_items:
+        for item in filtered:
+            is_active = self._session_key_for_item(item) == active_key
+            prefix = "  ●" if is_active else "  ◇"
+            label = f"{prefix} {item.label}"
+            ts = item.updated_relative or ""
+            if ts:
+                label += f"  [dim]{ts}[/]"
+            opt_id = f"__session__{item.session_id}"
+            option_list.add_option(Option(label, id=opt_id))
+            self._row_map.append(item)
+
+        # Task sessions from unified list
+        task_items = [si for si in self._unified_session_items if si.type == "task"]
+        if task_items:
+            option_list.add_option(Option("▸ Task sessions", id="__group__tasks"))
+            self._row_map.append(_GroupHeader("Task sessions", "__group__tasks"))
+            for ti in task_items:
+                label = ti.title or ti.id
+                if needle and needle not in label.lower():
+                    continue
+                ts_short = ti.updated_at[:10] if ti.updated_at else ""
+                glyph = "▶" if ti.role == "worker" else "◈"
+                row_label = f"  {glyph} {label}"
+                if ts_short:
+                    row_label += f"  [dim]{ts_short}[/]"
+                option_list.add_option(Option(row_label, id=f"__task__{ti.id}"))
+                self._row_map.append(_GroupHeader(label, f"__task__{ti.id}"))
+
+        # Manage visibility
+        visible_count = len(all_items) + len(task_items)
+        if needle:
+            visible_count = len(filtered) + (
+                sum(1 for ti in task_items if needle in (ti.title or ti.id).lower())
+            )
+        if visible_count > 0:
             option_list.display = True
             self.query_one("#workspace-sidebar-empty", Static).display = False
-            option_list.add_options(
-                [self._session_label(item) for item in self._visible_session_items]
-            )
-            active_key = prefer_key or self.kagan_app.orchestrator_sessions.active_key()
-            active_index = 0
-            for index, item in enumerate(self._visible_session_items):
-                if self._session_key_for_item(item) == active_key:
-                    active_index = index
-                    break
-            option_list.highlighted = active_index
             if needle:
                 subtitle.update(
-                    f"{len(self._visible_session_items)} of "
-                    f"{len(self._session_items)} conversations"
+                    f"{visible_count} of {len(self._session_items)} conversations + tasks"
                 )
             else:
-                noun = "conversation" if len(self._session_items) == 1 else "conversations"
-                subtitle.update(f"{len(self._session_items)} {noun}")
+                noun = "item" if visible_count == 1 else "items"
+                subtitle.update(f"{visible_count} {noun}")
+            # Highlight active session
+            active_index = 0
+            for index, item in enumerate(filtered):
+                if self._session_key_for_item(item) == active_key:
+                    active_index = index + 2  # offset for new_chat + group header
+                    break
+            if active_index < option_list.option_count:
+                option_list.highlighted = active_index
         else:
             option_list.display = False
             empty = self.query_one("#workspace-sidebar-empty", Static)
@@ -537,19 +634,44 @@ class WorkspaceScreen(Screen[None]):
             empty.display = True
             subtitle.update("No matching conversations" if needle else "No conversations")
 
+    async def _poll_unified_sessions(self) -> None:
+        while True:
+            await asyncio.sleep(3.0)
+            if not self.is_mounted:
+                return
+            try:
+                from kagan.tui.app import KaganApp
+
+                app = self.app
+                if not isinstance(app, KaganApp):
+                    continue
+                project_id = app.project.id if app.project else None
+                items = await app.core.list_session_items(project_id=project_id)
+                self._unified_session_items = items
+                self.call_after_refresh(self._re_render_if_idle)
+            except Exception:
+                pass
+
+    def _re_render_if_idle(self) -> None:
+        if not self.is_mounted:
+            return
+
     def _selected_session_item(self) -> ChatSessionListItem | None:
-        if not self._visible_session_items:
-            return None
         option_list = self.query_one("#workspace-session-list", OptionList)
         highlighted = option_list.highlighted if option_list.highlighted is not None else 0
-        if highlighted < 0 or highlighted >= len(self._visible_session_items):
+        if highlighted < 0 or highlighted >= len(self._row_map):
             return None
-        return self._visible_session_items[highlighted]
+        row = self._row_map[highlighted]
+        if isinstance(row, ChatSessionListItem):
+            return row
+        return None
 
-    def _session_label(self, item: ChatSessionListItem) -> str:
-        updated = item.updated_relative or "just now"
-        backend = f" · {item.agent_backend}" if item.agent_backend else ""
-        return f"{item.label} · {updated}{backend}"
+    def _selected_row(self) -> ChatSessionListItem | _GroupHeader | None:
+        option_list = self.query_one("#workspace-session-list", OptionList)
+        highlighted = option_list.highlighted if option_list.highlighted is not None else 0
+        if highlighted < 0 or highlighted >= len(self._row_map):
+            return None
+        return self._row_map[highlighted]
 
     def _session_key_for_item(self, item: ChatSessionListItem) -> str:
         return f"orchestrator:{item.session_id}"
@@ -566,6 +688,7 @@ class WorkspaceScreen(Screen[None]):
         project = self.kagan_app.project
         header.update_project(project.name if project is not None else "No project")
         header.update_repo(self.kagan_app.selected_repo_name or "")
+        header.update_mode("chat")
         header.update_sessions(0)
 
     async def _refresh_header_context(self) -> None:
@@ -651,7 +774,7 @@ class WorkspaceScreen(Screen[None]):
         else:
             footer = (
                 f"{open_key} open · {new_key} new · {delete_key} delete · "
-                f"{search_key} filter · {chat_key} chat · {board_key} board"
+                f"{search_key} filter · {chat_key} chat · Ctrl+W mode"
             )
 
         self.query_one("#workspace-footer", Static).update(footer)

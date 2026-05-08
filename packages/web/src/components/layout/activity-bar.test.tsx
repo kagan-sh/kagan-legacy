@@ -8,7 +8,7 @@ describe('ActivityBar', () => {
     renderWithProviders(<ActivityBar />);
 
     expect(screen.getByRole('link', { name: /^Board/ })).toBeVisible();
-    expect(screen.getByRole('link', { name: /^Workspace/ })).toBeVisible();
+    expect(screen.getByRole('link', { name: /^Chat/ })).toBeVisible();
     expect(screen.getByRole('link', { name: /^Settings/ })).toBeVisible();
     expect(screen.getByRole('link', { name: /^Project picker/ })).toBeVisible();
   });

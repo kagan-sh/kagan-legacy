@@ -228,381 +228,224 @@ REFERENCE_BACKENDS: Final[tuple[str, ...]] = (CLAUDE_CODE_BACKEND, CODEX_BACKEND
 # ---------------------------------------------------------------------------
 # Typed backend specs
 # ---------------------------------------------------------------------------
-_BACKEND_SPECS: dict[str, BackendSpec] = {
-    CLAUDE_CODE_BACKEND: BackendSpec(
-        name=CLAUDE_CODE_BACKEND,
-        executable="claude",
-        display_name="Claude Code",
-        prompt_flag="-p",
-        env_vars={"ANTHROPIC_MODEL": ""},
+
+_BASE_ACP_CAPABILITIES: Final = frozenset(
+    {
+        BackendCapability.ACP_STREAMING,
+        BackendCapability.MANAGED_DETACHED_RUN,
+        BackendCapability.PROMPT_ARGUMENT,
+        BackendCapability.TASK_SCOPED_MCP,
+    }
+)
+
+
+def _acp_backend_spec(
+    name: str,
+    executable: str,
+    *,
+    acp_command: tuple[str, ...],
+    prompt_flag: str = "-p",
+    workdir_flag: str | None = None,
+    install: BackendCommand | None = None,
+    auth: BackendCommand | None = None,
+    extra_capabilities: frozenset[BackendCapability] = frozenset(),
+    **overrides,
+) -> BackendSpec:
+    return BackendSpec(
+        name=name,
+        executable=executable,
+        prompt_flag=prompt_flag,
+        workdir_flag=workdir_flag,
         supports_acp=True,
+        acp_command=acp_command,
+        capabilities=_BASE_ACP_CAPABILITIES | extra_capabilities,
+        install={"*": install} if install is not None else None,
+        auth={"*": auth} if auth is not None else None,
+        **overrides,
+    )
+
+
+_BACKEND_SPECS: dict[str, BackendSpec] = {
+    CLAUDE_CODE_BACKEND: _acp_backend_spec(
+        CLAUDE_CODE_BACKEND,
+        "claude",
         acp_command=("npx", "claude-code-acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
-        ),
+        display_name="Claude Code",
+        env_vars={"ANTHROPIC_MODEL": ""},
         aliases=("claude",),
         reference=True,
-        install={
-            "*": BackendCommand(
-                description="Install Claude Code",
-                command="curl -fsSL https://claude.ai/install.sh | bash",
-            ),
-        },
-        auth={
-            "*": BackendCommand(
-                description="Authenticate Claude Code (follow login prompts)",
-                command="claude",
-            ),
-        },
+        install=BackendCommand(
+            description="Install Claude Code",
+            command="curl -fsSL https://claude.ai/install.sh | bash",
+        ),
+        auth=BackendCommand(
+            description="Authenticate Claude Code (follow login prompts)",
+            command="claude",
+        ),
     ),
-    CODEX_BACKEND: BackendSpec(
-        name=CODEX_BACKEND,
-        executable="codex",
-        display_name="Codex CLI",
-        prompt_flag="-p",
-        supports_acp=True,
+    CODEX_BACKEND: _acp_backend_spec(
+        CODEX_BACKEND,
+        "codex",
         acp_command=("npx", "-y", "@zed-industries/codex-acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
-        ),
+        display_name="Codex CLI",
         reference=True,
-        install={
-            "*": BackendCommand(
-                description="Install Codex CLI",
-                command="npm install -g @openai/codex",
-            ),
-        },
-        auth={
-            "*": BackendCommand(
-                description="Authenticate Codex (sign in or set OPENAI_API_KEY)",
-                command="codex",
-            ),
-        },
+        install=BackendCommand(
+            description="Install Codex CLI",
+            command="npm install -g @openai/codex",
+        ),
+        auth=BackendCommand(
+            description="Authenticate Codex (sign in or set OPENAI_API_KEY)",
+            command="codex",
+        ),
     ),
-    GEMINI_CLI_BACKEND: BackendSpec(
-        name=GEMINI_CLI_BACKEND,
-        executable="gemini",
-        prompt_flag="-p",
-        supports_acp=True,
+    GEMINI_CLI_BACKEND: _acp_backend_spec(
+        GEMINI_CLI_BACKEND,
+        "gemini",
         acp_command=("gemini", "--experimental-acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
-        ),
         aliases=("gemini",),
-        # Source: references/toad/src/toad/data/agents/geminicli.com.toml
-        install={
-            "*": BackendCommand(
-                description="Install Gemini CLI",
-                command="npm install -g @google/gemini-cli",
-            ),
-        },
+        install=BackendCommand(
+            description="Install Gemini CLI",
+            command="npm install -g @google/gemini-cli",
+        ),
     ),
-    KIMI_CLI_BACKEND: BackendSpec(
-        name=KIMI_CLI_BACKEND,
-        executable="kimi",
-        prompt_flag="-p",
-        supports_acp=True,
+    KIMI_CLI_BACKEND: _acp_backend_spec(
+        KIMI_CLI_BACKEND,
+        "kimi",
         acp_command=("kimi", "acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
-        ),
         aliases=("kimi",),
-        # Source: references/toad/src/toad/data/agents/kimi.com.toml
-        install={
-            "*": BackendCommand(
-                description="Install Kimi CLI",
-                command="uv tool install kimi-cli --no-cache",
-                bootstrap_uv=True,
-            ),
-        },
-        auth={
-            "*": BackendCommand(
-                description="Set MOONSHOT_API_KEY to authenticate Kimi CLI",
-                command="echo 'export MOONSHOT_API_KEY=<your-key>' >> ~/.bashrc",
-            ),
-        },
+        install=BackendCommand(
+            description="Install Kimi CLI",
+            command="uv tool install kimi-cli --no-cache",
+            bootstrap_uv=True,
+        ),
+        auth=BackendCommand(
+            description="Set MOONSHOT_API_KEY to authenticate Kimi CLI",
+            command="echo 'export MOONSHOT_API_KEY=<your-key>' >> ~/.bashrc",
+        ),
     ),
-    GITHUB_COPILOT_BACKEND: BackendSpec(
-        name=GITHUB_COPILOT_BACKEND,
-        executable="copilot",
-        prompt_flag="-p",
-        supports_acp=True,
+    GITHUB_COPILOT_BACKEND: _acp_backend_spec(
+        GITHUB_COPILOT_BACKEND,
+        "copilot",
         acp_command=("copilot", "--acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
-        ),
         aliases=("copilot",),
-        # Source: references/toad/src/toad/data/agents/copilot.github.com.toml
-        install={
-            "*": BackendCommand(
-                description="Install GitHub Copilot CLI",
-                command="npm install -g @github/copilot@prerelease",
-            ),
-        },
-        auth={
-            "*": BackendCommand(
-                description="Authenticate GitHub Copilot CLI",
-                command="copilot auth",
-            ),
-        },
-    ),
-    "goose": BackendSpec(
-        name="goose",
-        executable="goose",
-        prompt_flag="--message",
-        env_vars={"GOOSE_MODEL": ""},
-        supports_acp=True,
-        acp_command=("goose", "acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
+        install=BackendCommand(
+            description="Install GitHub Copilot CLI",
+            command="npm install -g @github/copilot@prerelease",
         ),
-        # Source: references/toad/src/toad/data/agents/goose.ai.toml
-        install={
-            "*": BackendCommand(
-                description="Install Goose",
-                command=(
-                    "curl -fsSL"
-                    " https://github.com/block/goose/releases/download/stable/download_cli.sh"
-                    " | bash"
-                ),
-            ),
-        },
+        auth=BackendCommand(
+            description="Authenticate GitHub Copilot CLI",
+            command="copilot auth",
+        ),
     ),
-    "openhands": BackendSpec(
-        name="openhands",
-        executable="openhands",
+    "goose": _acp_backend_spec(
+        "goose",
+        "goose",
+        prompt_flag="--message",
+        acp_command=("goose", "acp"),
+        env_vars={"GOOSE_MODEL": ""},
+        install=BackendCommand(
+            description="Install Goose",
+            command=(
+                "curl -fsSL"
+                " https://github.com/block/goose/releases/download/stable/download_cli.sh"
+                " | bash"
+            ),
+        ),
+    ),
+    "openhands": _acp_backend_spec(
+        "openhands",
+        "openhands",
         prompt_flag="--task",
         workdir_flag="--workspace",
-        supports_acp=True,
         acp_command=("openhands", "acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-                BackendCapability.WORKDIR_ARGUMENT,
-            }
+        extra_capabilities=frozenset({BackendCapability.WORKDIR_ARGUMENT}),
+        install=BackendCommand(
+            description="Install OpenHands",
+            command="uv tool install openhands -U --python 3.12",
+            bootstrap_uv=True,
         ),
-        # Source: references/toad/src/toad/data/agents/openhands.dev.toml
-        # Toad bundles install+login as one command; split here for clarity.
-        install={
-            "*": BackendCommand(
-                description="Install OpenHands",
-                command="uv tool install openhands -U --python 3.12",
-                bootstrap_uv=True,
-            ),
-        },
-        auth={
-            "*": BackendCommand(
-                description="Login to OpenHands",
-                command="openhands login",
-            ),
-        },
+        auth=BackendCommand(
+            description="Login to OpenHands",
+            command="openhands login",
+        ),
     ),
-    OPENCODE_BACKEND: BackendSpec(
-        name=OPENCODE_BACKEND,
-        executable="opencode",
-        prompt_flag="-p",
-        supports_acp=True,
+    OPENCODE_BACKEND: _acp_backend_spec(
+        OPENCODE_BACKEND,
+        "opencode",
         acp_command=("opencode", "acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
+        install=BackendCommand(
+            description="Install OpenCode",
+            command="npm i -g opencode-ai",
         ),
-        # Source: references/toad/src/toad/data/agents/opencode.ai.toml
-        install={
-            "*": BackendCommand(
-                description="Install OpenCode",
-                command="npm i -g opencode-ai",
-            ),
-        },
     ),
-    "auggie": BackendSpec(
-        name="auggie",
-        executable="auggie",
-        prompt_flag="-p",
-        supports_acp=True,
+    "auggie": _acp_backend_spec(
+        "auggie",
+        "auggie",
         acp_command=("auggie", "--acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
+        install=BackendCommand(
+            description="Install Auggie CLI (requires Node 22+)",
+            command="npm install -g @augmentcode/auggie",
         ),
-        # Source: references/toad/src/toad/data/agents/augmentcode.com.toml
-        install={
-            "*": BackendCommand(
-                description="Install Auggie CLI (requires Node 22+)",
-                command="npm install -g @augmentcode/auggie",
-            ),
-        },
-        auth={
-            "*": BackendCommand(
-                description="Login to Auggie (run once)",
-                command="auggie login",
-            ),
-        },
+        auth=BackendCommand(
+            description="Login to Auggie (run once)",
+            command="auggie login",
+        ),
     ),
-    "amp": BackendSpec(
-        name="amp",
-        executable="amp",
-        prompt_flag="-p",
-        supports_acp=True,
+    "amp": _acp_backend_spec(
+        "amp",
+        "amp",
         acp_command=("npx", "-y", "amp-acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
+        install=BackendCommand(
+            description="Install Amp and ACP adapter",
+            command=("curl -fsSL https://ampcode.com/install.sh | bash && npm install -g amp-acp"),
         ),
-        # Source: references/toad/src/toad/data/agents/ampcode.com.toml
-        install={
-            "*": BackendCommand(
-                description="Install Amp and ACP adapter",
-                command=(
-                    "curl -fsSL https://ampcode.com/install.sh | bash && npm install -g amp-acp"
-                ),
-            ),
-        },
-        auth={
-            "*": BackendCommand(
-                description="Login to Amp (run once)",
-                command="amp login",
-            ),
-        },
+        auth=BackendCommand(
+            description="Login to Amp (run once)",
+            command="amp login",
+        ),
     ),
-    "docker-cagent": BackendSpec(
-        name="docker-cagent",
-        executable="cagent",
+    "docker-cagent": _acp_backend_spec(
+        "docker-cagent",
+        "cagent",
         prompt_flag="--task",
         workdir_flag="--workdir",
-        supports_acp=True,
         acp_command=("cagent", "acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-                BackendCapability.WORKDIR_ARGUMENT,
-            }
-        ),
-        # Source: references/toad/src/toad/data/agents/docker.com.toml
-        # cagent is bundled with Docker Desktop 4.49+; no standalone installer.
-        install={
-            "*": BackendCommand(
-                description="Install Docker Desktop 4.49+ (includes cagent)",
-                command=(
-                    "echo 'See https://www.docker.com/products/docker-desktop/'"
-                    " — install Docker Desktop 4.49+ to get cagent"
-                ),
+        extra_capabilities=frozenset({BackendCapability.WORKDIR_ARGUMENT}),
+        install=BackendCommand(
+            description="Install Docker Desktop 4.49+ (includes cagent)",
+            command=(
+                "echo 'See https://www.docker.com/products/docker-desktop/'"
+                " — install Docker Desktop 4.49+ to get cagent"
             ),
-        },
+        ),
     ),
-    "stakpak": BackendSpec(
-        name="stakpak",
-        executable="stakpak",
+    "stakpak": _acp_backend_spec(
+        "stakpak",
+        "stakpak",
         prompt_flag="--task",
-        supports_acp=True,
         acp_command=("stakpak", "acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
+        install=BackendCommand(
+            description="Install Stakpak Agent via Cargo",
+            command="cargo install stakpak",
         ),
-        # Source: references/toad/src/toad/data/agents/stakpak.dev.toml
-        install={
-            "*": BackendCommand(
-                description="Install Stakpak Agent via Cargo",
-                command="cargo install stakpak",
-            ),
-        },
     ),
-    "mistral-vibe": BackendSpec(
-        name="mistral-vibe",
-        executable="vibe",
-        prompt_flag="-p",
-        supports_acp=True,
+    "mistral-vibe": _acp_backend_spec(
+        "mistral-vibe",
+        "vibe",
         acp_command=("vibe-acp",),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
+        install=BackendCommand(
+            description="Install Mistral Vibe",
+            command="curl -LsSf https://mistral.ai/vibe/install.sh | bash",
         ),
-        # Source: references/toad/src/toad/data/agents/vibe.mistral.ai.toml
-        install={
-            "*": BackendCommand(
-                description="Install Mistral Vibe",
-                command="curl -LsSf https://mistral.ai/vibe/install.sh | bash",
-            ),
-        },
     ),
-    "vt-code": BackendSpec(
-        name="vt-code",
-        executable="vtcode",
-        prompt_flag="-p",
-        supports_acp=True,
+    "vt-code": _acp_backend_spec(
+        "vt-code",
+        "vtcode",
         acp_command=("vtcode", "acp"),
-        capabilities=frozenset(
-            {
-                BackendCapability.ACP_STREAMING,
-                BackendCapability.MANAGED_DETACHED_RUN,
-                BackendCapability.PROMPT_ARGUMENT,
-                BackendCapability.TASK_SCOPED_MCP,
-            }
+        install=BackendCommand(
+            description="Install VT Code via Cargo",
+            command="cargo install --git https://github.com/vinhnx/vtcode",
         ),
-        # Source: references/toad/src/toad/data/agents/vtcode.dev.toml
-        install={
-            "*": BackendCommand(
-                description="Install VT Code via Cargo",
-                command="cargo install --git https://github.com/vinhnx/vtcode",
-            ),
-        },
     ),
 }
 _AGENT_BACKEND_ALIASES: dict[str, str] = {

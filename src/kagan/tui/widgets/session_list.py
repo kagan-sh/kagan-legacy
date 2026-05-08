@@ -95,46 +95,7 @@ class SessionList(Vertical):
         Binding("x", "close_session", "Close session", show=False),
     ]
 
-    DEFAULT_CSS = """
-    SessionList {
-        height: auto;
-        max-height: 6;
-        width: 100%;
-        border-top: solid $border;
-        background: $surface;
-        display: none;
-    }
-    SessionList.has-sessions {
-        display: block;
-    }
-    SessionList > ListView {
-        height: auto;
-        max-height: 5;
-        background: $surface;
-        padding: 0;
-    }
-    SessionList > ListView > ListItem {
-        padding: 0 1;
-        height: 1;
-        background: $surface;
-    }
-    SessionList > ListView > ListItem.--highlight {
-        background: $primary 20%;
-        color: $text;
-    }
-    SessionList > ListView > ListItem > Static {
-        width: 1fr;
-        height: 1;
-        color: $text-muted;
-    }
-    SessionList > ListView > ListItem.--highlight > Static {
-        color: $text;
-    }
-    SessionList .-empty > Static {
-        color: $text-disabled;
-        text-style: italic;
-    }
-    """
+    DEFAULT_CSS = ""
 
     # Message fired when the user presses Enter on a row
     class SessionSelected(Message):

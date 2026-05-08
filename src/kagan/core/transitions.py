@@ -57,6 +57,17 @@ _TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
     [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]
 )
 
+_ALLOWED_SESSION_TRANSITIONS: frozenset[tuple[SessionStatus, SessionStatus]] = frozenset(
+    {
+        (SessionStatus.PENDING, SessionStatus.RUNNING),
+        (SessionStatus.PENDING, SessionStatus.CANCELLED),
+        (SessionStatus.PENDING, SessionStatus.FAILED),
+        (SessionStatus.RUNNING, SessionStatus.COMPLETED),
+        (SessionStatus.RUNNING, SessionStatus.FAILED),
+        (SessionStatus.RUNNING, SessionStatus.CANCELLED),
+    }
+)
+
 
 def _session_transition_allowed(
     src: SessionStatus,
@@ -64,23 +75,9 @@ def _session_transition_allowed(
     *,
     allow_pending_completed: bool = False,
 ) -> bool:
-    match (src, to):
-        case (SessionStatus.PENDING, SessionStatus.RUNNING):
-            return True
-        case (SessionStatus.PENDING, SessionStatus.CANCELLED):
-            return True
-        case (SessionStatus.PENDING, SessionStatus.FAILED):
-            return True
-        case (SessionStatus.PENDING, SessionStatus.COMPLETED):
-            return allow_pending_completed
-        case (SessionStatus.RUNNING, SessionStatus.COMPLETED):
-            return True
-        case (SessionStatus.RUNNING, SessionStatus.FAILED):
-            return True
-        case (SessionStatus.RUNNING, SessionStatus.CANCELLED):
-            return True
-        case _:
-            return False
+    if allow_pending_completed and src == SessionStatus.PENDING and to == SessionStatus.COMPLETED:
+        return True
+    return (src, to) in _ALLOWED_SESSION_TRANSITIONS
 
 
 def transition_session_in_db(
@@ -128,6 +125,23 @@ def transition_session_in_db(
 
 
 async def _has_passing_review(client: KaganCore, task_id: str) -> bool:
+    return await asyncio.to_thread(is_review_approved, task_id, client.engine)
+
+
+_ALLOWED_TASK_TRANSITIONS: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
+    {
+        (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),
+        (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
+        (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG),
+        (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),
+        (TaskStatus.REVIEW, TaskStatus.BACKLOG),
+        (TaskStatus.REVIEW, TaskStatus.DONE),
+        (TaskStatus.DONE, TaskStatus.BACKLOG),
+    }
+)
+
+
+async def _has_passing_review(client: KaganCore, task_id: str) -> bool:
     """Return True if every acceptance criterion has a passing verdict.
 
     Delegates to the existing helper in ``_reviews`` so no logic is
@@ -165,53 +179,11 @@ async def transition_task(
     if src == to:
         raise IllegalTransition(src, to)
 
-    match (src, to):
-        # ── Happy paths (no guard needed) ──────────────────────────────────
-        case (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS):
-            pass
-
-        case (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW):
-            pass
-
-        case (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG):
-            pass
-
-        case (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS):
-            pass
-
-        case (TaskStatus.REVIEW, TaskStatus.BACKLOG):
-            pass
-
-        case (TaskStatus.DONE, TaskStatus.BACKLOG):
-            pass
-
-        # ── Guarded path: review gate ───────────────────────────────────────
-        case (TaskStatus.REVIEW, TaskStatus.DONE):
-            if not await _has_passing_review(client, task_id):
-                raise IllegalTransition(
-                    src,
-                    to,
-                )
-
-        # ── Explicitly forbidden shortcuts ─────────────────────────────────
-        case (TaskStatus.IN_PROGRESS, TaskStatus.DONE):
+    if (src, to) == (TaskStatus.REVIEW, TaskStatus.DONE):
+        if not await _has_passing_review(client, task_id):
             raise IllegalTransition(src, to)
-
-        case (TaskStatus.BACKLOG, TaskStatus.DONE):
-            raise IllegalTransition(src, to)
-
-        case (TaskStatus.BACKLOG, TaskStatus.REVIEW):
-            raise IllegalTransition(src, to)
-
-        case (TaskStatus.DONE, TaskStatus.IN_PROGRESS):
-            raise IllegalTransition(src, to)
-
-        case (TaskStatus.DONE, TaskStatus.REVIEW):
-            raise IllegalTransition(src, to)
-
-        # ── Catch-all: any other (from, to) pair is rejected ───────────────
-        case _:
-            raise IllegalTransition(src, to)
+    elif (src, to) not in _ALLOWED_TASK_TRANSITIONS:
+        raise IllegalTransition(src, to)
 
     logger.debug(
         "transition_task: task={} {} → {} (by={})",
@@ -312,7 +284,6 @@ async def transition_session(
         if obj.status != src:
             raise IllegalTransition(obj.status, to)
         transition_session_in_db(s, session_id, to)
-        s.add(obj)
         s.commit()
         s.refresh(obj)
         return obj  # type: ignore[return-value]  # SQLModel refresh returns None

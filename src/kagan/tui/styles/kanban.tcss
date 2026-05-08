@@ -85,14 +85,18 @@ KanbanColumn:last-child {
     margin-right: 0;
 }
 
+KanbanColumn .column-header,
 BoardColumn .column-header {
     width: 100%;
     height: 3;
     padding: 0 1;
     align: center middle;
+    background: $panel;
     border-bottom: solid $border;
 }
 
+KanbanColumn .column-header-text,
+KanbanColumn .column-header-text,
 BoardColumn .column-header-text {
     text-style: bold;
     color: $text;
@@ -104,10 +108,12 @@ BoardColumn .column-count {
     color: $text-muted;
 }
 
+KanbanColumn .column-content,
 BoardColumn .column-content {
     width: 100%;
     height: 1fr;
     padding: 0;
+    background: $surface;
 }
 
 BoardColumn .column-empty {
@@ -650,7 +656,8 @@ KanbanScreen .kanban-tutorial-overlay .tutorial-hint {
 }
 /* === KANBAN HINT BAR (two-row — Kanban board) === */
 
-KanbanHintBar {
+KanbanHintBar,
+BoardHintBar {
     dock: bottom;
     height: 1;
     background: $surface;
@@ -707,7 +714,8 @@ KanbanHintBar .hint-bar-actions {
     display: none;
 }
 
-KanbanHintBar.card-focused .hint-bar-actions {
+KanbanHintBar.card-focused .hint-bar-actions,
+BoardHintBar.card-focused .hint-bar-actions {
     display: block;
 }
 
@@ -802,7 +810,9 @@ KanbanScreen.chat-overlay-expanded #review-queue-hint {
 }
 /* === PEEK OVERLAY === */
 
-PeekOverlay {
+PeekOverlay,
+TaskPeekOverlay,
+TaskPeekOverlay {
     layer: overlay;
     width: 50;
     height: auto;
@@ -819,41 +829,24 @@ PeekOverlay.visible {
     display: block;
 }
 
-PeekOverlay .peek-title {
+PeekOverlay .peek-title,
+TaskPeekOverlay .peek-title,
+TaskPeekOverlay .peek-title {
     text-style: bold;
     color: $primary;
     margin-bottom: 1;
 }
 
-PeekOverlay .peek-status {
+PeekOverlay .peek-status,
+TaskPeekOverlay .peek-status,
+TaskPeekOverlay .peek-status {
     color: $text;
 }
 
-PeekOverlay .peek-content {
+PeekOverlay .peek-content,
+TaskPeekOverlay .peek-content,
+TaskPeekOverlay .peek-content {
     color: $text-muted;
-}
-
-/* === WAVE 2 VISUAL PARITY (kanban board + search + hints + peek) === */
-
-KanbanColumn .column-header,
-BoardColumn .column-header {
-    background: $panel;
-    border-bottom: solid $border;
-}
-
-KanbanColumn .column-header-text,
-BoardColumn .column-header-text {
-    text-style: bold;
-    color: $text;
-}
-
-KanbanColumn .column-content,
-BoardColumn .column-content {
-    background: $surface;
-}
-
-TaskCard {
-    height: 4;
 }
 
 TaskInspector {
@@ -929,82 +922,104 @@ TaskInspector .inspector-message.is-error {
     color: $error;
 }
 
-TaskCard.-selected {
-    border-left: thick $accent;
-    background: $panel;
-    tint: $accent 10%;
-}
-
-TaskCard.-selected:focus {
-    border-left: thick $primary;
-    background: $panel;
-    tint: $primary 12%;
-}
-TaskCard:hover {
-    background: $panel;
-}
-
 TaskCard:focus {
     border-left: thick $primary;
     background: $panel;
     tint: $primary 6%;
 }
 
+
+/* === BoardColumn structural rules (from DEFAULT_CSS) === */
+BoardColumn {
+    layout: vertical;
+}
+
+/* === TaskCard structural rules (from DEFAULT_CSS) === */
+TaskCard {
+    layout: vertical;
+    height: 3;
+}
+
+TaskCard.-selected {
+    height: 4;
+}
+TaskCard .card-content {
+    width: 100%;
+    height: 100%;
+}
+TaskCard .card-rail {
+    width: 1;
+}
+TaskCard .card-indicator {
+    width: 2;
+}
 TaskCard .card-title {
-    text-style: bold;
+    width: 1fr;
 }
-
+TaskCard .card-id {
+    width: auto;
+}
 TaskCard .card-desc {
-    color: $text-muted;
+    width: 1fr;
+}
+TaskCard .card-elapsed {
+    width: auto;
+}
+TaskCard .card-badge-row {
+    width: 100%;
+}
+TaskCard .card-badge {
+    width: auto;
+    margin-right: 1;
+}
+TaskCard .card-spacer {
+    width: 1fr;
 }
 
-KanbanHintBar,
-BoardHintBar {
-    dock: bottom;
-    background: $surface;
-    color: $text-muted;
-    border-top: none;
+
+/* === BoardColumn structural rules (from DEFAULT_CSS) === */
+BoardColumn {
+    layout: vertical;
 }
 
-KanbanHintBar .hint-nav-center,
-KanbanHintBar .hint-global,
-BoardHintBar .hint-nav-center,
-BoardHintBar .hint-global {
-    color: $text-disabled;
+/* === TaskCard structural rules (from DEFAULT_CSS) === */
+TaskCard {
+    layout: vertical;
+    height: 3;
 }
 
-KanbanHintBar.card-focused .hint-bar-actions,
-BoardHintBar.card-focused .hint-bar-actions {
-    display: block;
+TaskCard.-selected {
+    height: 4;
 }
-
-PeekOverlay,
-TaskPeekOverlay {
-    layer: overlay;
-    width: 50;
-    height: auto;
-    max-height: 12;
-    background: $surface;
-    border: round $border;
-    padding: 1;
-    display: none;
-    position: absolute;
-    overflow-y: auto;
+TaskCard .card-content {
+    width: 100%;
+    height: 100%;
 }
-
-PeekOverlay .peek-title,
-TaskPeekOverlay .peek-title {
-    text-style: bold;
-    color: $primary;
-    margin-bottom: 1;
+TaskCard .card-rail {
+    width: 1;
 }
-
-PeekOverlay .peek-status,
-TaskPeekOverlay .peek-status {
-    color: $text;
+TaskCard .card-indicator {
+    width: 2;
 }
-
-PeekOverlay .peek-content,
-TaskPeekOverlay .peek-content {
-    color: $text-muted;
+TaskCard .card-title {
+    width: 1fr;
+}
+TaskCard .card-id {
+    width: auto;
+}
+TaskCard .card-desc {
+    width: 1fr;
+}
+TaskCard .card-elapsed {
+    width: auto;
+}
+TaskCard .card-badge-row {
+    width: 100%;
+}
+TaskCard .card-badge {
+    width: auto;
+    margin-right: 1;
+}
+TaskCard .card-spacer {
+    width: 1fr;
 }

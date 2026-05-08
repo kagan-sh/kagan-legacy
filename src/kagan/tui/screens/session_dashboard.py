@@ -50,14 +50,7 @@ SESSION_DASHBOARD_REPLAY_EVENT_LIMIT = 400
 
 
 class DashboardStatusBar(Horizontal):
-    DEFAULT_CSS = """
-    DashboardStatusBar {
-        layout: horizontal;
-        width: 100%;
-        height: auto;
-        padding: 0 1;
-    }
-    """
+    DEFAULT_CSS = ""
 
     def compose(self) -> ComposeResult:
         yield Label("Task: -", id="dashboard-task-title")

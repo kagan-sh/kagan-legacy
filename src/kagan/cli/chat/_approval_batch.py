@@ -34,7 +34,7 @@ from kagan.cli.chat._approval_panel import no_color, strip_tool_prefix
 from kagan.cli.chat._theme import APPROVAL
 
 if TYPE_CHECKING:
-    from kagan.cli.chat._permission_ui import _DecisionTuple
+    from kagan.cli.chat._approval_types import _DecisionTuple
 
 # ---------------------------------------------------------------------------
 # Environment-configurable debounce + cap
@@ -241,7 +241,7 @@ def _handle_num_key(
     if idx == 4:
         state["feedback_mode"] = True
     elif idx == 2 or idx == 5:
-        from kagan.cli.chat._permission_ui import _session_approvals
+        from kagan.cli.chat._approval_types import _session_approvals
 
         _session_approvals.grant_all()
         resolve_all("allow_once")
@@ -315,7 +315,7 @@ async def _run_batch_interactive(
         item_idx = state["focused_item"]
         fb = feedback_buffer.text.strip() if state["feedback_mode"] else state["feedback"]
         if opt in (2, 5):
-            from kagan.cli.chat._permission_ui import _session_approvals
+            from kagan.cli.chat._approval_types import _session_approvals
 
             _session_approvals.grant_all()
             resolve_all("allow_once")
@@ -392,7 +392,7 @@ async def _run_batch_interactive(
         full_screen=False,
         mouse_support=False,
     )
-    from kagan.cli.chat._permission_ui import _modal_active
+    from kagan.cli.chat._approval_types import _modal_active
 
     with _modal_active():
         await app.run_async()
@@ -427,7 +427,7 @@ def _run_legacy_batch_input(
             elif raw == "2":
                 resolve_item(i, 1, "")
             elif raw == "3":
-                from kagan.cli.chat._permission_ui import _session_approvals
+                from kagan.cli.chat._approval_types import _session_approvals
 
                 # "Allow all for session" — grant_all short-circuits future
                 # permission checks, so resolve every remaining item as
@@ -437,7 +437,7 @@ def _run_legacy_batch_input(
                     resolve_item(j, 0, "")
                 return
             elif raw in {"6", "a"}:
-                from kagan.cli.chat._permission_ui import _session_approvals
+                from kagan.cli.chat._approval_types import _session_approvals
 
                 _session_approvals.grant_all()
                 for j in range(i, len(items)):
@@ -486,7 +486,7 @@ def _resolve_decision_via_engine(
 
 
 def _cancelled_decision() -> _DecisionTuple:
-    from kagan.cli.chat._permission_ui import _DecisionTuple as _DT
+    from kagan.cli.chat._approval_types import _DecisionTuple as _DT
 
     return _DT(outcome="deny")
 
@@ -501,7 +501,7 @@ def _preresolve_session_approved(
     Returns ``(resolved_indices, unresolved_items, unresolved_index_map)``.
     Resolved items are dispatched to the engine immediately.
     """
-    from kagan.cli.chat._permission_ui import (
+    from kagan.cli.chat._approval_types import (
         _DecisionTuple,
         _session_approvals,
         _tool_action_key,
@@ -611,92 +611,98 @@ class _BatchApprovalQueue:
 
         await self._flush_batch(items)
 
-    async def _flush_single(self, item: _PendingItem) -> None:
-        from kagan.cli.chat._permission_ui import (
-            _DecisionTuple,
-            _map_decision_from_approval,
-            _run_approval_panel_async,
-            _session_approvals,
-            _tool_action_key,
-        )
 
+async def _flush_single(self, item: _PendingItem) -> None:
+    from kagan.cli.chat._approval_types import (
+        _DecisionTuple,
+        _session_approvals,
+        _tool_action_key,
+    )
+    from kagan.cli.chat._permission_ui import (
+        _map_decision_from_approval,
+        _run_approval_panel_async,
+    )
+
+    action_key = _tool_action_key(item.tool_call)
+    if _session_approvals.is_allowed(action_key):
+        _resolve_decision_via_engine(self._engine, item, _DecisionTuple(outcome="allow_once"))
+        return
+
+    selected_index, feedback = await _run_approval_panel_async(
+        item.tool_call,
+        permission_options=item.options,
+        queue_position=1,
+        queue_depth=1,
+    )
+    decision = _map_decision_from_approval(selected_index, feedback, action_key=action_key)
+    _resolve_decision_via_engine(self._engine, item, decision)
+
+
+async def _flush_batch(self, items: list[_PendingItem]) -> None:
+    from kagan.cli.chat._approval_types import (
+        _DecisionTuple,
+        _session_approvals,
+        _tool_action_key,
+    )
+    from kagan.cli.chat._permission_ui import (
+        _map_decision_from_approval,
+    )
+
+    resolved_indices, unresolved_items, unresolved_index_map = _preresolve_session_approved(
+        items, engine=self._engine
+    )
+
+    if not unresolved_items:
+        return
+
+    if len(unresolved_items) == 1:
+        await self._flush_single(unresolved_items[0])
+        return
+
+    # Local map so ``_resolve_all`` / ``_reject_all`` can override
+    # ``_resolve_item`` calls. Items are dispatched to the engine after
+    # the modal exits.
+    decisions: dict[int, _DecisionTuple] = {}
+
+    def _resolve_item(unresolved_idx: int, opt_idx: int, feedback: str) -> None:
+        original_idx = unresolved_index_map[unresolved_idx]
+        item = items[original_idx]
         action_key = _tool_action_key(item.tool_call)
-        if _session_approvals.is_allowed(action_key):
-            _resolve_decision_via_engine(self._engine, item, _DecisionTuple(outcome="allow_once"))
+        # Slot 2 in the batch panel is "Allow all for session" — intercept
+        # here (like the single-panel modal does) so the grant is applied
+        # instead of falling through to deny via the unmapped slot.
+        if opt_idx == 2:
+            _session_approvals.grant_all()
+            decisions[original_idx] = _DecisionTuple(outcome="allow_once")
             return
-
-        selected_index, feedback = await _run_approval_panel_async(
-            item.tool_call,
-            permission_options=item.options,
-            queue_position=1,
-            queue_depth=1,
-        )
-        decision = _map_decision_from_approval(selected_index, feedback, action_key=action_key)
-        _resolve_decision_via_engine(self._engine, item, decision)
-
-    async def _flush_batch(self, items: list[_PendingItem]) -> None:
-        from kagan.cli.chat._permission_ui import (
-            _DecisionTuple,
-            _map_decision_from_approval,
-            _session_approvals,
-            _tool_action_key,
+        decisions[original_idx] = _map_decision_from_approval(
+            opt_idx, feedback, action_key=action_key
         )
 
-        resolved_indices, unresolved_items, unresolved_index_map = _preresolve_session_approved(
-            items, engine=self._engine
-        )
-
-        if not unresolved_items:
-            return
-
-        if len(unresolved_items) == 1:
-            await self._flush_single(unresolved_items[0])
-            return
-
-        # Local map so ``_resolve_all`` / ``_reject_all`` can override
-        # ``_resolve_item`` calls. Items are dispatched to the engine after
-        # the modal exits.
-        decisions: dict[int, _DecisionTuple] = {}
-
-        def _resolve_item(unresolved_idx: int, opt_idx: int, feedback: str) -> None:
-            original_idx = unresolved_index_map[unresolved_idx]
-            item = items[original_idx]
-            action_key = _tool_action_key(item.tool_call)
-            # Slot 2 in the batch panel is "Allow all for session" — intercept
-            # here (like the single-panel modal does) so the grant is applied
-            # instead of falling through to deny via the unmapped slot.
-            if opt_idx == 2:
-                _session_approvals.grant_all()
-                decisions[original_idx] = _DecisionTuple(outcome="allow_once")
-                return
-            decisions[original_idx] = _map_decision_from_approval(
-                opt_idx, feedback, action_key=action_key
-            )
-
-        def _resolve_all(kind: str) -> None:
-            for original_idx in unresolved_index_map:
-                if original_idx in decisions:
-                    continue
-                outcome = "allow_always" if kind == "allow_always" else "allow_once"
-                decisions[original_idx] = _DecisionTuple(outcome=outcome)
-
-        def _reject_all_fn() -> None:
-            for original_idx in unresolved_index_map:
-                if original_idx not in decisions:
-                    decisions[original_idx] = _DecisionTuple(outcome="deny")
-
-        run_in_terminal(lambda: None)
-
-        await _run_batch_modal_async(
-            unresolved_items,
-            _resolve_item=_resolve_item,
-            _resolve_all=_resolve_all,
-            _reject_all=_reject_all_fn,
-        )
-
-        # Dispatch every unresolved item; default to deny for any still missing.
+    def _resolve_all(kind: str) -> None:
         for original_idx in unresolved_index_map:
-            if original_idx in resolved_indices:
+            if original_idx in decisions:
                 continue
-            decision = decisions.get(original_idx) or _DecisionTuple(outcome="deny")
-            _resolve_decision_via_engine(self._engine, items[original_idx], decision)
+            outcome = "allow_always" if kind == "allow_always" else "allow_once"
+            decisions[original_idx] = _DecisionTuple(outcome=outcome)
+
+    def _reject_all_fn() -> None:
+        for original_idx in unresolved_index_map:
+            if original_idx not in decisions:
+                decisions[original_idx] = _DecisionTuple(outcome="deny")
+
+    run_in_terminal(lambda: None)
+
+    await _run_batch_modal_async(
+        unresolved_items,
+        _resolve_item=_resolve_item,
+        _resolve_all=_resolve_all,
+        _reject_all=_reject_all_fn,
+    )
+
+    # Dispatch every unresolved item; default to deny for any still missing.
+    for original_idx in unresolved_index_map:
+        if original_idx in resolved_indices:
+            continue
+        decision = decisions.get(original_idx) or _DecisionTuple(outcome="deny")
+        _resolve_decision_via_engine(self._engine, items[original_idx], decision)

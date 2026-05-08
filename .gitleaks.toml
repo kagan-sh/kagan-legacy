@@ -1,0 +1,9 @@
+# gitleaks configuration for Kagan
+# See: https://github.com/gitleaks/gitleaks#configuration
+[allowlist]
+  description = "Kagan gitleaks allowlist"
+
+  paths = [
+    # ANSI escape codes in Textual TUI keybinding display strings
+    '''src/kagan/tui/keybindings\.py''',
+  ]

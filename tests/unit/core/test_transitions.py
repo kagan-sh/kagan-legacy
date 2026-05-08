@@ -95,8 +95,6 @@ async def _add_pass_verdicts(core: KaganCore, task_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Legal (from, to) pairs (excluding the guarded REVIEW→DONE — tested below).
 _TASK_LEGAL: list[tuple[TaskStatus, TaskStatus]] = [
-    (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),
-    (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
     (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG),
     (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),
     (TaskStatus.REVIEW, TaskStatus.BACKLOG),
@@ -104,7 +102,22 @@ _TASK_LEGAL: list[tuple[TaskStatus, TaskStatus]] = [
     # REVIEW → DONE is guarded; tested separately below.
 ]
 
-# Illegal (from, to) pairs (every other cell in the 4x4 matrix):
+# Illegal (from, to) pairs:
+_TASK_ILLEGAL: list[tuple[TaskStatus, TaskStatus]] = [
+    # Same-status no-ops
+    (TaskStatus.BACKLOG, TaskStatus.BACKLOG),
+    (TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS),
+    (TaskStatus.REVIEW, TaskStatus.REVIEW),
+    (TaskStatus.DONE, TaskStatus.DONE),
+    # Explicitly forbidden shortcuts
+    (TaskStatus.IN_PROGRESS, TaskStatus.DONE),
+    (TaskStatus.BACKLOG, TaskStatus.DONE),
+    (TaskStatus.BACKLOG, TaskStatus.REVIEW),
+    (TaskStatus.DONE, TaskStatus.IN_PROGRESS),
+    (TaskStatus.DONE, TaskStatus.REVIEW),
+]
+
+# Illegal (from, to) pairs:
 _TASK_ILLEGAL: list[tuple[TaskStatus, TaskStatus]] = [
     # Same-status no-ops
     (TaskStatus.BACKLOG, TaskStatus.BACKLOG),

@@ -559,6 +559,7 @@ class KanbanScreen(Screen[None]):
             project = self.kagan_app.project
             header.update_project(project.name if project is not None else "No project")
             header.update_repo(self.kagan_app.selected_repo_name or "")
+            header.update_mode("board")
             header.update_count(len(self._all_tasks))
             active = sum(1 for task in self._all_tasks if task.status is TaskStatus.IN_PROGRESS)
             review = sum(1 for task in self._all_tasks if task.status is TaskStatus.REVIEW)
@@ -1316,6 +1317,9 @@ class KanbanScreen(Screen[None]):
         self.app.push_screen("settings-modal", callback=self._on_settings_dismissed)
 
     def action_toggle_workspace(self) -> None:
+        self.app.switch_screen("workspace-screen")
+
+    def action_toggle_mode(self) -> None:
         self.app.switch_screen("workspace-screen")
 
     def action_open_analytics(self) -> None:

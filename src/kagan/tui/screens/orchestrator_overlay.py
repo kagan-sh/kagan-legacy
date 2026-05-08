@@ -22,7 +22,7 @@ import contextlib
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Input, ListView, Static
@@ -61,39 +61,7 @@ class OrchestratorOverlay(ModalScreen[None]):
 
     BINDINGS = ORCHESTRATOR_OVERLAY_BINDINGS
 
-    DEFAULT_CSS = """
-    OrchestratorOverlay {
-        align: center middle;
-        background: $background 80%;
-    }
-    #orch-container {
-        width: 90%;
-        height: 85%;
-        max-width: 120;
-        border: round $primary;
-        background: $background;
-        layout: vertical;
-    }
-    #orch-breadcrumb {
-        height: 2;
-        width: 100%;
-        padding: 0 1;
-        background: $surface;
-        color: $text-muted;
-        border-bottom: solid $border;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    OrchestratorOverlay #chat-panel {
-        dock: none;
-        height: 1fr;
-        width: 100%;
-        max-height: 100%;
-        offset-y: 0;
-        border-top: none;
-        display: block;
-    }
-    """
+    DEFAULT_CSS = ""
 
     def __init__(
         self,
@@ -123,13 +91,21 @@ class OrchestratorOverlay(ModalScreen[None]):
 
         self._chat_message_task: asyncio.Task[None] | None = None
 
+        # Fullscreen state
+        self._is_fullscreen = False
+
     # ------------------------------------------------------------------
     # Compose
     # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
         with Vertical(id="orch-container"):
-            yield Static(_ORCHESTRATOR_TITLE, id="orch-breadcrumb")
+            with Horizontal(id="orch-header-bar"):
+                yield Static(_ORCHESTRATOR_TITLE, id="orch-breadcrumb")
+                yield Static(
+                    "[∿ Fullscreen]",
+                    id="orch-fullscreen-btn",
+                )
             yield ChatPanel(id="chat-panel", classes="")
             yield SessionList(
                 id="orch-session-list",
@@ -330,7 +306,39 @@ class OrchestratorOverlay(ModalScreen[None]):
     # ------------------------------------------------------------------
 
     def action_handle_esc(self) -> None:
+        if self._is_fullscreen:
+            self._exit_fullscreen()
+            return
         self.dismiss()
+
+    def action_toggle_fullscreen(self) -> None:
+        if self._is_fullscreen:
+            self._exit_fullscreen()
+        else:
+            self._enter_fullscreen()
+
+    def _enter_fullscreen(self) -> None:
+        self._is_fullscreen = True
+        container = self.query_one("#orch-container", Vertical)
+        container.styles.width = "100%"
+        container.styles.height = "100%"
+        container.add_class("fullscreen")
+        with contextlib.suppress(NoMatches):
+            self.query_one("#orch-fullscreen-btn", Static).update("[∿ Exit fullscreen]")
+        with contextlib.suppress(NoMatches):
+            session_list = self.query_one("#orch-session-list", Vertical)
+            session_list.display = False
+
+    def _exit_fullscreen(self) -> None:
+        self._is_fullscreen = False
+        container = self.query_one("#orch-container", Vertical)
+        container.styles.width = "auto"
+        container.styles.height = "auto"
+        container.remove_class("fullscreen")
+        with contextlib.suppress(NoMatches):
+            self.query_one("#orch-fullscreen-btn", Static).update("[∿ Fullscreen]")
+        with contextlib.suppress(NoMatches):
+            self.query_one("#orch-session-list", Vertical).display = True
 
     def action_cycle_agent_next(self) -> None:
         """Ctrl+Down: rotate through sessions."""

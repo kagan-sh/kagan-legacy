@@ -22,6 +22,7 @@ class KaganHeader(Horizontal):
     KaganHeader .header-sessions,
     KaganHeader .header-agent,
     KaganHeader .header-stats,
+    KaganHeader .header-mode,
     KaganHeader .header-separator {
         width: auto;
     }
@@ -41,6 +42,7 @@ class KaganHeader(Horizontal):
     done_count: reactive[int] = reactive(0)
     active_sessions: reactive[int] = reactive(0)
     git_branch: reactive[str] = reactive("")
+    mode: reactive[str] = reactive("board")
 
     def compose(self) -> ComposeResult:
         logo = Static(LOGO_SMALL, id="header-logo", classes="header-logo")
@@ -54,6 +56,10 @@ class KaganHeader(Horizontal):
         yield repo
         yield Static("", classes="header-spacer")
 
+        mode = Static("", id="header-mode", classes="header-mode")
+        mode.tooltip = "Current mode (chat or board)"
+        yield mode
+        yield Static(HEADER_SEPARATOR, id="sep-mode", classes="header-separator")
         gh_status = Static("", id="header-github-status", classes="header-github-status")
         gh_status.tooltip = "GitHub connection status"
         yield gh_status
@@ -77,6 +83,7 @@ class KaganHeader(Horizontal):
     def on_mount(self) -> None:
         self._render_project()
         self._render_repo()
+        self._render_mode()
         self._render_github_status()
         self._render_branch()
         self._render_sessions()
@@ -115,6 +122,12 @@ class KaganHeader(Horizontal):
 
     def update_repo(self, repo: str) -> None:
         self.repo_name = repo
+
+    def update_mode(self, value: str) -> None:
+        self.mode = value
+
+    def watch_mode(self, _: str) -> None:
+        self._render_mode()
 
     def watch_project_name(self, _: str) -> None:
         self._render_project()
@@ -188,6 +201,10 @@ class KaganHeader(Horizontal):
         self._update_label("#header-sessions", value)
         self._set_visible("#header-sessions", has_sessions)
         self._set_visible("#sep-sessions", has_sessions)
+
+    def _render_mode(self) -> None:
+        mode_label = "[Chat]" if self.mode == "chat" else "[Board]"
+        self._update_label("#header-mode", mode_label)
 
     def _render_count(self) -> None:
         self._update_label("#header-stats", self._count_text())

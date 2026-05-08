@@ -28,61 +28,33 @@ from __future__ import annotations
 import io
 import shutil
 import sys
-import time
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
-
-from loguru import logger
-from prompt_toolkit.application.run_in_terminal import run_in_terminal
-from rich.markup import escape as _rich_escape
-from rich.measure import Measurement
-from rich.text import Text
-
-from kagan.cli.chat._approval_panel import build_approval_panel, no_color
-from kagan.cli.chat._renderer import (
-    CLIRenderer,
-    _GroupedToolDisplay,
-    _modal_active,
-    _modal_depth,
-    print_via_terminal,
-)
-from kagan.cli.chat.repl import WAVE_FRAMES, _console
 
 if TYPE_CHECKING:
     from kagan.core.chat.events import PermissionRequest
 
+from loguru import logger
+from prompt_toolkit.application.run_in_terminal import run_in_terminal
+from rich.markup import escape as _rich_escape
 
-# ---------------------------------------------------------------------------
-# Shared dataclasses
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class _WaveIndicator:
-    _start: float = field(default_factory=time.monotonic)
-
-    def __rich_console__(self, console, options):
-        elapsed = time.monotonic() - self._start
-        idx = int(elapsed / 0.10) % len(WAVE_FRAMES)
-        yield from console.render(Text(WAVE_FRAMES[idx], style="dim cyan"), options)
-
-    def __rich_measure__(self, console, options):
-        del console, options
-        return Measurement(len(WAVE_FRAMES[0]), len(WAVE_FRAMES[0]))
-
-
-@dataclass(frozen=True, slots=True)
-class _SendResult:
-    was_cancelled: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class _DecisionTuple:
-    """``(outcome, feedback)`` shape — mirrors ``PermissionDecision``."""
-
-    outcome: str  # one of: allow_once, allow_always, deny, deny_feedback
-    feedback: str | None = None
-
+from kagan.cli.chat._approval_panel import build_approval_panel, no_color
+from kagan.cli.chat._approval_types import (
+    _DecisionTuple,
+    _modal_active,
+    _SendResult,
+    _session_approvals,
+    _SessionApprovals,
+    _tool_action_key,
+    _WaveIndicator,
+    get_session_approvals,
+)
+from kagan.cli.chat._renderer import (
+    CLIRenderer,
+    _GroupedToolDisplay,
+    _modal_depth,
+    print_via_terminal,
+)
+from kagan.cli.chat.repl import _console
 
 # ---------------------------------------------------------------------------
 # Pure helpers
@@ -128,22 +100,6 @@ def _format_permission_tool(tool_call: Any) -> str:
     if title:
         return str(title)
     return "tool call"
-
-
-def _tool_action_key(tool_call: Any) -> str:
-    """Return the base tool name for session-allow tracking (no args embedded).
-
-    Accepts both ACP tool-call objects (with ``title`` / ``name`` attrs) and
-    plain dicts (used by the engine's :class:`PermissionRequest` event).
-    Strips any trailing ': {...}' argument suffix from the title field so that
-    repeated calls to the same tool with different arguments share one key.
-    """
-    if isinstance(tool_call, dict):
-        raw = tool_call.get("title") or tool_call.get("name") or "tool"
-    else:
-        raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or "tool"
-    base = str(raw).split(":")[0].split("{")[0].strip().casefold()
-    return base or "tool"
 
 
 def _get_modal_depth() -> int:  # pragma: no cover — diagnostic helper
@@ -429,42 +385,7 @@ def _run_legacy_input(
 
 
 # ---------------------------------------------------------------------------
-# Session-allow cache (module-level singleton)
-# ---------------------------------------------------------------------------
-
-
-class _SessionApprovals:
-    """Track tool actions approved for the lifetime of this REPL session."""
-
-    def __init__(self) -> None:
-        self._allowed: set[str] = set()
-        self._all_allowed: bool = False
-
-    def is_allowed(self, action_key: str) -> bool:
-        return self._all_allowed or action_key in self._allowed
-
-    def grant(self, action_key: str) -> None:
-        self._allowed.add(action_key)
-
-    def grant_all(self) -> None:
-        """Trust all tool calls for the rest of this session."""
-        self._all_allowed = True
-
-    def revoke(self, action_key: str) -> None:
-        self._allowed.discard(action_key)
-
-    def list_granted(self) -> list[str]:
-        return sorted(self._allowed)
-
-
-_session_approvals = _SessionApprovals()
-
-
-def get_session_approvals() -> _SessionApprovals:
-    """Return the module-level session approval tracker."""
-    return _session_approvals
-
-
+# Result mapping — modal index/feedback → PermissionDecision
 # ---------------------------------------------------------------------------
 # Result mapping — modal index/feedback → PermissionDecision
 # ---------------------------------------------------------------------------

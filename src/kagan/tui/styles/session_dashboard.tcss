@@ -159,3 +159,19 @@ SessionDashboardScreen.dashboard-chat-fullscreen #dashboard-body {
 SessionDashboardScreen.dashboard-chat-fullscreen #dashboard-actions {
     display: none;
 }
+
+
+DashboardStatusBar {
+    layout: horizontal;
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}
+
+
+DashboardStatusBar {
+    layout: horizontal;
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}

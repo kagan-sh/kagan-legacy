@@ -6,7 +6,6 @@ Targeted waits only — no wait_for_workers().
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest

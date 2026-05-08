@@ -26,41 +26,7 @@ _NAVIGATION_HINTS: dict[str, str] = {
 
 
 class ContextFooter(Horizontal):
-    DEFAULT_CSS = """
-    ContextFooter {
-        height: 1;
-        background: $surface-darken-1;
-        color: $text;
-        dock: bottom;
-    }
-    ContextFooter > Static {
-        content-align: center middle;
-        height: 1;
-    }
-    ContextFooter .footer-left {
-        width: 40%;
-        content-align: left middle;
-        padding-left: 1;
-    }
-    ContextFooter .footer-center {
-        width: 35%;
-        content-align: center middle;
-        color: $text-muted;
-    }
-    ContextFooter .footer-right {
-        width: 25%;
-        content-align: right middle;
-        padding-right: 1;
-        color: $text-muted;
-    }
-    ContextFooter .footer-key {
-        color: $text-accent;
-        text-style: bold;
-    }
-    ContextFooter .footer-dim {
-        color: $text-muted;
-    }
-    """
+    DEFAULT_CSS = ""
 
     context: reactive[str] = reactive("kanban")
     has_focused_item: reactive[bool] = reactive(False)
@@ -151,15 +117,7 @@ class ContextFooter(Horizontal):
 
 
 class SimpleFooter(Label):
-    DEFAULT_CSS = """
-    SimpleFooter {
-        height: 1;
-        background: $surface-darken-1;
-        color: $text-muted;
-        content-align: center middle;
-        dock: bottom;
-    }
-    """
+    DEFAULT_CSS = ""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)

@@ -96,6 +96,15 @@ def default_db_path() -> Path:
     return Path(user_data_dir("kagan", "kagan")) / "kagan.db"
 
 
+def default_config_path() -> Path:
+    kagan_override = os.environ.get("KAGAN_CONFIG_DIR")
+    if kagan_override:
+        return Path(kagan_override) / "config.toml"
+    from platformdirs import user_config_dir
+
+    return Path(user_config_dir("kagan", "kagan")) / "config.toml"
+
+
 def create_db_engine(db_path: str | Path | None = None) -> Engine:
     resolved = str(db_path) if db_path is not None else str(default_db_path())
     logger.debug("Using database path: {}", resolved)

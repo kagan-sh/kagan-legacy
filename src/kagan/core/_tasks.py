@@ -87,6 +87,13 @@ _DIRECT_MOVES: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
 )
 
 
+def _eager_load_criteria(task: Task) -> None:
+    """Eagerly load acceptance criteria and their verdicts while session is open."""
+    _ = list(task.criteria)
+    for _c in task.criteria:
+        _ = list(_c.verdicts)
+
+
 class Tasks:
     def __init__(
         self,
@@ -449,10 +456,7 @@ class Tasks:
                         )
                 s.commit()
                 s.refresh(task)
-                # Eagerly load the criteria relationship while the session is open
-                _ = list(task.criteria)
-                for _c in task.criteria:
-                    _ = list(_c.verdicts)
+                _eager_load_criteria(task)
                 logger.debug("Task created id={} type={}", task.id, task.task_type)
                 return task
             except IntegrityError as exc:
@@ -482,9 +486,7 @@ class Tasks:
         def _get_with_criteria(s) -> Task | None:
             t = s.get(Task, task_id)
             if t is not None:
-                _ = list(t.criteria)  # Eagerly load criteria while session is open
-                for _c in t.criteria:
-                    _ = list(_c.verdicts)
+                _eager_load_criteria(t)
             return t
 
         task = await _db_async(self._engine, _get_with_criteria)
@@ -508,9 +510,7 @@ class Tasks:
         def _list_with_criteria(s) -> list[Task]:
             tasks = list(s.exec(stmt).all())
             for t in tasks:
-                _ = list(t.criteria)  # Eagerly load criteria while session is open
-                for _c in t.criteria:
-                    _ = list(_c.verdicts)
+                _eager_load_criteria(t)
             return tasks
 
         return await _db_async(self._engine, _list_with_criteria)
@@ -608,9 +608,7 @@ class Tasks:
             s.add(db_task)
             s.commit()
             s.refresh(db_task)
-            _ = list(db_task.criteria)  # Eagerly load criteria while session is open
-            for _c in db_task.criteria:
-                _ = list(_c.verdicts)
+            _eager_load_criteria(db_task)
             return db_task
 
         updated = await _db_async(self._engine, op)
@@ -669,9 +667,7 @@ class Tasks:
             s.add(task)
             s.commit()
             s.refresh(task)
-            _ = list(task.criteria)  # Eagerly load criteria while session is open
-            for _c in task.criteria:
-                _ = list(_c.verdicts)
+            _eager_load_criteria(task)
             logger.info("Task {} moved to {}", task_id, status.value)
             return task
 
@@ -735,9 +731,7 @@ class Tasks:
                 if q in t.title.lower() or q in t.id[:8].lower() or q in t.description.lower()
             ][:limit]
             for t in matched:
-                _ = list(t.criteria)
-                for _c in t.criteria:
-                    _ = list(_c.verdicts)
+                _eager_load_criteria(t)
             return matched
 
         return await _db_async(self._engine, _search_with_criteria)

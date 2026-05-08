@@ -15,10 +15,12 @@ from kagan.cli.chat._approval_panel import (
     build_approval_panel,
     strip_tool_prefix,
 )
+from kagan.cli.chat._approval_types import (
+    _session_approvals,
+)
 from kagan.cli.chat._permission_ui import (
     _map_decision_from_approval,
     _run_legacy_input,
-    _session_approvals,
 )
 
 pytestmark = [pytest.mark.unit]

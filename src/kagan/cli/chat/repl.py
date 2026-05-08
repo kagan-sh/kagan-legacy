@@ -24,7 +24,7 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.text import Text
 
-from kagan.cli.chat._completion import fuzzy_match
+from kagan.cli.chat._utils import fuzzy_match
 from kagan.cli.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
@@ -133,7 +133,7 @@ _REPL_COLORS: Final[dict[str, str]] = {
     "accent": "#3fb58e",
     "accent_soft": "#1D3A31",
     "primary": "#d4a84b",
-    "separator": "#4a5568",
+    "separator": "#2A251F",
     "plan": "#60a5fa",
     "meta": "#9ca3af",
     "meta_current": "#7dd3fc",

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from kagan.core._config import default_config_path
+from kagan.core._db import default_config_path
 
 pytestmark = [pytest.mark.unit]
 

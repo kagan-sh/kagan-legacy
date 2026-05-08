@@ -290,7 +290,8 @@ ToolCall:focus ToolCallHeader {
 }
 /* Stream status — inline in scroll flow, not docked */
 
-#stream-current-action {
+#stream-current-action,
+#chat-stream-current-action {
     width: 100%;
     height: auto;
     margin-bottom: 1;
@@ -322,7 +323,8 @@ ToolCall:focus ToolCallHeader {
 
 /* Streaming notes with status classes */
 
-.streaming-note {
+.streaming-note,
+.stream-note {
     width: 100%;
     height: auto;
     padding: 0 1;
@@ -967,7 +969,8 @@ ChatPanel.has-content #chat-overlay-output {
 }
 /* Streaming conversation clarity */
 
-.tool-call {
+.tool-call,
+.chat-tool-call {
     border: round $border;
     padding: 0 1;
     margin-bottom: 1;
@@ -975,12 +978,14 @@ ChatPanel.has-content #chat-overlay-output {
     background-tint: 3%;
 }
 
-.tool-call:focus {
+.tool-call:focus,
+.chat-tool-call:focus {
     border: round $primary;
     background-tint: 10%;
 }
 
-.tool-call:hover {
+.tool-call:hover,
+.chat-tool-call:hover {
     tint: $primary 8%;
 }
 
@@ -990,12 +995,14 @@ ToolCallHeader {
 /* Decision surfaces */
 
 .permission-prompt,
+.chat-permission-prompt,
 WorkspaceReposWidget {
     background: $surface;
     border: round $border;
 }
 
 .permission-prompt:focus,
+.chat-permission-prompt:focus,
 WorkspaceReposWidget:focus {
     border: round $primary;
     background: $panel;
@@ -1083,13 +1090,6 @@ StreamingOutput {
     background: $panel;
 }
 
-.tool-call {
-    border: round $border;
-    background: $surface;
-    margin-bottom: 1;
-    padding: 0 1;
-}
-
 .tool-call-header {
     text-style: bold;
     color: $text;
@@ -1101,18 +1101,20 @@ StreamingOutput {
     width: 100%;
 }
 
-.streaming-note.error {
+.streaming-note.error,
+.stream-note.error {
     color: $error;
     text-opacity: 100%;
 }
 
-.streaming-note.warning {
+.streaming-note.warning,
+.stream-note.warning {
     color: $warning;
     text-opacity: 100%;
 }
 
-/* === WAVE 2 VISUAL PARITY (chat/streaming/tool/plan/permission) === */
 
+/* ChatOverlay duplicates ChatPanel rules with minor tweaks — preserved for widget variant. */
 ChatOverlay {
     layer: overlay;
     dock: bottom;
@@ -1130,22 +1132,6 @@ ChatOverlay #chat-overlay-main {
     layers: default overlay;
 }
 
-ChatOverlay #chat-overlay-output > ScrollableContainer {
-    height: 1fr;
-    padding: 1 2;
-    scrollbar-gutter: stable;
-}
-
-ChatOverlay #chat-overlay-bottom {
-    background: $panel;
-    border-top: none;
-    padding: 0 1;
-}
-
-ChatOverlay #chat-overlay-bottom:focus-within {
-    border-top: solid $primary;
-}
-
 ChatOverlay #chat-overlay-command-line {
     background: $surface;
     border: round $panel;
@@ -1154,115 +1140,9 @@ ChatOverlay #chat-overlay-command-line {
     padding: 0 1;
 }
 
-ChatOverlay #chat-overlay-command-line:focus-within {
-    border: round $primary;
-    background: $surface;
-    tint: $primary 6%;
-}
-
-ChatOverlay #chat-overlay-status .status-right {
-    color: $text-muted;
-}
-
-StreamingOutput {
-    padding: 1 2;
-}
-
 #streaming-body-content {
     width: 100%;
     height: auto;
-}
-
-.user-input,
-.agent-response,
-.agent-thought {
-    margin-bottom: 1;
-    padding: 0 1 0 2;
-}
-
-.agent-response {
-    border-left: thick $panel;
-}
-
-.agent-thought {
-    border-left: thick $border;
-    color: $text-muted;
-}
-
-.user-input {
-    border-left: thick $primary;
-    background: $panel;
-}
-
-.tool-call,
-.chat-tool-call {
-    border: round $border;
-    background: $surface;
-    margin-bottom: 1;
-    padding: 0 1;
-    background-tint: 3%;
-}
-
-.tool-call:focus,
-.chat-tool-call:focus {
-    border: round $primary;
-    background-tint: 10%;
-}
-
-.tool-call:hover,
-.chat-tool-call:hover {
-    tint: $primary 8%;
-}
-
-ToolCallHeader,
-.chat-tool-call-header {
-    text-style: bold;
-    color: $text;
-    border-bottom: solid $border;
-}
-
-.chat-tool-call .tool-call-body {
-    color: $text-muted;
-    padding: 0 2;
-}
-
-.permission-prompt,
-.chat-permission-prompt {
-    background: $surface;
-    border: round $border;
-}
-
-.permission-prompt:focus,
-.chat-permission-prompt:focus {
-    border: round $primary;
-    background: $panel;
-}
-
-#stream-current-action,
-#chat-stream-current-action {
-    width: 100%;
-    margin-bottom: 1;
-    padding: 0 1;
-    color: $text-disabled;
-}
-
-.streaming-note,
-.stream-note {
-    width: 100%;
-    padding: 0 1;
-    margin-bottom: 1;
-}
-
-.streaming-note.error,
-.stream-note.error {
-    color: $error;
-    text-opacity: 100%;
-}
-
-.streaming-note.warning,
-.stream-note.warning {
-    color: $warning;
-    text-opacity: 100%;
 }
 
 .chat-tool-call {
@@ -1308,4 +1188,106 @@ ToolCallHeader,
     text-wrap: wrap;
     text-overflow: fold;
     overflow-x: hidden;
+}
+
+/* === OrchestratorOverlay === */
+OrchestratorOverlay {
+    align: center middle;
+    background: $background 80%;
+}
+
+#orch-container {
+    width: 90%;
+    height: 85%;
+    max-width: 120;
+    border: round $primary;
+    background: $background;
+    layout: vertical;
+}
+
+#orch-container.fullscreen {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    border: none;
+}
+
+#orch-header-bar {
+    height: 2;
+    width: 100%;
+    padding: 0 1;
+    background: $surface;
+    border-bottom: solid $border;
+}
+
+#orch-breadcrumb {
+    height: 2;
+    width: 1fr;
+    color: $text-muted;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#orch-fullscreen-btn {
+    height: 1;
+    width: auto;
+    padding: 0 1;
+    color: $text-disabled;
+}
+
+OrchestratorOverlay #chat-panel {
+    dock: none;
+    height: 1fr;
+    width: 100%;
+    max-height: 100%;
+    offset-y: 0;
+    border-top: none;
+    display: block;
+}
+
+/* === SessionList === */
+SessionList {
+    height: auto;
+    max-height: 6;
+    width: 100%;
+    border-top: solid $border;
+    background: $surface;
+    display: none;
+}
+
+SessionList.has-sessions {
+    display: block;
+}
+
+SessionList > ListView {
+    height: auto;
+    max-height: 5;
+    background: $surface;
+    padding: 0;
+}
+
+SessionList > ListView > ListItem {
+    padding: 0 1;
+    height: 1;
+    background: $surface;
+}
+
+SessionList > ListView > ListItem.--highlight {
+    background: $primary 20%;
+    color: $text;
+}
+
+SessionList > ListView > ListItem > Static {
+    width: 1fr;
+    height: 1;
+    color: $text-muted;
+}
+
+SessionList > ListView > ListItem.--highlight > Static {
+    color: $text;
+}
+
+SessionList .-empty > Static {
+    color: $text-disabled;
+    text-style: italic;
 }

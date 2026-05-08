@@ -24,7 +24,10 @@ import contextlib
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 import acp
 import click
@@ -33,6 +36,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from rich.live import Live
 
 from kagan.cli.chat._approval_panel import strip_tool_prefix
+from kagan.cli.chat._approval_types import _SendResult, _WaveIndicator
 from kagan.cli.chat._chat_ui import (
     build_session_picker_option,
     export_analytics_json,
@@ -45,7 +49,7 @@ from kagan.cli.chat._chat_ui import (
     print_status_panel,
     show_tool_report,
 )
-from kagan.cli.chat._permission_ui import PermissionUI, _SendResult, _WaveIndicator
+from kagan.cli.chat._permission_ui import PermissionUI
 from kagan.cli.chat._renderer import CLIRenderer
 from kagan.cli.chat._session_picker import (
     ChatSessionView,
@@ -115,29 +119,6 @@ __all__ = [
     "_SendResult",
     "_WaveIndicator",
 ]
-
-
-_SLASH_ACTION_HANDLER_NAMES: dict[SlashAction, str] = {
-    SlashAction.CLEAR: "_handle_slash_clear",
-    SlashAction.SHOW_HELP: "_handle_slash_help",
-    SlashAction.SHOW_AGENTS: "_handle_slash_show_agents",
-    SlashAction.SWITCH_AGENT: "_handle_slash_switch_agent",
-    SlashAction.LIST_SESSIONS: "_handle_slash_list_sessions",
-    SlashAction.DELETE_SESSION: "_handle_slash_delete_session",
-    SlashAction.NEW_SESSION: "_handle_slash_new_session",
-    SlashAction.SHOW_TOOL: "_handle_slash_show_tool",
-    SlashAction.SHOW_STATUS: "_handle_slash_show_status",
-    SlashAction.SHOW_ANALYTICS: "_handle_slash_show_analytics",
-    SlashAction.SHOW_PROJECT: "_handle_slash_show_project",
-    SlashAction.SWITCH_PROJECT: "_handle_slash_switch_project",
-    SlashAction.SWITCH_REPO: "_handle_slash_switch_repo",
-    SlashAction.SHOW_REPO: "_handle_slash_show_repo",
-    SlashAction.SHOW_APPROVALS: "_handle_slash_show_approvals",
-    SlashAction.SWITCH_SESSION: "_handle_slash_switch_session",
-    SlashAction.STOP_SESSION: "_handle_slash_stop_session",
-    SlashAction.CLOSE_SESSION: "_handle_slash_close_session",
-    SlashAction.CLOSE: "_handle_slash_close",
-}
 
 
 def _settings_flag_enabled(settings: dict[str, str], key: str, *, default: bool) -> bool:
@@ -221,6 +202,30 @@ class ChatController:
         self._permission_ui = PermissionUI(renderer=self._renderer, engine=client.chat)
         self._factory: LongLivedACPFactory | None = None
         self._permission_tasks: set[asyncio.Task[None]] = set()
+
+        self._slash_action_registry: dict[
+            SlashAction, Callable[[SlashCommandOutcome], Awaitable[bool]]
+        ] = {
+            SlashAction.CLEAR: self._handle_slash_clear,
+            SlashAction.SHOW_HELP: self._handle_slash_help,
+            SlashAction.SHOW_AGENTS: self._handle_slash_show_agents,
+            SlashAction.SWITCH_AGENT: self._handle_slash_switch_agent,
+            SlashAction.LIST_SESSIONS: self._handle_slash_list_sessions,
+            SlashAction.DELETE_SESSION: self._handle_slash_delete_session,
+            SlashAction.NEW_SESSION: self._handle_slash_new_session,
+            SlashAction.SHOW_TOOL: self._handle_slash_show_tool,
+            SlashAction.SHOW_STATUS: self._handle_slash_show_status,
+            SlashAction.SHOW_ANALYTICS: self._handle_slash_show_analytics,
+            SlashAction.SHOW_PROJECT: self._handle_slash_show_project,
+            SlashAction.SWITCH_PROJECT: self._handle_slash_switch_project,
+            SlashAction.SWITCH_REPO: self._handle_slash_switch_repo,
+            SlashAction.SHOW_REPO: self._handle_slash_show_repo,
+            SlashAction.SHOW_APPROVALS: self._handle_slash_show_approvals,
+            SlashAction.SWITCH_SESSION: self._handle_slash_switch_session,
+            SlashAction.STOP_SESSION: self._handle_slash_stop_session,
+            SlashAction.CLOSE_SESSION: self._handle_slash_close_session,
+            SlashAction.CLOSE: self._handle_slash_close,
+        }
 
     # ------------------------------------------------------------------
     # Session management
@@ -1185,10 +1190,9 @@ class ChatController:
                 _console.print(line.text)
 
     async def _dispatch_slash_action(self, result: SlashCommandOutcome) -> bool:
-        handler_name = _SLASH_ACTION_HANDLER_NAMES.get(result.action)
-        if handler_name is None:
+        handler = self._slash_action_registry.get(result.action)
+        if handler is None:
             return False
-        handler = getattr(self, handler_name)
         return await handler(result)
 
     async def _handle_slash_clear(self, result: SlashCommandOutcome) -> bool:
@@ -1309,7 +1313,7 @@ class ChatController:
             await print_analytics_panel(self.client)
 
     def _show_approvals(self, data: str) -> None:
-        from kagan.cli.chat._permission_ui import get_session_approvals
+        from kagan.cli.chat._approval_types import get_session_approvals
 
         approvals = get_session_approvals()
 

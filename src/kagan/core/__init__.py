@@ -71,7 +71,7 @@ from kagan.core._checkpoints import (
     rewind_to_checkpoint,
 )
 from kagan.core._compaction import COMPACTION_THRESHOLD, ContextCompactor
-from kagan.core._db import create_db_engine, default_db_path
+from kagan.core._db import create_db_engine, default_config_path, default_db_path
 from kagan.core._db_helpers import _db_async as db_async
 from kagan.core._db_helpers import _db_sync as db_sync
 from kagan.core._db_helpers import _sa_col as sa_col
@@ -83,7 +83,6 @@ from kagan.core._environment_checks import (
     resolve_doctor_backend_name,
     verify_hint_for,
 )
-from kagan.core._formatting import format_duration, format_percentage
 from kagan.core._insights import InsightCategory
 from kagan.core._io.projects import ProjectCreateRequest, RepoAddRequest
 from kagan.core._io.reviews import ReviewDecideRequest
@@ -159,7 +158,7 @@ from kagan.core._settings import get_settings, set_settings
 from kagan.core._subprocess import resolve_spawn_command
 from kagan.core._task_classification import classify_task
 from kagan.core._tasks import Tasks
-from kagan.core._utils import utc_iso
+from kagan.core._utils import format_duration, format_percentage, utc_iso
 from kagan.core._verification import StepVerdict, StepVerification, VerificationSummary
 from kagan.core._worktrees import (
     cleanup_orphan_worktrees,
@@ -331,6 +330,7 @@ __all__ = [
     "create_worktree",
     "db_async",
     "db_sync",
+    "default_config_path",
     "default_db_path",
     "default_log_path",
     "delete_project",

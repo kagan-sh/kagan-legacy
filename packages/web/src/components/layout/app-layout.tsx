@@ -43,7 +43,7 @@ function AppLayout() {
     navigateRef.current = navigate;
 
     const overlay = useSessionOverlay();
-    const workspaceRoute = location.pathname.startsWith("/workspace");
+    const workspaceRoute = location.pathname.startsWith("/workspace") || location.pathname.startsWith("/chat");
 
     // Reset project check when project switches (e.g. from welcome page)
     const prevProjectVersionRef = useRef(projectVersion);

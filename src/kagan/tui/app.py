@@ -105,7 +105,6 @@ class KaganApp(App[None]):
         self.project: Project | None = None
         self.selected_repo_id: str | None = None
         self.selected_repo_name: str | None = None
-        # Startup doctor checks (None = skip_preflight was True or tests; [] = no issues)
         self._startup_checks: list[DoctorCheck] | None = startup_checks
 
         self.register_theme(KAGAN_THEME)
@@ -352,3 +351,13 @@ class KaganApp(App[None]):
             self.notify("Open a project before selecting a repository.", severity="warning")
             return
         self.push_screen(RepoPickerModal())
+
+    def action_toggle_mode(self) -> None:
+        handler = getattr(self.screen, "action_toggle_mode", None)
+        if callable(handler):
+            handler()
+            return
+        if isinstance(self.screen, KanbanScreen):
+            self.switch_screen("workspace-screen")
+        else:
+            self.push_screen("kanban-screen")

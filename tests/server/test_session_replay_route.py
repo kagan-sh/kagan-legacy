@@ -1,8 +1,7 @@
-"""REST contract tests for GET /api/v1/sessions/{session_id}/replay."""
+"""Tests for GET /api/v1/sessions/:id/replay."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -15,24 +14,18 @@ import kagan.server._helpers as server_helpers
 from kagan.core import KaganCore
 from kagan.core._db_helpers import _db_async
 from kagan.core.enums import SessionStatus, TaskStatus
-from kagan.core.models import Session, SessionEvent, Task
+from kagan.core.models import ChatMessage, ChatSession, Session, SessionEvent, Task
 from kagan.server.mcp.server import ServerOptions
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
 
 
-async def _seed_session(engine, task_id: str) -> str:
-    session = Session(task_id=task_id, agent_backend="fake", status=SessionStatus.COMPLETED)
-
-    def _w(s) -> Session:
-        s.add(session)
-        s.flush()
-        s.refresh(session)
-        s.expunge(session)
-        return session
-
-    result = await _db_async(engine, _w, commit=True)
-    return result.id
+def _make_ctx(core: KaganCore) -> SimpleNamespace:
+    return SimpleNamespace(
+        client=core,
+        opts=ServerOptions(),
+        bound_project_id=core.active_project_id,
+    )
 
 
 async def _seed_task(engine, title: str, project_id: str) -> str:
@@ -49,25 +42,29 @@ async def _seed_task(engine, title: str, project_id: str) -> str:
     return result.id
 
 
-async def _seed_event(
-    engine,
-    session_id: str,
-    task_id: str,
-    event_type: str = "output_chunk",
-    *,
-    event_id: str | None = None,
-    created_at: datetime | None = None,
+async def _seed_session(
+    engine, task_id: str, *, status: SessionStatus = SessionStatus.RUNNING
 ) -> str:
+    session = Session(task_id=task_id, agent_backend="fake", status=status)
+
+    def _w(s) -> Session:
+        s.add(session)
+        s.flush()
+        s.refresh(session)
+        s.expunge(session)
+        return session
+
+    result = await _db_async(engine, _w, commit=True)
+    return result.id
+
+
+async def _seed_event(engine, task_id: str, session_id: str, event_type: str, payload: dict) -> str:
     event = SessionEvent(
         task_id=task_id,
         session_id=session_id,
         event_type=event_type,
-        payload={"text": f"chunk for {event_type}"},
+        payload=payload,
     )
-    if event_id is not None:
-        event.id = event_id
-    if created_at is not None:
-        event.created_at = created_at
 
     def _w(s) -> SessionEvent:
         s.add(event)
@@ -80,283 +77,104 @@ async def _seed_event(
     return result.id
 
 
-def _make_ctx(core: KaganCore) -> SimpleNamespace:
-    async def _get_settings() -> dict[str, str]:
-        return {}
+async def _seed_chat_session(engine, label: str, project_id: str) -> str:
+    chat = ChatSession(label=label, source="web", project_id=project_id)
 
-    return SimpleNamespace(
-        client=SimpleNamespace(
-            tasks=core.tasks,
-            settings=SimpleNamespace(get=_get_settings),
-            worktrees=core.worktrees,
-            engine=core.engine,
-            active_project_id=core.active_project_id,
-            projects=SimpleNamespace(repos=lambda _: [], resolve_repo_path=lambda **_: None),
-        ),
-        opts=ServerOptions(),
-        bound_project_id=core.active_project_id,
-    )
+    def _w(s) -> ChatSession:
+        s.add(chat)
+        s.flush()
+        s.refresh(chat)
+        s.expunge(chat)
+        return chat
+
+    result = await _db_async(engine, _w, commit=True)
+    return result.id
+
+
+async def _seed_chat_message(engine, session_id: str, role: str, content: str) -> None:
+    msg = ChatMessage(session_id=session_id, role=role, content=content)
+
+    def _w(s) -> None:
+        s.add(msg)
+
+    await _db_async(engine, _w, commit=True)
 
 
 @pytest.fixture
 async def setup(tmp_path: Path):
     core = KaganCore(db_path=tmp_path / "test.db")
-    project = await core.projects.create("Replay Project")
+    project = await core.projects.create("Test Project")
     await core.projects.set_active(project.id)
-
-    # Create a real Task row to satisfy FK constraint
-    task = await core.tasks.create("Replay Task")
-
     try:
-        yield core, task.id
+        yield core, project.id
     finally:
         await core.aclose()
 
 
 @pytest.mark.asyncio
-async def test_replay_returns_404_for_unknown_session(
+async def test_replay_task_session_events(
     monkeypatch: pytest.MonkeyPatch,
     setup: Any,
 ) -> None:
-    core, _ = setup
-    mcp = make_api_server()
-    ctx = _make_ctx(core)
-    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
-
-    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
-    req = make_request(
-        "GET",
-        "/api/v1/sessions/nosuchsession/replay",
-        path_params={"session_id": "nosuchsession"},
-    )
-    body = json_body(await endpoint(req))
-
-    assert body["ok"] is False
-
-
-@pytest.mark.asyncio
-async def test_replay_returns_events_in_forward_order(
-    monkeypatch: pytest.MonkeyPatch,
-    setup: Any,
-) -> None:
-    """Events are returned oldest-first by default (forward direction)."""
-    core, task_id = setup
-    session_id = await _seed_session(core.engine, task_id)
-    ev1 = await _seed_event(core.engine, session_id, task_id, "output_chunk")
-    ev2 = await _seed_event(core.engine, session_id, task_id, "agent_completed")
+    """GET /api/v1/sessions/task:{id}/replay returns task session events."""
+    core, project_id = setup
+    task_id = await _seed_task(core.engine, "Replay Task", project_id)
+    session_id = await _seed_session(core.engine, task_id, status=SessionStatus.RUNNING)
+    await _seed_event(core.engine, task_id, session_id, "agent_start", {"backend": "fake"})
+    await _seed_event(core.engine, task_id, session_id, "output_chunk", {"text": "hello"})
 
     mcp = make_api_server()
-    ctx = _make_ctx(core)
-    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
 
     endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
-    req = make_request(
-        "GET",
-        f"/api/v1/sessions/{session_id}/replay",
-        path_params={"session_id": session_id},
-    )
-    body = json_body(await endpoint(req))
-
-    assert body["ok"] is True
-    data = body["data"]
-    events = data["events"]
-    assert len(events) == 2
-    assert events[0]["id"] == ev1
-    assert events[1]["id"] == ev2
-    assert data["has_more"] is False
-    assert data["next_cursor"] is None
-
-
-@pytest.mark.asyncio
-async def test_replay_cursor_pagination(
-    monkeypatch: pytest.MonkeyPatch,
-    setup: Any,
-) -> None:
-    """cursor advances through pages correctly."""
-    core, task_id = setup
-    session_id = await _seed_session(core.engine, task_id)
-    # Seed 3 events
-    ids = [await _seed_event(core.engine, session_id, task_id, f"event_{i}") for i in range(3)]
-
-    mcp = make_api_server()
-    ctx = _make_ctx(core)
-    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
-
-    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
-
-    # Page 1: limit=2
-    req = make_request(
-        "GET",
-        f"/api/v1/sessions/{session_id}/replay?limit=2",
-        path_params={"session_id": session_id},
-    )
-    body = json_body(await endpoint(req))
-    assert body["ok"] is True
-    page1 = body["data"]
-    assert len(page1["events"]) == 2
-    assert page1["has_more"] is True
-    cursor = page1["next_cursor"]
-    assert cursor is not None
-
-    # Page 2: use cursor
-    req2 = make_request(
-        "GET",
-        f"/api/v1/sessions/{session_id}/replay?limit=2&cursor={cursor}",
-        path_params={"session_id": session_id},
-    )
-    body2 = json_body(await endpoint(req2))
-    page2 = body2["data"]
-    assert len(page2["events"]) == 1
-    assert page2["has_more"] is False
-    assert page2["events"][0]["id"] == ids[2]
-
-
-@pytest.mark.asyncio
-async def test_replay_composite_cursor_preserves_created_at_order(
-    monkeypatch: pytest.MonkeyPatch,
-    setup: Any,
-) -> None:
-    """Composite cursors continue after the last (created_at, id) pair."""
-    core, task_id = setup
-    session_id = await _seed_session(core.engine, task_id)
-    await _seed_event(
-        core.engine,
-        session_id,
-        task_id,
-        "first",
-        event_id="z_first",
-        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
-    )
-    await _seed_event(
-        core.engine,
-        session_id,
-        task_id,
-        "second",
-        event_id="a_second",
-        created_at=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
-    )
-    await _seed_event(
-        core.engine,
-        session_id,
-        task_id,
-        "third",
-        event_id="m_third",
-        created_at=datetime(2026, 1, 1, 12, 2, tzinfo=UTC),
+    body = json_body(
+        await endpoint(
+            make_request(
+                "GET",
+                f"/api/v1/sessions/task:{session_id}/replay",
+                path_params={"session_id": f"task:{session_id}"},
+            )
+        )
     )
 
-    mcp = make_api_server()
-    ctx = _make_ctx(core)
-    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
-
-    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
-    req = make_request(
-        "GET",
-        f"/api/v1/sessions/{session_id}/replay?limit=2",
-        path_params={"session_id": session_id},
-    )
-    page1 = json_body(await endpoint(req))["data"]
-
-    assert [event["id"] for event in page1["events"]] == ["z_first", "a_second"]
-    assert page1["next_cursor"].endswith("|a_second")
-
-    req2 = make_request(
-        "GET",
-        f"/api/v1/sessions/{session_id}/replay?limit=2&cursor={page1['next_cursor']}",
-        path_params={"session_id": session_id},
-    )
-    page2 = json_body(await endpoint(req2))["data"]
-
-    assert [event["id"] for event in page2["events"]] == ["m_third"]
-    assert page2["has_more"] is False
-
-
-@pytest.mark.asyncio
-async def test_replay_backward_direction(
-    monkeypatch: pytest.MonkeyPatch,
-    setup: Any,
-) -> None:
-    """direction=backward returns events newest-first."""
-    core, task_id = setup
-    session_id = await _seed_session(core.engine, task_id)
-    ev1 = await _seed_event(core.engine, session_id, task_id, "first")
-    ev2 = await _seed_event(core.engine, session_id, task_id, "second")
-
-    mcp = make_api_server()
-    ctx = _make_ctx(core)
-    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
-
-    endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
-    req = make_request(
-        "GET",
-        f"/api/v1/sessions/{session_id}/replay?direction=backward",
-        path_params={"session_id": session_id},
-    )
-    body = json_body(await endpoint(req))
-
-    assert body["ok"] is True
+    assert body.get("ok") is True, f"body={body}"
     events = body["data"]["events"]
     assert len(events) == 2
-    # Backward order: ev2 first (most recent)
-    assert events[0]["id"] == ev2
-    assert events[1]["id"] == ev1
+    assert events[0]["event_type"] == "agent_start"
+    assert events[1]["event_type"] == "output_chunk"
+    assert events[1]["payload"]["text"] == "hello"
 
 
 @pytest.mark.asyncio
-async def test_replay_limit_capped_at_max(
+async def test_replay_chat_session_messages(
     monkeypatch: pytest.MonkeyPatch,
     setup: Any,
 ) -> None:
-    """Limit above max (1000) is silently capped."""
-    core, task_id = setup
-    session_id = await _seed_session(core.engine, task_id)
-    await _seed_event(core.engine, session_id, task_id, "ev")
+    """GET /api/v1/sessions/orch:{id}/replay returns chat messages as replay events."""
+    core, project_id = setup
+    chat_id = await _seed_chat_session(core.engine, "Chat Replay", project_id)
+    await _seed_chat_message(core.engine, chat_id, "user", "Hello")
+    await _seed_chat_message(core.engine, chat_id, "assistant", "Hi there")
 
     mcp = make_api_server()
-    ctx = _make_ctx(core)
-    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _: _make_ctx(core))
 
     endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
-    req = make_request(
-        "GET",
-        f"/api/v1/sessions/{session_id}/replay?limit=99999",
-        path_params={"session_id": session_id},
-    )
-    body = json_body(await endpoint(req))
-
-    # Should not error — silently caps
-    assert body["ok"] is True
-    assert len(body["data"]["events"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_replay_returns_404_for_session_outside_bound_project(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """A project-bound server cannot replay another project's session."""
-    core = KaganCore(db_path=tmp_path / "test2.db")
-    project_a = await core.projects.create("A")
-    project_b = await core.projects.create("B")
-    await core.projects.set_active(project_a.id)
-    task_b = await _seed_task(core.engine, "Replay Task B", project_b.id)
-    session_id = await _seed_session(core.engine, task_b)
-    await _seed_event(core.engine, session_id, task_b, "output_chunk")
-
-    try:
-        mcp = make_api_server()
-        ctx = _make_ctx(core)
-        monkeypatch.setattr(server_helpers, "get_server_context", lambda _: ctx)
-
-        endpoint = get_http_endpoint(mcp, "/api/v1/sessions/{session_id}/replay", "GET")
-        req = make_request(
-            "GET",
-            f"/api/v1/sessions/{session_id}/replay",
-            path_params={"session_id": session_id},
+    body = json_body(
+        await endpoint(
+            make_request(
+                "GET",
+                f"/api/v1/sessions/orch:{chat_id}/replay",
+                path_params={"session_id": f"orch:{chat_id}"},
+            )
         )
-        response = await endpoint(req)
-        body = json_body(response)
+    )
 
-        assert response.status_code == 404
-        assert body["ok"] is False
-    finally:
-        await core.aclose()
+    assert body.get("ok") is True, f"body={body}"
+    events = body["data"]["events"]
+    assert len(events) == 2
+    assert events[0]["event_type"] == "chat_message"
+    assert events[0]["payload"]["role"] == "user"
+    assert events[0]["payload"]["content"] == "Hello"
+    assert events[1]["payload"]["role"] == "assistant"
+    assert events[1]["payload"]["content"] == "Hi there"

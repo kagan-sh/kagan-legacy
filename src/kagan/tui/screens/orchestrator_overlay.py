@@ -1,19 +1,18 @@
-"""OrchestratorOverlay — app-level modal overlay for orchestrator + agent chat.
+"""OrchestratorOverlay — app-level modal overlay for unified session chat.
 
-Bound globally to ``o`` (and ``ctrl+space``).  Mirrors Claude Code's
-"background agents — ↓ to manage" UX.
+Bound globally to ``o`` (and ``ctrl+space``).
 
-State machine
--------------
-- ORCHESTRATOR mode  : talks to the project's orchestrator ChatSession.
-- ATTACHED mode      : re-streams a worker/reviewer agent Session via
-                       GET /api/v1/sessions/{id}/replay and
-                       SSE /api/v1/sessions/{id}/events.
+The overlay hosts a ChatPanel and a SessionList.  Any session type can be
+selected:
+
+- **Orchestrator** — loads chat history from ``orchestrator_sessions``.
+- **General** — loads chat history from ``chat_sessions.get_with_history()``.
+- **Task** — replays recent events read-only; live streaming and sending
+  messages are disabled.
 
 ESC behaviour
 -------------
-- While ATTACHED  → detach back to ORCHESTRATOR (first Esc).
-- While ORCHESTRATOR → close overlay (second Esc).
+- Always closes the overlay (no attach/detach state machine).
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from loguru import logger
 from textual.containers import Vertical
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
-from textual.widgets import Input, Static
+from textual.widgets import Input, ListView, Static
 
 from kagan.core.enums import SessionKind
 from kagan.tui.keybindings import ORCHESTRATOR_OVERLAY_BINDINGS
@@ -36,12 +35,12 @@ from kagan.tui.screens._chat_runner import (
     send_chat_message,
 )
 from kagan.tui.widgets.chat import ChatPanel
-from kagan.tui.widgets.running_agents_bar import RunningAgentsBar
+from kagan.tui.widgets.session_list import SessionList
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.models import SessionEvent
+    from kagan.core._session_items import SessionItem
     from kagan.tui.app import KaganApp
     from kagan.tui.widgets.streaming import StreamingOutput
 
@@ -49,7 +48,7 @@ _ORCHESTRATOR_TITLE = "Orchestrator"
 
 
 class OrchestratorOverlay(ModalScreen[None]):
-    """App-level orchestrator/agent chat overlay.
+    """App-level session chat overlay.
 
     Parameters
     ----------
@@ -57,7 +56,7 @@ class OrchestratorOverlay(ModalScreen[None]):
         If set and no active session exists, the overlay pre-fills the chat
         input with ``@task:<id> `` so the user has context.
     poll_interval:
-        Agents-bar poll interval.  Set to 0 in tests.
+        Session-list poll interval.  Set to 0 in tests.
     """
 
     BINDINGS = ORCHESTRATOR_OVERLAY_BINDINGS
@@ -85,11 +84,7 @@ class OrchestratorOverlay(ModalScreen[None]):
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    /* The global chat.tcss rule sets dock: bottom; layer: overlay; display: none
-       on all ChatPanel instances.  Override those here so the panel flows
-       naturally inside the Vertical#orch-container instead of docking to the
-       bottom edge of the modal and being hidden. */
-    OrchestratorOverlay #orch-chat {
+    OrchestratorOverlay #chat-panel {
         dock: none;
         height: 1fr;
         width: 100%;
@@ -110,15 +105,14 @@ class OrchestratorOverlay(ModalScreen[None]):
         self._task_id = task_id
         self._poll_interval = poll_interval
 
-        # Track attach state
-        self._attached_session_id: str | None = None
-        self._attached_role: str | None = None
-        self._attached_task_id: str | None = None
+        # Currently selected session (None = orchestrator default)
+        self._selected_session_id: str | None = None
+        self._selected_item: SessionItem | None = None
 
-        # Orchestrator history
+        # Orchestrator history cache
         self._orchestrator_history: list[tuple[str, str]] = []
 
-        # Stream worker for attached mode
+        # Stream worker for task replay
         self._sse_task: asyncio.Task[None] | None = None
 
         # In-flight message send
@@ -136,10 +130,9 @@ class OrchestratorOverlay(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="orch-container"):
             yield Static(_ORCHESTRATOR_TITLE, id="orch-breadcrumb")
-            yield ChatPanel(id="orch-chat", classes="")
-            yield RunningAgentsBar(
-                id="orch-agents-bar",
-                on_select=self._on_agent_selected,
+            yield ChatPanel(id="chat-panel", classes="")
+            yield SessionList(
+                id="orch-session-list",
                 poll_interval=self._poll_interval,
             )
 
@@ -148,10 +141,10 @@ class OrchestratorOverlay(ModalScreen[None]):
     # ------------------------------------------------------------------
 
     async def on_mount(self) -> None:
-        await self._load_orchestrator_state()
+        await self._select_orchestrator()
 
         # Pre-fill @task:<id> prefix if provided
-        if self._task_id is not None and self._attached_session_id is None:
+        if self._task_id is not None and self._selected_session_id is None:
             with contextlib.suppress(NoMatches):
                 inp = self.query_one("#chat-overlay-input", Input)
                 inp.value = f"@task:{self._task_id[:8]} "
@@ -176,46 +169,19 @@ class OrchestratorOverlay(ModalScreen[None]):
     def kagan_app(self) -> KaganApp:
         return cast("KaganApp", self.app)
 
-    async def attach(
-        self,
-        session_id: str | None,
-        role: str | None = None,
-        task_id: str | None = None,
-    ) -> None:
-        """Switch between orchestrator mode and an agent session.
-
-        Pass ``session_id=None`` to return to orchestrator mode.
-        """
-        if session_id == self._attached_session_id:
-            return
-
-        # Cancel any running SSE worker
-        await self._cancel_sse()
-
-        self._attached_session_id = session_id
-        self._attached_role = role
-        self._attached_task_id = task_id
-
-        panel = self._chat_panel()
-        if panel is None:
-            return
-
-        if session_id is None:
-            # Return to orchestrator mode
-            self._update_breadcrumb(_ORCHESTRATOR_TITLE)
-            await self._load_orchestrator_state()
-            return
-
-        # Attach to agent session
-        await self._do_attach(session_id, role, task_id, panel)
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _chat_panel(self) -> ChatPanel | None:
         try:
-            return self.query_one("#orch-chat", ChatPanel)
+            return self.query_one("#chat-panel", ChatPanel)
+        except NoMatches:
+            return None
+
+    def _session_list(self) -> SessionList | None:
+        try:
+            return self.query_one("#orch-session-list", SessionList)
         except NoMatches:
             return None
 
@@ -227,6 +193,48 @@ class OrchestratorOverlay(ModalScreen[None]):
         with contextlib.suppress(NoMatches):
             self.query_one("#orch-breadcrumb", Static).update(text)
 
+    async def _select_orchestrator(self) -> None:
+        """Default to orchestrator mode."""
+        await self._cancel_sse()
+        self._selected_session_id = None
+        self._selected_item = None
+        self._update_breadcrumb(_ORCHESTRATOR_TITLE)
+        await self._load_orchestrator_state()
+
+    async def _select_session(self, item: SessionItem) -> None:
+        """Switch the overlay to show the given session."""
+        if self._selected_session_id == item.id:
+            return
+
+        await self._cancel_sse()
+        self._selected_session_id = item.id
+        self._selected_item = item
+
+        panel = self._chat_panel()
+        if panel is None:
+            return
+
+        match item.type:
+            case "orchestrator":
+                self._update_breadcrumb(item.title)
+                await self._load_orchestrator_state()
+            case "general":
+                self._update_breadcrumb(item.title)
+                await self._load_general_state(item)
+            case "task":
+                role_label = (item.role or "Agent").capitalize()
+                self._update_breadcrumb(f"{item.title[:40]} · {role_label}")
+                panel.set_mode_title(f"{role_label}")
+                panel.set_session_kind(
+                    SessionKind.REVIEW if item.role == "reviewer" else SessionKind.DETACHED
+                )
+                panel.clear_messages()
+                await self._replay_task_session(item, panel)
+            case _:
+                self._update_breadcrumb(item.title)
+                panel.clear_messages()
+                panel.add_system_message(f"Unknown session type: {item.type}")
+
     async def _load_orchestrator_state(self) -> None:
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
         self._orchestrator_history = self.kagan_app.orchestrator_sessions.active_history()
@@ -235,18 +243,11 @@ class OrchestratorOverlay(ModalScreen[None]):
         if panel is None:
             return
 
-        # chat.tcss sets dock: bottom; layer: overlay; display: none on every
-        # ChatPanel widget.  Those rules are applied via the global app
-        # stylesheet which has higher specificity than DEFAULT_CSS, so they
-        # cannot be overridden purely through CSS here.  Apply inline styles
-        # directly so the panel flows inside the Vertical#orch-container rather
-        # than docking to the bottom edge and being hidden.
         panel.styles.dock = "none"
         panel.styles.layer = "default"
         panel.styles.offset = ("0", "0")
         panel.styles.height = "1fr"
-        panel.styles.max_height = "1fr"  # override the 50% cap from global CSS
-        panel.styles.border_top = ("none", "transparent")
+        panel.styles.max_height = "1fr"
         panel.set_visible(True)
         panel.set_footer_mode("overlay")
         panel.set_mode_title(_ORCHESTRATOR_TITLE)
@@ -254,70 +255,45 @@ class OrchestratorOverlay(ModalScreen[None]):
         panel.hydrate_current_session_history(self._orchestrator_history)
         self._update_breadcrumb(_ORCHESTRATOR_TITLE)
 
-    async def _do_attach(
-        self, session_id: str, role: str | None, task_id: str | None, panel: ChatPanel
-    ) -> None:
-        """Wire the panel to an agent session."""
-        # Persist attach state in the DB
-        with contextlib.suppress(Exception):
-            active_key = self.kagan_app.orchestrator_sessions.active_key()
-            if active_key:
-                await self.kagan_app.core.attach_chat(active_key, session_id, agent_role=role)
-
-        # Clear existing messages
-        panel.clear_messages()
-
-        # Update breadcrumb
-        role_label = (role or "Agent").capitalize()
-        self._update_breadcrumb(f"{role_label} · attached")
-        panel.set_mode_title(f"{role_label} · attached")
-
-        # Subscribe to agent session events
-        self._sse_task = asyncio.create_task(
-            self._stream_agent_session(session_id, task_id, panel),
-            name=f"orch-overlay-sse-{session_id[:8]}",
-        )
-
-    async def _stream_agent_session(
-        self, session_id: str, task_id: str | None, panel: ChatPanel
-    ) -> None:
-        """Stream events from an agent Session into the panel.
-
-        Replays recent events then subscribes to new ones.  Uses the core
-        task-event stream filtered by session_id.  task_id is needed for the
-        stream subscription; if unknown we skip the live tail.
-        """
-        output = panel.stream_output()
-        output.clear()
-        resolved_task_id = await self._resolve_agent_session_task_id(session_id, task_id)
-        if resolved_task_id is None:
+    async def _load_general_state(self, item: SessionItem) -> None:
+        panel = self._chat_panel()
+        if panel is None:
             return
 
-        await self._replay_agent_session_events(resolved_task_id, session_id, output)
-        await self._stream_live_agent_session_events(resolved_task_id, session_id, output)
-
-    async def _resolve_agent_session_task_id(
-        self,
-        session_id: str,
-        task_id: str | None,
-    ) -> str | None:
-        resolved_task_id = task_id
-        if resolved_task_id is None:
+        history: list[tuple[str, str]] = []
+        if item.chat_session_id:
             try:
-                rows = await self.kagan_app.core.list_running_agents()
-                match_row = next((r for r in rows if r.session_id == session_id), None)
-                if match_row is not None:
-                    resolved_task_id = match_row.task_id
+                pair = await self.kagan_app.core.chat_sessions.get_with_history(
+                    item.chat_session_id
+                )
+                if pair is not None:
+                    _chat_session, messages = pair
+                    history = [(m.role, m.content) for m in messages]
             except Exception:
-                pass
-        return resolved_task_id
+                logger.opt(exception=True).debug("_load_general_state failed")
 
-    async def _replay_agent_session_events(
-        self,
-        task_id: str,
-        session_id: str,
-        output: StreamingOutput,
-    ) -> None:
+        panel.styles.dock = "none"
+        panel.styles.layer = "default"
+        panel.styles.offset = ("0", "0")
+        panel.styles.height = "1fr"
+        panel.styles.max_height = "1fr"
+        panel.set_visible(True)
+        panel.set_footer_mode("overlay")
+        panel.set_mode_title(item.title)
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
+        panel.hydrate_current_session_history(history)
+
+    async def _replay_task_session(self, item: SessionItem, panel: ChatPanel) -> None:
+        """Replay recent events for a task session (read-only, no live stream)."""
+        output = panel.stream_output()
+        output.clear()
+
+        task_id = item.task_id
+        session_id = item.session_id
+        if task_id is None or session_id is None:
+            panel.add_system_message("Task session missing task or session id")
+            return
+
         try:
             replay_events = await self.kagan_app.core.tasks.events.list_recent(
                 task_id, limit=200, session_id=session_id
@@ -326,75 +302,21 @@ class OrchestratorOverlay(ModalScreen[None]):
             replay_events = []
 
         for event in replay_events:
-            self._render_replay_agent_session_event(event, output)
-
-    async def _stream_live_agent_session_events(
-        self,
-        task_id: str,
-        session_id: str,
-        output: StreamingOutput,
-    ) -> None:
-        # TODO: Replace with server SSE GET /api/v1/sessions/{id}/events once
-        #       a TUI-side HTTP streaming helper is available.  For now we use
-        #       the core task event stream with session_id filtering.
-        try:
-            async for event in self.kagan_app.core.tasks.events.stream(task_id, replay=False):
-                if event.session_id != session_id:
-                    continue
-                if self._render_live_agent_session_event(event, output):
-                    break
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            output.post_note("Stream ended")
-
-    def _render_replay_agent_session_event(
-        self,
-        event: SessionEvent,
-        output: StreamingOutput,
-    ) -> None:
-        match event.event_type:
-            case "output_chunk":
-                self._render_agent_event(event.event_type, event.payload or {}, output, merge=True)
-            case "agent_completed":
-                self._render_agent_event(event.event_type, event.payload or {}, output, merge=True)
-            case "agent_failed":
-                self._render_agent_event(event.event_type, event.payload or {}, output, merge=True)
-            case _:
-                pass
-
-    def _render_live_agent_session_event(
-        self,
-        event: SessionEvent,
-        output: StreamingOutput,
-    ) -> bool:
-        payload = event.payload or {}
-        match event.event_type:
-            case "output_chunk":
-                self._render_agent_event(event.event_type, payload, output, merge=False)
-            case "agent_completed":
-                role_label = (self._attached_role or "Agent").capitalize()
-                self._update_breadcrumb(f"{role_label} · done")
-                self._render_agent_event(event.event_type, payload, output, merge=False)
-                return True
-            case "agent_failed":
-                role_label = (self._attached_role or "Agent").capitalize()
-                self._update_breadcrumb(f"{role_label} · failed")
-                self._render_agent_event(event.event_type, payload, output, merge=False)
-                return True
-            case _:
-                pass
-        return False
-
-    def _render_agent_event(
-        self,
-        event_type: str,
-        payload: dict,
-        output: StreamingOutput,
-        *,
-        merge: bool,
-    ) -> None:
-        render_agent_event_to_output(output, present_agent_event(event_type, payload), merge=merge)
+            match event.event_type:
+                case "output_chunk":
+                    self._render_agent_event(
+                        event.event_type, event.payload or {}, output, merge=True
+                    )
+                case "agent_completed":
+                    self._render_agent_event(
+                        event.event_type, event.payload or {}, output, merge=True
+                    )
+                case "agent_failed":
+                    self._render_agent_event(
+                        event.event_type, event.payload or {}, output, merge=True
+                    )
+                case _:
+                    pass
 
     async def _cancel_sse(self) -> None:
         if self._sse_task is not None:
@@ -403,110 +325,145 @@ class OrchestratorOverlay(ModalScreen[None]):
                 await self._sse_task
             self._sse_task = None
 
-    def _on_agent_selected(self, session_id: str, role: str | None, task_id: str) -> None:
-        self.run_worker(self.attach(session_id, role, task_id=task_id), exit_on_error=False)
-
     # ------------------------------------------------------------------
     # Key / event handlers
     # ------------------------------------------------------------------
 
     def action_handle_esc(self) -> None:
-        if self._attached_session_id is not None:
-            # First Esc: detach back to orchestrator
-            self.run_worker(self.attach(None), exit_on_error=False)
-        else:
-            # Second Esc: close overlay
-            self.dismiss()
+        self.dismiss()
 
     def action_cycle_agent_next(self) -> None:
-        """Ctrl+Down: rotate through running agents (None → row0 → row1 → … → None)."""
-        self._cycle_agent(direction=1)
+        """Ctrl+Down: rotate through sessions."""
+        self._cycle_session(direction=1)
 
     def action_cycle_agent_prev(self) -> None:
-        """Ctrl+Up: rotate backwards through running agents."""
-        self._cycle_agent(direction=-1)
+        """Ctrl+Up: rotate backwards through sessions."""
+        self._cycle_session(direction=-1)
 
-    def _cycle_agent(self, *, direction: int) -> None:
-        try:
-            agents_bar = self.query_one("#orch-agents-bar", RunningAgentsBar)
-        except Exception:
+    def _cycle_session(self, *, direction: int) -> None:
+        session_list = self._session_list()
+        if session_list is None:
             return
-        rows = list(agents_bar._rows)
-        if not rows:
+        items = list(session_list._items)
+        if not items:
             return
 
-        # States: 0=None, 1=rows[0], 2=rows[1], …, n=rows[n-1]
-        session_ids = [r.session_id for r in rows]
-        current_state = 0
-        if self._attached_session_id is not None:
-            try:
-                current_state = session_ids.index(self._attached_session_id) + 1
-            except ValueError:
-                current_state = 0
+        # States: -1=orchestrator, 0=items[0], 1=items[1], …
+        current_idx = -1
+        if self._selected_session_id is not None:
+            for i, item in enumerate(items):
+                if item.id == self._selected_session_id:
+                    current_idx = i
+                    break
 
-        next_state = (current_state + direction) % (len(rows) + 1)
-        if next_state == 0:
-            # Synchronously clear attachment so callers see it immediately.
-            self._attached_session_id = None
-            self.run_worker(self.attach(None), exit_on_error=False)
+        next_idx = (current_idx + direction) % (len(items) + 1)
+        if next_idx == -1:
+            next_idx = len(items) - 1
+        if next_idx == len(items):
+            next_idx = -1
+
+        if next_idx == -1:
+            self.run_worker(self._select_orchestrator(), exit_on_error=False)
         else:
-            row = rows[next_state - 1]
-            # Synchronously set so callers see it immediately.
-            self._attached_session_id = row.session_id
-            self.run_worker(
-                self.attach(row.session_id, row.agent_role, task_id=row.task_id),
-                exit_on_error=False,
-            )
+            item = items[next_idx]
+            try:
+                lv = session_list.query_one("#session-list", ListView)
+                lv.index = next_idx
+                lv.focus()
+            except Exception:
+                pass
+            self.run_worker(self._select_session(item), exit_on_error=False)
 
-    def on_running_agents_bar_focus_input(self, _: RunningAgentsBar.FocusInput) -> None:
+    def on_session_list_focus_input(self, _: SessionList.FocusInput) -> None:
         self._focus_input()
 
-    def on_running_agents_bar_agent_selected(self, message: RunningAgentsBar.AgentSelected) -> None:
-        self._on_agent_selected(message.session_id, message.agent_role, message.task_id)
+    def on_session_list_session_selected(self, message: SessionList.SessionSelected) -> None:
+        self.run_worker(self._select_session(message.item), exit_on_error=False)
+
+    def on_session_list_session_stop_requested(
+        self, message: SessionList.SessionStopRequested
+    ) -> None:
+        self.run_worker(self._stop_session(message.item), exit_on_error=False)
+
+    def on_session_list_session_close_requested(
+        self, message: SessionList.SessionCloseRequested
+    ) -> None:
+        self.run_worker(self._close_session(message.item), exit_on_error=False)
+
+    async def _stop_session(self, item: SessionItem) -> None:
+        if not item.capabilities.can_stop:
+            return
+        try:
+            if item.type == "task" and item.session_id:
+                await self.kagan_app.core.tasks.sessions.stop(item.session_id)
+            elif item.chat_session_id:
+                # Chat sessions don't have a dedicated stop API yet;
+                # closing is the closest action.
+                pass
+        except Exception as exc:
+            logger.warning("Failed to stop session {}: {}", item.id, exc)
+        session_list = self._session_list()
+        if session_list is not None:
+            await session_list.refresh_items()
+
+    async def _close_session(self, item: SessionItem) -> None:
+        if not item.capabilities.can_close:
+            return
+        try:
+            if item.chat_session_id:
+                await self.kagan_app.core.chat_sessions.delete(item.chat_session_id)
+            elif item.session_id:
+                await self.kagan_app.core.tasks.sessions.stop(item.session_id)
+        except Exception as exc:
+            logger.warning("Failed to close session {}: {}", item.id, exc)
+        session_list = self._session_list()
+        if session_list is not None:
+            await session_list.refresh_items()
 
     # Handle chat submit
     def on_chat_panel_submit_requested(self, message: ChatPanel.SubmitRequested) -> None:
-        if self._attached_session_id is not None:
-            # Route to the attached agent session instead of the orchestrator.
-            if self._chat_message_task is not None and not self._chat_message_task.done():
-                self._chat_message_task.cancel()
-            self._chat_message_task = asyncio.create_task(
-                self._send_attached_message(self._attached_session_id, message.text),
-                name="orch-overlay-send-attached",
-            )
+        if self._selected_item is not None and self._selected_item.type == "task":
+            # Task sessions are read-only in the overlay
+            panel = self._chat_panel()
+            if panel is not None:
+                panel.add_system_message("Task sessions are read-only")
             return
 
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+
+        if self._selected_item is not None and self._selected_item.type == "general":
+            self._chat_message_task = asyncio.create_task(
+                self._send_general_message(message.text),
+                name="orch-overlay-send-general",
+            )
+            return
 
         self._chat_message_task = asyncio.create_task(
             self._send_orchestrator_message(message.text),
             name="orch-overlay-send",
         )
 
-    async def _send_attached_message(self, session_id: str, text: str) -> None:
-        """Route a typed message to the attached agent session.
-
-        Injects the text as a user-turn event into the agent's event stream so
-        it is visible in the live overlay and any future replay.  If the session
-        has already finished, shows an inline notice instead.
-        """
+    async def _send_general_message(self, text: str) -> None:
         from kagan.core.errors import KaganError
 
         panel = self._chat_panel()
+        if panel is None or self._selected_item is None:
+            return
+
+        chat_session_id = self._selected_item.chat_session_id
+        if chat_session_id is None:
+            panel.add_system_message("No chat session available")
+            return
+
         try:
-            await self.kagan_app.core.send_message_to_session(session_id, text)
-        except KaganError as exc:
-            # Session no longer accepts input (e.g. COMPLETED or FAILED).
-            role_label = (self._attached_role or "Agent").capitalize()
-            notice = f"{role_label} session has finished — Esc to detach"
-            if panel:
-                panel.add_system_message(notice)
-            logger.debug("send_attached_message rejected: {}", exc)
-        except Exception as exc:
-            if panel:
-                panel.add_system_message(f"Send error: {exc}")
-            logger.opt(exception=True).warning("_send_attached_message failed")
+            await self.kagan_app.core.chat_sessions.append_message(chat_session_id, "user", text)
+            panel.add_user_message(text)
+            # TODO: wire general chat to an LLM backend for replies
+            panel.add_system_message("General chat reply not yet implemented")
+        except (KaganError, OSError, RuntimeError, ValueError) as exc:
+            panel.set_runtime_status("error")
+            panel.add_system_message(f"Chat error: {exc}")
 
     async def _send_orchestrator_message(self, text: str) -> None:
         from kagan.core.errors import KaganError
@@ -538,9 +495,19 @@ class OrchestratorOverlay(ModalScreen[None]):
         self.action_handle_esc()
 
     def on_key_down(self) -> None:
-        """Down arrow from the overlay focuses the agents bar."""
+        """Down arrow from the overlay focuses the session list."""
         try:
-            lv = self.query_one("#agents-list")
+            lv = self.query_one("#session-list")
             lv.focus()
         except NoMatches:
             pass
+
+    def _render_agent_event(
+        self,
+        event_type: str,
+        payload: dict,
+        output: StreamingOutput,
+        *,
+        merge: bool,
+    ) -> None:
+        render_agent_event_to_output(output, present_agent_event(event_type, payload), merge=merge)

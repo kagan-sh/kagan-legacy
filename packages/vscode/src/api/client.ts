@@ -11,6 +11,9 @@ import {
   type SearchMentionsInput,
   type SessionTimelineEntry,
   type TurnInProgressResponse,
+  type SessionsResponse,
+  type SessionItemResponse,
+  type CreateSessionRequest,
 } from "@kagan/shared-api-client";
 
 export { ApiError };
@@ -305,6 +308,28 @@ export class KaganClient extends KaganApiClient {
 
   getDoctor(): Promise<DoctorReportResponse> {
     return this.get<DoctorReportResponse>("/api/doctor");
+  }
+
+  // ── Unified sessions ───────────────────────────────────────────────────
+
+  /** GET /api/sessions */
+  getSessions(): Promise<SessionsResponse> {
+    return this.get<SessionsResponse>("/api/sessions");
+  }
+
+  /** POST /api/sessions */
+  createSession(input: CreateSessionRequest): Promise<SessionItemResponse> {
+    return this.post<SessionItemResponse>("/api/sessions", input);
+  }
+
+  /** POST /api/sessions/:sessionId/stop */
+  stopSession(sessionId: string): Promise<void> {
+    return this.post<void>(`/api/sessions/${sessionId}/stop`, {});
+  }
+
+  /** POST /api/sessions/:sessionId/close */
+  closeSession(sessionId: string): Promise<void> {
+    return this.post<void>(`/api/sessions/${sessionId}/close`, {});
   }
 
   // ── Private ────────────────────────────────────────────────────────────

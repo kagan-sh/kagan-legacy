@@ -131,37 +131,23 @@ async def test_running_to_stopped_records_agent_stopped_event(
     assert target.value.lower() in payload["summary"]
 
 
-async def test_orchestrator_and_attached_chats_are_not_lifecycle_storage(
+async def test_orchestrator_and_chat_sessions_are_not_lifecycle_storage(
     client: KaganCore,
 ) -> None:
-    """Lifecycle event storage is independent of chat attachment state."""
+    """Lifecycle event storage is independent of chat sessions."""
     project_id = client.active_project_id
     assert project_id is not None
 
-    other_task = await client.tasks.create("Task Y")
-    other_session_id = await _seed_session(
-        client.engine, other_task.id, status=SessionStatus.RUNNING
-    )
     task = await client.tasks.create("Task X")
     session_id = await _seed_session(client.engine, task.id, status=SessionStatus.RUNNING)
 
     chat_a = await client.chat_sessions.create(
         source="web", label="Orchestrator", project_id=project_id
     )
-    chat_b = await client.chat_sessions.create(
-        source="web", label="Watching X", project_id=project_id
-    )
-    await client.attach_chat(chat_b.id, session_id, agent_role="worker")
-    chat_c = await client.chat_sessions.create(
-        source="web", label="Watching Y", project_id=project_id
-    )
-    await client.attach_chat(chat_c.id, other_session_id, agent_role="worker")
 
     await transition_session(client, session_id, SessionStatus.COMPLETED)
 
     assert await client.chat_sessions.history(chat_a.id) == []
-    assert await client.chat_sessions.history(chat_b.id) == []
-    assert await client.chat_sessions.history(chat_c.id) == []
     events = await _lifecycle_events(client, session_id)
     assert len(events) == 1
     assert events[0].payload["kind"] == "agent_finished"

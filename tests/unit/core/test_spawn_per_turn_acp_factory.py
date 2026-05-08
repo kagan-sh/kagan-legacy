@@ -38,6 +38,7 @@ async def test_spawn_per_turn_factory_forwards_prompt_contract(
         on_update: Any,
         attachments: list[dict[str, str]] | None,
         cwd: Path | None,
+        lightweight: bool = False,
         permission_resolver: Any,
     ) -> str:
         captured.update(
@@ -48,6 +49,7 @@ async def test_spawn_per_turn_factory_forwards_prompt_contract(
                 "on_update": on_update,
                 "attachments": attachments,
                 "cwd": cwd,
+                "lightweight": lightweight,
                 "permission_resolver": permission_resolver,
             }
         )
@@ -79,6 +81,7 @@ async def test_spawn_per_turn_factory_forwards_prompt_contract(
         "on_update": _noop_update,
         "attachments": attachments,
         "cwd": tmp_path,
+        "lightweight": False,
         "permission_resolver": None,
     }
 

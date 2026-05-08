@@ -49,9 +49,12 @@ from kagan.cli.chat._permission_ui import PermissionUI, _SendResult, _WaveIndica
 from kagan.cli.chat._renderer import CLIRenderer
 from kagan.cli.chat._session_picker import (
     ChatSessionView,
+    UnifiedSessionListItem,
     build_chat_session_list_items,
+    build_unified_session_list_items,
     chat_session_to_view,
     resolve_chat_session_selector,
+    resolve_unified_session_selector,
 )
 from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
 from kagan.cli.chat._streaming import _TurnLiveState
@@ -130,8 +133,9 @@ _SLASH_ACTION_HANDLER_NAMES: dict[SlashAction, str] = {
     SlashAction.SWITCH_REPO: "_handle_slash_switch_repo",
     SlashAction.SHOW_REPO: "_handle_slash_show_repo",
     SlashAction.SHOW_APPROVALS: "_handle_slash_show_approvals",
-    SlashAction.ATTACH_AGENT: "_handle_slash_attach_agent",
-    SlashAction.DETACH_AGENT: "_handle_slash_detach_agent",
+    SlashAction.SWITCH_SESSION: "_handle_slash_switch_session",
+    SlashAction.STOP_SESSION: "_handle_slash_stop_session",
+    SlashAction.CLOSE_SESSION: "_handle_slash_close_session",
     SlashAction.CLOSE: "_handle_slash_close",
 }
 
@@ -207,10 +211,9 @@ class ChatController:
         self._project_name: str | None = None
         self._selected_repo_id: str | None = None
         self._selected_repo_name: str | None = None
-        # In-memory tracking of the currently attached agent session (set by
-        # /attach, cleared by /detach).  When set, typed messages are routed to
-        # the worker/reviewer session instead of the orchestrator.
-        self._attached_agent_session_id: str | None = None
+        # Unified session selection (replaces attach/detach).
+        self._selected_session_id: str | None = None
+        self._selected_session_type: str | None = None
         self._watcher = DBWatcher(client)
 
         show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
@@ -275,6 +278,18 @@ class ChatController:
         # Default: always start fresh (no picker)
         return None
 
+    def _infer_session_type(self, session_id: str) -> str:
+        if session_id.startswith("task:"):
+            return "task"
+        if session_id.startswith("gen:"):
+            return "general"
+        return "orchestrator"
+
+    def _raw_session_id(self, session_id: str) -> str:
+        if ":" in session_id:
+            return session_id.split(":", 1)[1]
+        return session_id
+
     async def _attach_session(self, session: ChatSessionView, *, switching: bool) -> bool:
         previous_session_id = self._chat_session_id
         session_id = session.id.strip()
@@ -324,6 +339,12 @@ class ChatController:
         if switching and previous_session_id is not None and previous_session_id != session_id:
             self._restart_requested = True
 
+        # Set unified session selection
+        prefix = "gen" if source == "general" else "orch"
+        self._selected_session_id = f"{prefix}:{session_id}"
+        self._selected_session_type = prefix
+        _TOOLBAR_STATE.session_label = self._selected_session_id or "orchestrator"
+
         if self._persist_repl_session:
             await self.client.chat_sessions.set_last_session_id(scope="repl", session_id=session_id)
         return self._restart_requested
@@ -334,47 +355,142 @@ class ChatController:
         print_restored_messages(self._rendered_messages)
         self._restored_messages_printed = True
 
-    async def _open_sessions(self, query: str | None) -> bool:
-        pairs = await self.client.chat_sessions.list_with_history(
-            project_id=self.client.active_project_id
-        )
-        sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
-        if not sessions:
-            _console.print("[dim]No persisted sessions yet.[/dim]")
+    async def list_sessions(self) -> list[Any]:
+        """Return all unified session items for the active project."""
+        return await self.client.list_session_items(project_id=self.client.active_project_id)
+
+    async def switch_session(self, session_id: str) -> bool:
+        """Switch the active unified session.
+
+        Returns True if a restart is requested (backend or session change).
+        """
+        session_type = self._infer_session_type(session_id)
+        raw_id = self._raw_session_id(session_id)
+
+        if session_type == "task":
+            # Task sessions are read-only; just update selection state
+            self._selected_session_id = session_id
+            self._selected_session_type = "task"
+            _TOOLBAR_STATE.session_label = session_id
+            _console.print(f"[green]Switched to task session:[/green] {session_id}")
+            _console.print(
+                "[dim]Task sessions are read-only. Use the web dashboard or TUI to watch.[/dim]"
+            )
             return False
 
-        items = build_chat_session_list_items(sessions, current_session_id=self._chat_session_id)
-        sessions_by_id: dict[str, ChatSessionView] = {session.id: session for session in sessions}
+        # For orchestrator/general sessions, load via ChatSessions
+        pair = await self.client.chat_sessions.get_with_history(raw_id)
+        if pair is not None:
+            row, msgs = pair
+            view = chat_session_to_view(row, msgs)
+            should_restart = await self._attach_session(view, switching=True)
+            _console.print(f"[green]Switched to session:[/green] {session_id}")
+            if not should_restart:
+                self._print_restored_messages()
+            return should_restart
 
-        selected: ChatSessionView | None = None
+        # Fallback: try resolving as a task binding (legacy task-session source)
+        binding = await self.client.chat_sessions.resolve_task_binding(raw_id)
+        if binding is not None:
+            self._selected_session_id = f"task:{binding.id}"
+            self._selected_session_type = "task"
+            _TOOLBAR_STATE.session_label = f"task:{binding.id}"
+            _console.print(f"[green]Switched to task session:[/green] task:{binding.id}")
+            _console.print(
+                "[dim]Task sessions are read-only. Use the web dashboard or TUI to watch.[/dim]"
+            )
+            return False
+
+        _console.print(f"[red]Unknown session: {session_id}[/red]")
+        return False
+
+    async def stop_session(self, session_id: str) -> None:
+        """Stop a live session (task or chat)."""
+        session_type = self._infer_session_type(session_id)
+        raw_id = self._raw_session_id(session_id)
+
+        if session_type == "task":
+            # Resolve task_id from session_id, then cancel the task
+            task_id, _project_id = await self.client.tasks.sessions.resolve_binding(raw_id)
+            if task_id is not None:
+                await self.client.tasks.cancel(task_id)
+                _console.print(f"[green]Stopped task session:[/green] {session_id}")
+            else:
+                _console.print(f"[red]Could not resolve task for session: {session_id}[/red]")
+            return
+
+        # For orchestrator/general chat sessions, cancel the in-flight turn
+        try:
+            await self.client.chat.cancel(raw_id)
+            _console.print(f"[green]Stopped chat session:[/green] {session_id}")
+        except Exception as exc:
+            logger.opt(exception=True).warning("stop_session failed for {}", session_id)
+            _console.print(f"[red]Failed to stop session: {exc}[/red]")
+
+    async def close_session(self, session_id: str) -> None:
+        """Close a chat session (task sessions cannot be closed, only stopped)."""
+        session_type = self._infer_session_type(session_id)
+        raw_id = self._raw_session_id(session_id)
+
+        if session_type == "task":
+            _console.print("[red]Task sessions cannot be closed, only stopped. Use /stop.[/red]")
+            return
+
+        deleted = await self.client.chat_sessions.delete(raw_id)
+        if deleted:
+            _console.print(f"[green]Closed session:[/green] {session_id}")
+            if self._selected_session_id == session_id:
+                self._selected_session_id = None
+                self._selected_session_type = None
+                _TOOLBAR_STATE.session_label = "orchestrator"
+        else:
+            _console.print(f"[red]Session not found: {session_id}[/red]")
+
+    async def create_general_session(self, backend: str, title: str | None = None) -> bool:
+        """Create a new general (raw backend) session and switch to it."""
+        row = await self.client.chat_sessions.create_general(
+            backend=backend,
+            label=title,
+            project_id=self.client.active_project_id,
+        )
+        created = chat_session_to_view(row, [])
+        should_restart = await self._attach_session(created, switching=True)
+        _console.print(f"[green]New general session:[/green] gen:{created.id} ({backend})")
+        return should_restart
+
+    async def _open_sessions(self, query: str | None) -> bool:
+        items = await self.list_sessions()
+        if not items:
+            _console.print("[dim]No sessions yet.[/dim]")
+            return False
+
+        list_items = build_unified_session_list_items(
+            items, current_session_id=self._selected_session_id
+        )
+        selected_item: UnifiedSessionListItem | None = None
         selected_id: str | None = None
         if query:
-            selected_item = resolve_chat_session_selector(items, query)
+            selected_item = resolve_unified_session_selector(list_items, query)
             if selected_item is not None:
                 selected_id = selected_item.session_id
-                selected = sessions_by_id.get(selected_id)
-            if selected is None:
+            if selected_item is None:
                 _console.print(f"[red]Unknown session selector: {query}[/red]")
                 return False
         else:
             if not supports_interactive_picker():
-                print_session_list(items)
+                print_session_list(list_items)
                 return False
             selected_id = await searchable_picker(
                 "Select session",
-                [build_session_picker_option(item) for item in items],
+                [build_session_picker_option(item) for item in list_items],
             )
             if selected_id is None:
                 return False
-            selected = sessions_by_id.get(selected_id)
-            if selected is None:
+            selected_item = next((i for i in list_items if i.session_id == selected_id), None)
+            if selected_item is None:
                 return False
 
-        should_restart = await self._attach_session(selected, switching=True)
-        _console.print(f"[green]Attached session:[/green] {selected_id or selected.id}")
-        if not should_restart:
-            self._print_restored_messages()
-        return should_restart
+        return await self.switch_session(selected_id)
 
     async def _show_agent_picker(self) -> bool:
         backends = list_registered_agent_backends()
@@ -398,7 +514,16 @@ class ChatController:
             return False
         return await self._switch_agent(selected_backend)
 
-    async def _create_new_session(self) -> bool:
+    async def _create_new_session(self, data: str | None = None) -> bool:
+        # data may be "general" or "general:<backend>" from /new general --agent <backend>
+        if data and data.startswith("general"):
+            backend = self.agent_backend
+            if ":" in data:
+                _, maybe_backend = data.split(":", 1)
+                if maybe_backend:
+                    backend = maybe_backend
+            return await self.create_general_session(backend)
+
         row = await self.client.chat_sessions.create(
             source="repl",
             label="REPL session",
@@ -943,15 +1068,16 @@ class ChatController:
         Returns True if the REPL loop should exit (e.g. ``/close`` issued).
         On cancel, empties *drain_pending* and updates the toolbar counter.
 
-        When a non-slash message is typed while an agent session is attached
-        (via ``/attach``), the message is routed to that session's event stream
-        rather than the orchestrator — mirroring the TUI overlay behaviour.
+        If the selected unified session is a task session, messages are
+        rejected with a read-only notice.
         """
         rotate_tip_on_submit()
         if stripped.startswith("/"):
             return await self._handle_slash(stripped)
-        if self._attached_agent_session_id is not None:
-            await self._send_to_attached(stripped)
+        if self._selected_session_type == "task":
+            _console.print(
+                "[red]Task sessions are read-only. Use the web dashboard or TUI to watch.[/red]"
+            )
             return False
         try:
             result = await self._send(stripped)
@@ -968,32 +1094,6 @@ class ChatController:
                     drain_pending.get_nowait()
             _TOOLBAR_STATE.queued_count = 0
         return False
-
-    async def _send_to_attached(self, text: str) -> None:
-        """Route a message to the currently attached agent session.
-
-        On success, echoes the message to the console for confirmation.  If the
-        session is no longer accepting input (COMPLETED, FAILED, etc.), prints
-        an inline notice and clears the attachment so subsequent messages go to
-        the orchestrator.
-        """
-        from kagan.core.errors import KaganError
-
-        session_id = self._attached_agent_session_id
-        if session_id is None:
-            return
-        try:
-            await self.client.send_message_to_session(session_id, text)
-            _console.print(f"[dim]→ {session_id[:8]}:[/dim] {text}")
-        except KaganError as exc:
-            _console.print(f"[dim]Agent session has finished — detaching. ({exc})[/dim]")
-            self._attached_agent_session_id = None
-            with contextlib.suppress(Exception):
-                if self._chat_session_id:
-                    await self.client.attach_chat(self._chat_session_id, None)
-        except Exception as exc:
-            logger.opt(exception=True).warning("_send_to_attached failed")
-            _console.print(f"[red]Send error:[/red] {exc}")
 
     async def _repl_loop(self) -> None:
         _console.print(
@@ -1095,6 +1195,7 @@ class ChatController:
             project_name=self._project_name,
             project_id=self.client.active_project_id,
             turn_count=self._turn_count,
+            is_orchestrator=self._selected_session_type in (None, "orchestrator"),
         )
         if not result.handled:
             return False
@@ -1143,8 +1244,7 @@ class ChatController:
         return False
 
     async def _handle_slash_new_session(self, result: SlashCommandOutcome) -> bool:
-        del result
-        return await self._handle_session_switch(self._create_new_session())
+        return await self._handle_session_switch(self._create_new_session(result.data))
 
     async def _handle_slash_show_tool(self, result: SlashCommandOutcome) -> bool:
         show_tool_report(self._renderer, result.data or result.tool_query)
@@ -1193,14 +1293,26 @@ class ChatController:
         self._show_approvals(result.data or "")
         return False
 
-    async def _handle_slash_attach_agent(self, result: SlashCommandOutcome) -> bool:
-        if result.data:
-            await self._attach_agent(result.data)
+    async def _handle_slash_switch_session(self, result: SlashCommandOutcome) -> bool:
+        sid = result.switch_session_id or result.data
+        if sid:
+            return await self.switch_session(sid)
         return False
 
-    async def _handle_slash_detach_agent(self, result: SlashCommandOutcome) -> bool:
-        del result
-        await self._detach_agent()
+    async def _handle_slash_stop_session(self, result: SlashCommandOutcome) -> bool:
+        sid = self._selected_session_id
+        if sid is None:
+            _console.print("[red]No session selected. Use /sessions to select one.[/red]")
+            return False
+        await self.stop_session(sid)
+        return False
+
+    async def _handle_slash_close_session(self, result: SlashCommandOutcome) -> bool:
+        sid = self._selected_session_id
+        if sid is None:
+            _console.print("[red]No session selected. Use /sessions to select one.[/red]")
+            return False
+        await self.close_session(sid)
         return False
 
     async def _handle_slash_close(self, result: SlashCommandOutcome) -> bool:
@@ -1294,90 +1406,3 @@ class ChatController:
         self._restart_requested = True
         await self.client.settings.set({"default_agent_backend": new_backend})
         return True
-
-    async def _attach_agent(self, target_id: str) -> None:
-        """Resolve *target_id* (task-id or session-id) and attach the chat session.
-
-        Heuristic: try as a task-id first via ``resolve_active_session``.  If
-        that yields no result, treat the id as a bare session-id and call
-        ``attach_chat`` directly.  On any lookup failure a clear error is
-        printed and the REPL state is not modified.
-        """
-        if self._chat_session_id is None:
-            _console.print("[red]No active chat session — cannot attach.[/red]")
-            return
-
-        # Try resolving as task-id.
-        session_id: str | None = None
-        agent_role: str | None = None
-        try:
-            tasks = await self.client.tasks.list()
-            matched_task = next(
-                (t for t in tasks if t.id == target_id or t.id.startswith(target_id)),
-                None,
-            )
-            if matched_task is not None:
-                resolved = await self.client.resolve_active_session(matched_task.id)
-                if resolved is not None:
-                    session_id = resolved.id
-                    agent_role = getattr(resolved, "agent_role", None)
-        except Exception:
-            logger.opt(exception=True).warning(
-                "_attach_agent: task lookup failed for {}", target_id
-            )
-
-        # Fall back to treating target_id as a raw session-id.
-        if session_id is None:
-            # Check running agents to see if this session exists.
-            try:
-                project_id = self.client.active_project_id
-                rows = await self.client.list_running_agents(project_id=project_id)
-                matched_row = next(
-                    (
-                        r
-                        for r in rows
-                        if r.session_id == target_id or r.session_id.startswith(target_id)
-                    ),
-                    None,
-                )
-                if matched_row is not None:
-                    session_id = matched_row.session_id
-                    agent_role = matched_row.agent_role
-            except Exception:
-                logger.opt(exception=True).warning(
-                    "_attach_agent: session lookup failed for {}", target_id
-                )
-
-        if session_id is None:
-            _console.print(f"[red]Unknown task or session: {target_id}[/red]")
-            return
-
-        try:
-            await self.client.attach_chat(self._chat_session_id, session_id, agent_role=agent_role)
-        except Exception as exc:
-            logger.opt(exception=True).warning("_attach_agent: attach_chat failed")
-            _console.print(f"[red]Attach failed: {exc}[/red]")
-            return
-
-        self._attached_agent_session_id = session_id
-        role_label = (agent_role or "worker").capitalize()
-        _console.print(f"[green]Attached:[/green] {role_label} · {session_id[:8]}")
-        _console.print(
-            "[dim]Attached — messages are routed to the agent session. /detach to return.[/dim]"
-        )
-
-    async def _detach_agent(self) -> None:
-        """Detach the current chat session from any agent, returning to orchestrator."""
-        if self._chat_session_id is None:
-            _console.print("[dim]No active chat session.[/dim]")
-            return
-
-        try:
-            await self.client.attach_chat(self._chat_session_id, None)
-        except Exception as exc:
-            logger.opt(exception=True).warning("_detach_agent: attach_chat(None) failed")
-            _console.print(f"[red]Detach failed: {exc}[/red]")
-            return
-
-        self._attached_agent_session_id = None
-        _console.print("[green]Detached → Orchestrator[/green]")

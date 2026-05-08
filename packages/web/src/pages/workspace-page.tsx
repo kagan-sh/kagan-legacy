@@ -1,131 +1,62 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useCallback, useEffect, useState } from 'react';
+import { useAtomValue } from 'jotai';
 import { toast } from 'sonner';
 import { MessageSquareText, Plus, Trash2 } from 'lucide-react';
-import type { WireChatSessionSummary } from '@kagan/shared-api-client';
+import type { SessionItemResponse } from '@kagan/shared-api-client';
 import { apiClient } from '@/lib/api/client';
 import { tasksAtom } from '@/lib/atoms/board';
-import {
-  rightRailChatSessionIdAtom,
-  rightRailModeAtom,
-  rightRailTaskIdAtom,
-  workspaceSessionIdAtom,
-} from '@/lib/atoms/ui';
 import { timeAgo } from '@/lib/utils/time';
-import { cn } from '@/lib/utils';
-import { OrchestratorChatPanel } from '@/components/session/orchestrator-chat-panel';
-import { ErrorBoundary } from '@/components/shared/error-boundary';
+import { useSessionOverlay } from '@/lib/hooks/use-session-overlay';
+import { useSessionList } from '@/lib/hooks/use-session-list';
 import { Button } from '@/components/ui/button';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
-function sortOrchestratorSessions(sessions: WireChatSessionSummary[]): WireChatSessionSummary[] {
-  return [...sessions]
-    .filter((session) => session.source.toLowerCase() !== 'task-session')
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+function isChatSession(session: SessionItemResponse): boolean {
+  return session.type !== 'task';
 }
 
 export function Component() {
-  const [selectedSessionId, setSelectedSessionId] = useAtom(workspaceSessionIdAtom);
-  const setRailMode = useSetAtom(rightRailModeAtom);
-  const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
-  const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
+  const overlay = useSessionOverlay();
+  const { sessions: allSessions, loading, refresh } = useSessionList();
   const tasks = useAtomValue(tasksAtom);
-  const [sessions, setSessions] = useState<WireChatSessionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const bootstrappedRef = useRef(false);
 
-  const upsertSession = useCallback((session: WireChatSessionSummary) => {
-    setSessions((prev) => {
-      const next = prev.filter((item) => item.id !== session.id);
-      return sortOrchestratorSessions([session, ...next]);
-    });
-  }, []);
-
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [loaded, settings] = await Promise.all([
-        apiClient.getChatSessions(),
-        apiClient.getSettings().catch(() => ({} as Record<string, string>)),
-      ]);
-      const sorted = sortOrchestratorSessions(loaded);
-      setSessions(sorted);
-
-      const globalActiveSessionId = settings.chat_last_active_session?.trim();
-      if (globalActiveSessionId && sorted.some((session) => session.id === globalActiveSessionId)) {
-        setSelectedSessionId((current) => current ?? globalActiveSessionId);
-      }
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Failed to load conversations');
-    } finally {
-      setLoading(false);
-    }
-  }, [setSelectedSessionId]);
+  const sessions = allSessions.filter(isChatSession);
 
   const createSession = useCallback(async () => {
     setCreating(true);
     setLoadError(null);
     try {
-      const session = await apiClient.createChatSession({});
-      upsertSession(session);
-      setSelectedSessionId(session.id);
-      return session.id;
+      const session = await apiClient.createSession({ type: 'orchestrator', title: 'New conversation' });
+      overlay.open(session);
+      await refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create conversation';
       setLoadError(message);
       toast.error(message);
-      return null;
     } finally {
       setCreating(false);
     }
-  }, [setSelectedSessionId, upsertSession]);
+  }, [overlay, refresh]);
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
       try {
-        await apiClient.deleteChatSession(sessionId);
-        setSessions((prev) => {
-          const remaining = prev.filter((session) => session.id !== sessionId);
-          const sortedRemaining = sortOrchestratorSessions(remaining);
-          if (selectedSessionId === sessionId) {
-            setSelectedSessionId(sortedRemaining[0]?.id ?? null);
-          }
-          return sortedRemaining;
-        });
-        toast.success('Conversation deleted');
+        await apiClient.closeSession(sessionId);
+        toast.success('Conversation closed');
+        await refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to delete conversation');
+        toast.error(error instanceof Error ? error.message : 'Failed to close conversation');
       }
     },
-    [selectedSessionId, setSelectedSessionId],
+    [refresh],
   );
 
   useEffect(() => {
-    setRailMode('none');
-    setRailTaskId(null);
-    setRailChatSessionId(null);
-  }, [setRailMode, setRailTaskId, setRailChatSessionId]);
-
-  useEffect(() => {
-    void loadSessions();
-  }, [loadSessions]);
-
-  useEffect(() => {
-    if (loading) return;
-
-    if (sessions.length === 0 && !bootstrappedRef.current) {
-      bootstrappedRef.current = true;
+    if (sessions.length === 0 && !loading && !creating) {
       void createSession();
-      return;
     }
-
-    if (!selectedSessionId || !sessions.some((session) => session.id === selectedSessionId)) {
-      setSelectedSessionId(sessions[0]?.id ?? null);
-    }
-  }, [loading, sessions, selectedSessionId, setSelectedSessionId, createSession]);
+  }, [loading, sessions.length, creating, createSession]);
 
   const totalTasks = tasks.length;
   const inProgressCount = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
@@ -133,85 +64,6 @@ export function Component() {
   const doneCount = tasks.filter((t) => t.status === 'DONE').length;
   const backlogCount = tasks.filter((t) => t.status === 'BACKLOG').length;
 
-  // When a session is active, show the full chat view
-  if (selectedSessionId) {
-    return (
-      <div className="flex h-full min-h-0">
-        {/* Desktop sidebar */}
-        <aside className="hidden w-64 shrink-0 overflow-hidden lg:block">
-          <div className="flex h-full flex-col bg-[color:var(--surface-0)]">
-            <div className="flex items-center justify-between px-3 py-3">
-              <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)]">Conversations</p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="size-7 p-0 text-[var(--muted-foreground)]"
-                onClick={() => { void createSession(); }}
-              >
-                <Plus className="size-3.5" />
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-              {sessions.map((session) => (
-                <SessionItem
-                  key={session.id}
-                  session={session}
-                  active={selectedSessionId === session.id}
-                  onSelect={() => setSelectedSessionId(session.id)}
-                  onDelete={() => { void deleteSession(session.id); }}
-                />
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        <main className="min-w-0 flex-1 overflow-hidden">
-          {/* Mobile session picker */}
-          <div className="flex items-center gap-3 border-b border-[color:var(--border-subtle)] px-4 py-3 lg:hidden">
-            <NativeSelect
-              value={selectedSessionId ?? ''}
-              onChange={(event) => setSelectedSessionId(event.target.value || null)}
-              disabled={loading || sessions.length === 0}
-            >
-              {sessions.length > 0 ? (
-                sessions.map((session) => (
-                  <NativeSelectOption key={session.id} value={session.id}>
-                    {session.label || 'Untitled conversation'}
-                  </NativeSelectOption>
-                ))
-              ) : (
-                <NativeSelectOption value="">
-                  {loading ? 'Loading...' : 'No conversations'}
-                </NativeSelectOption>
-              )}
-            </NativeSelect>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={creating}
-              onClick={() => { void createSession(); }}
-            >
-              New
-            </Button>
-          </div>
-
-          <ErrorBoundary>
-            <OrchestratorChatPanel
-              key={selectedSessionId}
-              sessionId={selectedSessionId}
-              layout="chat-right"
-              surface="workspace"
-              onSetLayout={() => {}}
-              onClose={() => setSelectedSessionId(null)}
-              onSessionUpdated={upsertSession}
-            />
-          </ErrorBoundary>
-        </main>
-      </div>
-    );
-  }
-
-  // No session selected — show the Claude-style centered home
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center px-6">
       <div className="w-full max-w-lg space-y-8">
@@ -274,72 +126,33 @@ export function Component() {
             </p>
             <div className="space-y-1">
               {sessions.slice(0, 6).map((session) => (
-                <button
+                <div
                   key={session.id}
-                  type="button"
-                  onClick={() => setSelectedSessionId(session.id)}
-                  className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors hover:bg-[color:var(--surface-1)]"
+                  className="group flex items-center gap-2"
                 >
-                  <MessageSquareText className="size-4 shrink-0 text-[var(--muted-foreground)]" />
-                  <span className="min-w-0 flex-1 truncate">{session.label || 'Untitled conversation'}</span>
-                  <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{timeAgo(session.updated_at)}</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => overlay.open(session)}
+                    className="flex flex-1 items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors hover:bg-[color:var(--surface-1)]"
+                  >
+                    <MessageSquareText className="size-4 shrink-0 text-[var(--muted-foreground)]" />
+                    <span className="min-w-0 flex-1 truncate">{session.title || 'Untitled conversation'}</span>
+                    <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{timeAgo(session.updated_at)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void deleteSession(session.id); }}
+                    className="hidden rounded p-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--destructive)] group-hover:block"
+                    aria-label="Close conversation"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function SessionItem({
-  session,
-  active,
-  onSelect,
-  onDelete,
-}: {
-  session: WireChatSessionSummary;
-  active: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div
-      className={cn(
-        'group flex items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
-        active
-          ? 'bg-[color:var(--surface-2)] text-[var(--foreground)]'
-          : 'text-[var(--muted-foreground)] hover:bg-[color:var(--surface-1)] hover:text-[var(--foreground)]',
-      )}
-    >
-      <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-start gap-2 text-left">
-        <span
-          className={cn(
-            'mt-1.5 size-2 shrink-0 rounded-full',
-            active ? 'bg-[var(--primary)]' : 'bg-[var(--muted-foreground)]',
-          )}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium leading-snug">{session.label || 'Untitled conversation'}</p>
-          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
-            <span>{timeAgo(session.updated_at)}</span>
-            {session.agent_backend ? (
-              <span className="inline-flex items-center gap-1 rounded bg-[var(--muted)] px-1.5 py-0.5 font-code text-[10px]">
-                {session.agent_backend}
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="mt-0.5 hidden rounded p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--destructive)] group-hover:block"
-        aria-label="Delete conversation"
-      >
-        <Trash2 className="size-3.5" />
-      </button>
     </div>
   );
 }

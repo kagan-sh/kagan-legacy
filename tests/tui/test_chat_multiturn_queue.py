@@ -33,7 +33,7 @@ async def test_input_remains_enabled_during_streaming(
     from textual.widgets import Input
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
 
     reply_started = asyncio.Event()
     release_reply = asyncio.Event()
@@ -47,7 +47,7 @@ async def test_input_remains_enabled_during_streaming(
         panel.set_runtime_status("ready")
         return [*history, ("assistant", "Done")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
@@ -81,7 +81,7 @@ async def test_second_message_queued_and_drained(
     from textual.widgets import Input
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
     from kagan.tui.widgets.chat import ChatPanel
 
     received: list[str] = []
@@ -99,7 +99,7 @@ async def test_second_message_queued_and_drained(
         panel.set_runtime_status("ready")
         return [*history, ("user", text), ("assistant", f"Echo: {text}")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
@@ -144,7 +144,7 @@ async def test_escape_clears_pending_queue(
     from textual.widgets import Input
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
     from kagan.tui.widgets.chat import ChatPanel
 
     reply_started = asyncio.Event()
@@ -159,7 +159,7 @@ async def test_escape_clears_pending_queue(
         panel.set_runtime_status("ready")
         return [*history, ("assistant", "Done")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
@@ -205,7 +205,7 @@ async def test_queued_badge_shows_count(
     from textual.widgets import Input, Static
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
     from kagan.tui.widgets.chat import ChatPanel
 
     reply_started = asyncio.Event()
@@ -220,7 +220,7 @@ async def test_queued_badge_shows_count(
         panel.set_runtime_status("ready")
         return [*history, ("assistant", "Done")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:

@@ -30,10 +30,9 @@ packages/vscode/src/
 │   ├── sse.ts                      # SSEStream — EventSource over fetch
 │   └── types.ts                    # Shared types, EVENT_TYPE / SSE_TYPE consts
 ├── providers/
-│   ├── chat.participant.ts         # @kagan chat participant (agent output, /attach, /detach)
-│   ├── attach-state.ts             # In-memory attach registry shared by chat + tree view
+│   ├── chat.participant.ts         # @kagan chat participant (agent output, /switch)
 │   ├── board.tree.ts               # Kanban board TreeView
-│   ├── running-agents.tree.ts      # "Running Agents" TreeView (polls /api/v1/agents/running)
+│   ├── sessions.tree.ts            # "Sessions" TreeView (polls /api/v1/sessions)
 │   ├── events.output.ts            # Agent diagnostic log (OutputChannel)
 │   ├── review.comments.ts          # Review verdicts (Comments API)
 │   ├── tasks.scm.ts                # Task diffs (SCM / TextDocumentContentProvider)
@@ -93,21 +92,19 @@ Registered as `kagan.agent` with `isSticky: true`. Three modes:
 | Command     | Behavior                                                              |
 | ----------- | --------------------------------------------------------------------- |
 | *(default)* | Orchestrator chat -- proxies messages to `POST /api/chat/{id}/stream` |
-| `/watch`    | Stream task agent output via SSE                                      |
+| `/switch`   | Switch to a session by ID                                             |
 | `/status`   | Board summary table + running task list                               |
 
-**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets both the orchestrator session and any sticky `/watch` follow-up state.
+**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets the orchestrator session.
 
-**Watch pipeline:**
+**Session switch pipeline:**
 
-1. Fetch tail of recent events via `GET /api/tasks/{id}/events?tail=1&limit=10`
-1. Coalesce OUTPUT_CHUNK tokens into flowing markdown
-1. Render tool calls as inline code, status changes as rules
-1. If IN_PROGRESS, subscribe to live SSE until AGENT_COMPLETED/FAILED
+1. Resolve session ID via `GET /api/v1/sessions/{id}`
+1. Update participant state with the selected session
+1. Stream events via SSE for live sessions
 1. Append action buttons based on final task state
-1. Route later plain messages in that same chat conversation to `POST /api/tasks/{id}/follow-up`
 
-**`kagan.chat.open` command** accepts a tree item or string and opens the Chat panel pre-filled with `@kagan /watch <task>`.
+**`kagan.chat.open` command** accepts a tree item or string and opens the Chat panel.
 
 ______________________________________________________________________
 
@@ -123,53 +120,24 @@ Server event payloads nest ACP protocol data under `payload.acp`. Helper functio
 
 ______________________________________________________________________
 
-## Agent Attach
+## Sessions
 
-The chat panel can attach to any running worker or reviewer session. State and
+The chat panel can switch to any running worker or reviewer session. State and
 plumbing:
 
-- `packages/vscode/src/providers/running-agents.tree.ts` registers a
-  `kagan.agents` tree view that polls `GET /api/v1/agents/running` every 5s
+- `packages/vscode/src/providers/sessions.tree.ts` registers a
+  `kagan.agents` tree view that polls `GET /api/v1/sessions` every 5s
   (and refreshes whenever the global SSE stream emits `TASK_UPDATED`). Each
-  node exposes `kagan.attachToSession` inline.
-- `packages/vscode/src/providers/attach-state.ts` is a small in-memory registry
-  keyed by VS Code chat conversation id (with a `"global"` sentinel). It is
-  intentionally extracted so the tree-view can trigger an attach without
-  importing the chat participant module.
-- `chat.participant.helpers.ts` adds `parseAttachPrompt` (UUID or 8-char prefix
-  validation) and `resolveAgentSessionId` (exact session id → session prefix →
-  exact task id → task prefix matching against the running-agents list).
-- `chat.participant.ts` handles `@kagan /attach <id>` and `@kagan /detach`,
-  remembers `attachedSessionId` on the participant state, and routes plain
-  follow-up turns through the attached session tail when a session is bound.
-- Commands `kagan.attachToSession` and `kagan.detachFromSession` are
-  registered in `extension.ts` and surfaced from the tree view, the command
-  palette, and the `kagan.chat.open` entry point (`{kind: "attach"}`).
-
-The legacy `attach_context.json` flow described below remains the entry point
-for IDE-launch auto-watch; explicit `/attach` is the new in-chat path.
-
-______________________________________________________________________
-
-## Attach Context Detection
-
-When the IDE is opened via "Attach to Task" (from TUI, web, or CLI), the server writes `.kagan/attach_context.json` into the worktree:
-
-```json
-{ "task_id": "abc123", "session_id": "def456" }
-```
-
-On activation, `detectAttachContext()` in `extension.ts`:
-
-1. Checks `kagan.autoWatchOnAttach` setting (default `true`)
-1. Looks for `.kagan/attach_context.json` in the workspace root
-1. Waits for SSE connection to establish
-1. Verifies the task is still `IN_PROGRESS` via the API
-1. Executes `kagan.chat.open` with the task ID, opening the Chat panel
-
-This works for all IDE launchers (vscode, cursor, windsurf, kiro, antigravity) since they all open the same worktree containing the context file. The extension also registers `workspaceContains:.kagan/attach_context.json` as an activation event for faster startup in the attach case.
-
-**Server side:** `_launchers.py` writes the file via `_write_attach_context()`. The `task_id` is passed from `Sessions.run()` through `launch_kwargs`.
+  node exposes `kagan.switchSession` inline.
+- `chat.participant.helpers.ts` adds `parseSwitchPrompt` (UUID or 8-char prefix
+  validation) and `resolveSessionId` (exact session id → session prefix →
+  exact task id → task prefix matching against the sessions list).
+- `chat.participant.ts` handles `@kagan /switch <id>`, remembers
+  `selectedSessionId` on the participant state, and routes plain follow-up
+  turns through the selected session when a session is bound.
+- Commands `kagan.switchSession`, `kagan.stopSession`, and `kagan.closeSession` are
+  registered in `extension.ts` and surfaced from the tree view and the command
+  palette.
 
 ______________________________________________________________________
 

@@ -28,7 +28,6 @@ __all__ = [
     "REJECTION_INPUT_BINDINGS",
     "REPO_PICKER_BINDINGS",
     "REVIEW_NO_CRITERIA_BINDINGS",
-    "RUNNING_AGENTS_BAR_BINDINGS",
     "SESSION_DASHBOARD_BINDINGS",
     "SESSION_PICKER_BINDINGS",
     "SETTINGS_BINDINGS",
@@ -69,10 +68,6 @@ ORCHESTRATOR_OVERLAY_BINDINGS: list[BindingType] = [
     Binding("ctrl+space", "handle_esc", "", show=False, priority=True),
     Binding("ctrl+down", "cycle_agent_next", "Next agent", key_display="Ctrl+↓", priority=True),
     Binding("ctrl+up", "cycle_agent_prev", "Previous agent", key_display="Ctrl+↑", priority=True),
-]
-
-RUNNING_AGENTS_BAR_BINDINGS: list[BindingType] = [
-    Binding("escape", "return_focus", "Back to input", show=False, priority=True),
 ]
 
 CHECK_ROW_BINDINGS: list[BindingType] = [

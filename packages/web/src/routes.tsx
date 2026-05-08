@@ -54,7 +54,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: 'chat/:id',
-            lazy: () => import('@/pages/chat-page'),
+            element: <Navigate to="/workspace" replace />,
             errorElement: <RouteError />,
           },
           {

@@ -105,7 +105,7 @@ ______________________________________________________________________
 
 The app shell owns one right rail. It hosts exactly one of two surfaces:
 
-- `ChatSidePanel` for task worker/reviewer streams, keyed by `rightRailTaskIdAtom`.
+- `SessionOverlay` for task worker/reviewer streams, keyed by `rightRailTaskIdAtom`.
 - `OrchestratorChatPanel` for project orchestrator sessions, keyed by
   `rightRailChatSessionIdAtom`.
 
@@ -176,7 +176,7 @@ The task detail page (`/task/:id`) selects its initial tab based on task state:
 | Has workspace (other statuses)    | **Changes**  |
 | Fallback                          | **Overview** |
 
-When a task has an active session, `ChatSidePanel` opens in the right rail.
+When a task has an active session, `SessionOverlay` opens in the right rail.
 The Worker/Reviewer lane toggle selects a task session, and the panel filters
 events by that session ID. `?lane=worker|reviewer` controls the initial lane.
 

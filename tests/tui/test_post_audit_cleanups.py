@@ -73,92 +73,9 @@ async def test_task_screen_opens_without_app_active_task_id(board: KaganDriver) 
 # ---------------------------------------------------------------------------
 
 
-async def test_layout_mode_reactive_drives_css_on_vertical(board: KaganDriver) -> None:
-    """Setting _chat_overlay_layout_mode=vertical updates chat-overlay-vertical class."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen, LayoutMode
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        await pilot.press("ctrl+i")
-        await pilot.pause()
-        screen._chat_overlay_layout_mode = LayoutMode.VERTICAL
-        await pilot.pause()
-        assert screen.has_class("chat-overlay-vertical")
-        assert not screen.has_class("chat-overlay-horizontal")
-
-
-async def test_layout_mode_reactive_drives_css_on_horizontal(board: KaganDriver) -> None:
-    """Setting _chat_overlay_layout_mode=horizontal updates chat-overlay-horizontal class."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen, LayoutMode
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        await pilot.press("ctrl+i")
-        await pilot.pause()
-        screen._chat_overlay_layout_mode = LayoutMode.HORIZONTAL
-        await pilot.pause()
-        assert screen.has_class("chat-overlay-horizontal")
-        assert not screen.has_class("chat-overlay-vertical")
-
-
-# ---------------------------------------------------------------------------
-# TUI 8 — _apply_panel_visibility helper keeps state consistent
-# ---------------------------------------------------------------------------
-
-
-async def test_apply_panel_visibility_hides_panel(board: KaganDriver) -> None:
-    """_apply_panel_visibility(visible=False) removes chat CSS classes."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen
-    from kagan.tui.widgets.chat import ChatPanel
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        panel = screen.query_one(ChatPanel)
-        await pilot.press("ctrl+i")
-        await pilot.pause()
-        assert panel.has_class("visible")
-        screen._apply_panel_visibility(panel, visible=False, fullscreen=False)
-        await pilot.pause()
-        assert not panel.has_class("visible")
-        assert not screen.has_class("chat-overlay-visible")
-
-
-async def test_apply_panel_visibility_shows_fullscreen(board: KaganDriver) -> None:
-    """_apply_panel_visibility(visible=True, fullscreen=True) applies fullscreen."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen
-    from kagan.tui.widgets.chat import ChatPanel
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        panel = screen.query_one(ChatPanel)
-        screen._apply_panel_visibility(panel, visible=True, fullscreen=True)
-        await pilot.pause()
-        assert panel.has_class("visible")
-        assert panel.has_class("fullscreen")
+# Removed: layout_mode and apply_panel_visibility tests.
+# KanbanScreen no longer has embedded chat, LayoutMode, or _apply_panel_visibility
+# after the Unified Sessions Refactor. Chat is now handled via OrchestratorOverlay.
 
 
 # ---------------------------------------------------------------------------

@@ -49,7 +49,7 @@ async def test_orchestrator_returns_no_response_does_not_corrupt_history(
         overlay = app.screen
         assert isinstance(overlay, OrchestratorOverlay)
 
-        panel = overlay.query_one("#orch-chat", ChatPanel)
+        panel = overlay.query_one("#chat-panel", ChatPanel)
         history_before = list(overlay._orchestrator_history)
 
         # send_chat_message with empty stream → returns unchanged history + adds system message
@@ -109,7 +109,7 @@ async def test_orchestrator_agent_error_surfaces_as_message_and_keeps_history(
         overlay = app.screen
         assert isinstance(overlay, OrchestratorOverlay)
 
-        panel = overlay.query_one("#orch-chat", ChatPanel)
+        panel = overlay.query_one("#chat-panel", ChatPanel)
         history_before = list(overlay._orchestrator_history)
 
         # Simulate the AgentError→KaganError path from send_chat_message

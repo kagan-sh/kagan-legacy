@@ -224,16 +224,16 @@ Two modes:
 | Mode             | Behaviour                                                                                                         |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **Orchestrator** | Sends messages to the project orchestrator chat session.                                                          |
-| **Attached**     | Re-streams a worker or reviewer session: replay from persisted events, live tail from the core task event stream. |
+| **Session**      | Re-streams a worker or reviewer session: replay from persisted events, live tail from the core task event stream. |
 
-`Esc` is layered: from an attached stream it detaches back to orchestrator
+`Esc` is layered: from a session stream it returns back to orchestrator
 mode; from orchestrator mode it closes the overlay. `Ctrl+Space` mirrors `Esc`.
 
 The overlay composes a breadcrumb header (`Orchestrator` /
-`Worker · running · …`), a `ChatPanel`, and a `RunningAgentsBar`
-(`src/kagan/tui/widgets/running_agents_bar.py`) under the chat input. The bar
-polls `client.list_running_agents()`, renders one row per active session, and
-on `Enter` posts an `AgentSelected` message carrying the target session id.
+`Worker · running · …`), a `ChatPanel`, and a `SessionList`
+(`src/kagan/tui/widgets/session_list.py`) under the chat input. The list
+polls `client.list_session_items()`, renders one row per active session, and
+on `Enter` posts an `SessionSelected` message carrying the target session id.
 From the chat input, `↓` focuses the bar; from the bar, `Esc` returns focus to
 the input. `Ctrl+Up` and `Ctrl+Down` (declared with `priority=True` so they
 fire even when the bar is the focused descendant) cycle through
@@ -376,7 +376,7 @@ src/kagan/tui/
 │   ├── task_inspector.py    # TaskInspector
 │   ├── task_diff_pane.py    # TaskDiffPane
 │   ├── chat.py              # ChatPanel, MessageList, ChatInput, SlashComplete
-│   ├── running_agents_bar.py # RunningAgentsBar — picker shown under the orchestrator overlay input
+│   ├── session_list.py        # SessionList — picker shown under the orchestrator overlay input
 │   ├── streaming.py         # StreamingOutput, OutputChunk, ToolCallView
 │   ├── diff.py              # DiffView, DiffStats
 │   ├── permission.py        # PermissionPrompt

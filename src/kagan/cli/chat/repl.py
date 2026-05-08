@@ -87,6 +87,7 @@ _ROTATING_TIPS: Final[tuple[str, ...]] = (
     "Up/Down history",
     "/flow plan -> execute -> orchestrate",
     "/sessions list & switch",
+    "/switch <id> select session",
     "/status one-line summary",
 )
 _TIP_ROTATE_INTERVAL: Final[float] = 30.0

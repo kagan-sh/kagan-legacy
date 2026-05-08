@@ -51,20 +51,24 @@
         "isSticky": true,
         "commands": [
           {
-            "name": "watch",
-            "description": "Stream a task's live agent output"
-          },
-          {
             "name": "status",
             "description": "Show board status and running tasks"
           },
           {
-            "name": "attach",
-            "description": "Attach chat panel to a running worker or reviewer session"
+            "name": "sessions",
+            "description": "List all active sessions"
           },
           {
-            "name": "detach",
-            "description": "Return chat panel to orchestrator mode"
+            "name": "switch",
+            "description": "Switch to a session by ID"
+          },
+          {
+            "name": "stop",
+            "description": "Stop the selected session"
+          },
+          {
+            "name": "close",
+            "description": "Close the selected session"
           }
         ]
       }
@@ -86,7 +90,7 @@
         },
         {
           "id": "kagan.agents",
-          "name": "Running Agents"
+          "name": "Sessions"
         }
       ]
     },
@@ -227,10 +231,27 @@
         "icon": "$(question)"
       },
       {
-        "command": "kagan.detachFromSession",
-        "title": "Detach from Session",
+        "command": "kagan.switchSession",
+        "title": "Switch to Session",
+        "category": "Kagan"
+      },
+      {
+        "command": "kagan.stopSession",
+        "title": "Stop Session",
+        "category": "Kagan",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "kagan.closeSession",
+        "title": "Close Session",
         "category": "Kagan",
         "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "kagan.newGeneralSession",
+        "title": "New General Session",
+        "category": "Kagan",
+        "icon": "$(add)"
       }
     ],
     "menus": {
@@ -313,9 +334,14 @@
           "group": "3_observe"
         },
         {
-          "command": "kagan.detachFromSession",
-          "when": "view == kagan.agents && viewItem =~ /^runningAgent\\./",
-          "group": "1_session"
+          "command": "kagan.stopSession",
+          "when": "view == kagan.agents && viewItem =~ /stop_1/",
+          "group": "1_session@1"
+        },
+        {
+          "command": "kagan.closeSession",
+          "when": "view == kagan.agents && viewItem =~ /close_1/",
+          "group": "1_session@2"
         }
       ],
       "commandPalette": [
@@ -378,7 +404,15 @@
           "command": "kagan.openInstallDocs"
         },
         {
-          "command": "kagan.detachFromSession",
+          "command": "kagan.stopSession",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.closeSession",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.newGeneralSession",
           "when": "kagan.connected"
         }
       ]

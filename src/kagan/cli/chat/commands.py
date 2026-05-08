@@ -58,8 +58,9 @@ class SlashAction(Enum):
     SWITCH_REPO = "switch_repo"
     SHOW_REPO = "show_repo"
     SHOW_APPROVALS = "show_approvals"
-    ATTACH_AGENT = "attach_agent"
-    DETACH_AGENT = "detach_agent"
+    SWITCH_SESSION = "switch_session"
+    STOP_SESSION = "stop_session"
+    CLOSE_SESSION = "close_session"
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +86,9 @@ class SlashCommandOutcome:
     repo_info_requested: bool = False
     action: SlashAction = SlashAction.NONE
     data: str | None = None
+    switch_session_id: str | None = None
+    stop_session: bool = False
+    close_session: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,8 +204,23 @@ def _handle_clear(
 
 
 def _handle_new(
-    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
+    arg = invocation.arg.strip()
+    if arg.lower().startswith("general"):
+        # /new general --agent <backend>
+        parts = arg.split()
+        backend: str | None = None
+        if "--agent" in parts:
+            idx = parts.index("--agent")
+            if idx + 1 < len(parts):
+                backend = parts[idx + 1]
+        return SlashCommandOutcome(
+            handled=True,
+            new_session_requested=True,
+            action=SlashAction.NEW_SESSION,
+            data=f"general:{backend}" if backend else "general",
+        )
     return SlashCommandOutcome(
         handled=True, new_session_requested=True, action=SlashAction.NEW_SESSION
     )
@@ -217,6 +236,43 @@ def _handle_sessions(
         sessions_query=query,
         action=SlashAction.LIST_SESSIONS,
         data=query,
+    )
+
+
+def _handle_switch(
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    target = invocation.arg.strip()
+    if not target:
+        return SlashCommandOutcome(
+            handled=True,
+            action=SlashAction.SWITCH_SESSION,
+            error_lines=("Usage: /switch <session-id>",),
+        )
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.SWITCH_SESSION,
+        switch_session_id=target,
+    )
+
+
+def _handle_stop(
+    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.STOP_SESSION,
+        stop_session=True,
+    )
+
+
+def _handle_close(
+    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.CLOSE_SESSION,
+        close_session=True,
     )
 
 
@@ -354,50 +410,8 @@ def _handle_flow(
     return SlashCommandOutcome(handled=True, info_lines=tuple(lines), action=SlashAction.SHOW_INFO)
 
 
-def _handle_attach(
-    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
-) -> SlashCommandOutcome:
-    """Handle /attach <task-id|session-id>.
-
-    Accepts an 8-char prefix or a full UUID.  The caller (controller) performs
-    the actual resolution via client.resolve_active_session / client.attach_chat.
-    """
-    target = invocation.arg.strip()
-    if not target:
-        return SlashCommandOutcome(
-            handled=True,
-            action=SlashAction.ATTACH_AGENT,
-            error_lines=("Usage: /attach <task-id|session-id>",),
-        )
-    return SlashCommandOutcome(
-        handled=True,
-        action=SlashAction.ATTACH_AGENT,
-        data=target,
-    )
-
-
-def _handle_detach(
-    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
-) -> SlashCommandOutcome:
-    """Handle /detach — return to orchestrator mode."""
-    return SlashCommandOutcome(
-        handled=True,
-        action=SlashAction.DETACH_AGENT,
-    )
-
-
 def _build_slash_command_registry() -> SlashCommandRegistry:
     registry = SlashCommandRegistry()
-    registry.register(
-        name="attach",
-        description="Attach to a running agent: /attach <task-id|session-id>",
-        handler=_handle_attach,
-    )
-    registry.register(
-        name="detach",
-        description="Detach from agent, return to orchestrator",
-        handler=_handle_detach,
-    )
     registry.register(
         name="help",
         description="Show available slash commands",
@@ -415,13 +429,28 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
     )
     registry.register(
         name="new",
-        description="Start a new chat session",
+        description="Start a new chat session (/new general --agent <backend>)",
         handler=_handle_new,
     )
     registry.register(
         name="sessions",
-        description="List or attach chat sessions",
+        description="List all sessions (orchestrator, task, general)",
         handler=_handle_sessions,
+    )
+    registry.register(
+        name="switch",
+        description="Select a session: /switch <session-id>",
+        handler=_handle_switch,
+    )
+    registry.register(
+        name="stop",
+        description="Stop the selected live session",
+        handler=_handle_stop,
+    )
+    registry.register(
+        name="close",
+        description="Close the selected chat session",
+        handler=_handle_close,
     )
     registry.register(
         name="status",

@@ -34,7 +34,7 @@ async def test_up_arrow_cycles_to_most_recent_entry(
     from textual.widgets import Input
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
 
     async def fake_send_chat_message(*, core, panel, text, history):
         del core
@@ -42,7 +42,7 @@ async def test_up_arrow_cycles_to_most_recent_entry(
         panel.set_runtime_status("ready")
         return [*history, ("user", text), ("assistant", f"Echo: {text}")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     project_id = board._ctx.active_project_id
     # Seed the history file in the KAGAN_DATA_DIR that the conftest redirects to
@@ -86,7 +86,7 @@ async def test_down_arrow_returns_to_working_draft(
     from textual.widgets import Input
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
 
     async def fake_send_chat_message(*, core, panel, text, history):
         del core
@@ -94,7 +94,7 @@ async def test_down_arrow_returns_to_working_draft(
         panel.set_runtime_status("ready")
         return [*history, ("user", text), ("assistant", f"Echo: {text}")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     project_id = board._ctx.active_project_id
     data_root = os.environ.get("KAGAN_DATA_DIR", "")
@@ -147,7 +147,7 @@ async def test_submit_persists_to_history_file(
     from textual.widgets import Input
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
 
     async def fake_send_chat_message(*, core, panel, text, history):
         del core
@@ -155,7 +155,7 @@ async def test_submit_persists_to_history_file(
         panel.set_runtime_status("ready")
         return [*history, ("user", text), ("assistant", f"Echo: {text}")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     project_id = board._ctx.active_project_id
     data_root = os.environ.get("KAGAN_DATA_DIR", "")
@@ -203,7 +203,7 @@ async def test_history_disabled_when_opt_out_key_false(
     from textual.widgets import Input
 
     from kagan.tui import KaganApp
-    from kagan.tui.screens import kanban as kanban_screen
+    from kagan.tui.screens import orchestrator_overlay as orch
 
     async def fake_send_chat_message(*, core, panel, text, history):
         del core
@@ -211,7 +211,7 @@ async def test_history_disabled_when_opt_out_key_false(
         panel.set_runtime_status("ready")
         return [*history, ("user", text), ("assistant", f"Echo: {text}")]
 
-    monkeypatch.setattr(kanban_screen, "send_chat_message", fake_send_chat_message)
+    monkeypatch.setattr(orch, "send_chat_message", fake_send_chat_message)
 
     project_id = board._ctx.active_project_id
     data_root = os.environ.get("KAGAN_DATA_DIR", "")

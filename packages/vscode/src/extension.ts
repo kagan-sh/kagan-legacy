@@ -15,7 +15,7 @@ import {
 import { ReviewCommentProvider, ReviewDocumentProvider } from "./providers/review.comments.js";
 import { AgentTerminalProvider } from "./providers/tasks.terminal.js";
 import { registerChatParticipant } from "./providers/chat.participant.js";
-import { RunningAgentsTreeProvider } from "./providers/running-agents.tree.js";
+import { SessionsTreeProvider } from "./providers/sessions.tree.js";
 import { DoctorStatusProvider } from "./providers/doctor.status.js";
 import { MentionCompletionProvider } from "./providers/mention-completion-provider.js";
 import { MentionLinkProvider } from "./providers/mention-link-provider.js";
@@ -54,15 +54,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const serverSupervisor = new LocalServerSupervisor(serverLog);
   activeServerSupervisor = serverSupervisor;
 
-  const runningAgentsProvider = new RunningAgentsTreeProvider(client);
+  const sessionsProvider = new SessionsTreeProvider(client);
 
   const boardView = vscode.window.createTreeView("kagan.board", {
     treeDataProvider: boardProvider,
     showCollapseAll: true,
   });
 
-  const agentsView = vscode.window.createTreeView("kagan.agents", {
-    treeDataProvider: runningAgentsProvider,
+  const sessionsView = vscode.window.createTreeView("kagan.agents", {
+    treeDataProvider: sessionsProvider,
     showCollapseAll: false,
   });
 
@@ -149,7 +149,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     if (message.type === SSE_TYPE.TASK_UPDATED) {
       void refreshCounts(client, statusBar);
-      runningAgentsProvider.refresh();
+      sessionsProvider.refresh();
     }
   });
 
@@ -192,8 +192,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     boardView,
-    agentsView,
-    runningAgentsProvider,
+    sessionsView,
+    sessionsProvider,
     diffRegistration,
     reviewRegistration,
     openInstallDocsCommand,
@@ -235,10 +235,6 @@ export function activate(context: vscode.ExtensionContext): void {
         serverSupervisor,
         getServerLaunchSettings(),
       );
-    }
-
-    if (hasKaganContext) {
-      void detectAttachContext(client, sse);
     }
   })();
 
@@ -330,61 +326,4 @@ async function workspaceHasKaganContext(): Promise<boolean> {
   }
 
   return false;
-}
-
-async function detectAttachContext(client: KaganClient, sse: SSEStream): Promise<void> {
-  const config = vscode.workspace.getConfiguration("kagan");
-  if (!config.get<boolean>("autoWatchOnAttach", true)) return;
-
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) return;
-
-  const contextUri = vscode.Uri.joinPath(folders[0].uri, ".kagan", "attach_context.json");
-
-  try {
-    await vscode.workspace.fs.stat(contextUri);
-  } catch {
-    return;
-  }
-
-  let context: { task_id?: string; session_id?: string };
-  try {
-    const raw = await vscode.workspace.fs.readFile(contextUri);
-    context = JSON.parse(new TextDecoder().decode(raw));
-  } catch (error) {
-    console.warn("[kagan] Failed to read attach context:", error);
-    return;
-  }
-
-  if (!context.task_id) return;
-
-  const taskId = context.task_id;
-
-  // Wait for SSE connection (with timeout) before checking task state
-  await Promise.race([
-    new Promise<void>((resolve) => {
-      const disposable = sse.onConnected((connected) => {
-        if (connected) { disposable.dispose(); resolve(); }
-      });
-    }),
-    new Promise<void>((_, reject) =>
-      setTimeout(() => reject(new Error("SSE connection timeout")), 10_000),
-    ),
-  ]).catch(() => {});
-
-  let task: Awaited<ReturnType<KaganClient["getTask"]>>;
-  try {
-    task = await client.getTask(taskId);
-    if (task.status !== "IN_PROGRESS") return;
-  } catch {
-    return;
-  }
-
-  await vscode.commands.executeCommand("kagan.chat.open", {
-    kind: "task",
-    task: {
-      id: task.id,
-      title: task.title,
-    },
-  });
 }

@@ -9,24 +9,17 @@ import {
     MoveRight,
     XCircle,
 } from "lucide-react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import type { AcceptanceCriterionResponse, ReviewVerdictResponse, TaskStatus, WireTask } from "@kagan/shared-api-client";
 import { fetchTasksAtom } from "@/lib/atoms/board";
 import {
-    clearRightRailDismissalAtom,
-    rightRailDismissalKey,
-    rightRailDismissalsAtom,
-    rightRailChatSessionIdAtom,
-    rightRailModeAtom,
-    rightRailTaskIdAtom,
-} from "@/lib/atoms/ui";
-import {
     STATUS_LABELS,
     getAllowedTaskTransitions,
 } from "@/lib/utils/constants";
 import { useTaskEvents } from "@/lib/hooks/use-task-events";
+import { useSessionOverlay } from "@/lib/hooks/use-session-overlay";
 import {
     InspectorSection,
     Panel,
@@ -69,11 +62,7 @@ export function Component() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const fetchTasks = useSetAtom(fetchTasksAtom);
-    const setRailMode = useSetAtom(rightRailModeAtom);
-    const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
-    const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
-    const clearRightRailDismissal = useSetAtom(clearRightRailDismissalAtom);
-    const rightRailDismissals = useAtomValue(rightRailDismissalsAtom);
+    const overlay = useSessionOverlay();
     const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
     const [editOpen, setEditOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
@@ -103,40 +92,7 @@ export function Component() {
     }, [task, searchParams]);
 
     useEffect(() => {
-        if (id) {
-            setRailTaskId(id);
-            setRailChatSessionId(null);
-        }
-        return () => setRailTaskId(null);
-    }, [id, setRailChatSessionId, setRailTaskId]);
-
-    // 2.5: Auto-open chat rail only if user hasn't explicitly closed it
-    useEffect(() => {
-        if (!id || !task) return;
-        if (task.active_session?.launcher) return;
-        if (rightRailDismissals[rightRailDismissalKey({ kind: "task", id })]) {
-            return;
-        }
-        if (task.active_session || task.status === "IN_PROGRESS") {
-            setRailTaskId(id);
-            setRailChatSessionId(null);
-            setRailMode("chat-right");
-        }
-    }, [
-        id,
-        task?.active_session?.id,
-        task?.active_session?.launcher,
-        task?.status,
-        rightRailDismissals,
-        setRailChatSessionId,
-        setRailMode,
-        setRailTaskId,
-    ]);
-
-    const displayTask = task;
-
-    useEffect(() => {
-        if (!id || !displayTask?.active_session?.launcher) {
+        if (!id || !task?.active_session?.launcher) {
             setWorktreePath(null);
             setAttachedLauncher(null);
             return;
@@ -173,7 +129,7 @@ export function Component() {
         return () => {
             cancelled = true;
         };
-    }, [id, displayTask?.active_session?.launcher]);
+    }, [id, task?.active_session?.launcher]);
 
     const handleTransition = async (status: TaskStatus) => {
         if (!id) return;
@@ -188,19 +144,20 @@ export function Component() {
         }
     };
 
-    const handleOpenTaskChat = useCallback(() => {
-        if (!task) return;
-        clearRightRailDismissal({ kind: "task", id: task.id });
-        setRailTaskId(task.id);
-        setRailChatSessionId(null);
-        setRailMode("chat-right");
-    }, [
-        clearRightRailDismissal,
-        setRailChatSessionId,
-        setRailMode,
-        setRailTaskId,
-        task,
-    ]);
+    const handleOpenSession = useCallback(async () => {
+        if (!task || !id) return;
+        try {
+            const response = await apiClient.getSessions();
+            const taskSession = response.sessions.find((s) => s.task_id === id);
+            if (taskSession) {
+                overlay.open(taskSession);
+            } else {
+                toast.error('No session found for this task');
+            }
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to load sessions');
+        }
+    }, [id, task, overlay]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -234,7 +191,7 @@ export function Component() {
         );
     }
 
-    if (!displayTask) {
+    if (!task) {
         return (
             <div className="mx-auto flex h-full w-full max-w-[1680px] items-center justify-center px-6 py-10">
                 <Empty className="border-0">
@@ -247,10 +204,10 @@ export function Component() {
         );
     }
 
-    const criteria = displayTask.acceptance_criteria ?? [];
+    const criteria = task.acceptance_criteria ?? [];
     const showReviewTab =
-        displayTask.status === "REVIEW" ||
-        (displayTask.status === "DONE" && displayTask.review_approved);
+        task.status === "REVIEW" ||
+        (task.status === "DONE" && task.review_approved);
 
     return (
         <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 py-4 sm:px-6">
@@ -264,32 +221,32 @@ export function Component() {
                     <ArrowLeft className="size-4" />
                 </Button>
                 <h1 className="min-w-0 truncate text-sm font-semibold">
-                    {displayTask.title}
+                    {task.title}
                 </h1>
             </div>
 
             <Panel className="mt-3">
                 <StickyActionBar>
                     <AgentControl
-                        taskId={displayTask.id}
-                        status={displayTask.status}
+                        taskId={task.id}
+                        status={task.status}
                         startedAt={runningSince}
                         buttonSize="sm"
                         worktreePath={worktreePath}
                         attachedLauncher={attachedLauncher}
-                        taskLauncher={displayTask.launcher}
-                        activeSessionId={displayTask.active_session?.id ?? null}
+                        taskLauncher={task.launcher}
+                        activeSessionId={task.active_session?.id ?? null}
                         activeSessionLauncher={
-                            displayTask.active_session?.launcher ?? null
+                            task.active_session?.launcher ?? null
                         }
                     />
                     <Button
                         variant="secondary"
                         size="sm"
-                        onClick={handleOpenTaskChat}
+                        onClick={handleOpenSession}
                     >
                         <MessageSquare className="size-4" />
-                        Open chat
+                        Open session
                     </Button>
                     <Select
                         value=""
@@ -307,7 +264,7 @@ export function Component() {
                         </SelectTrigger>
                         <SelectContent>
                             {getAllowedTaskTransitions(
-                                displayTask.status as TaskStatus,
+                                task.status as TaskStatus,
                             ).map((status) => (
                                 <SelectItem key={status} value={status}>
                                     {STATUS_LABELS[status]}
@@ -350,7 +307,7 @@ export function Component() {
                                 <div className="grid gap-4">
                                     <InspectorSection title="Description">
                                         <p className="text-sm leading-6 text-[var(--muted-foreground)]">
-                                            {displayTask.description ||
+                                            {task.description ||
                                                 "No written description yet."}
                                         </p>
                                     </InspectorSection>
@@ -358,7 +315,7 @@ export function Component() {
                                     <InspectorSection title="Acceptance Criteria">
                                         <CriteriaList
                                             criteria={criteria}
-                                            verdicts={displayTask.review_verdicts}
+                                            verdicts={task.review_verdicts}
                                         />
                                     </InspectorSection>
                                 </div>
@@ -366,12 +323,12 @@ export function Component() {
 
                             <TabsContent value="changes" className="p-5">
                                 <div className="grid gap-4">
-                                    {displayTask.has_workspace ? (
+                                    {task.has_workspace ? (
                                         <DiffViewer
-                                            taskId={displayTask.id}
-                                            taskStatus={displayTask.status}
+                                            taskId={task.id}
+                                            taskStatus={task.status}
                                         />
-                                    ) : displayTask.status === "DONE" ? (
+                                    ) : task.status === "DONE" ? (
                                         <Empty className="border-0">
                                             <EmptyHeader>
                                                 <EmptyTitle>Changes merged</EmptyTitle>
@@ -392,8 +349,8 @@ export function Component() {
                             {showReviewTab ? (
                                 <TabsContent value="review" className="p-5">
                                     <ReviewPanel
-                                        taskId={displayTask.id}
-                                        task={displayTask}
+                                        taskId={task.id}
+                                        task={task}
                                         enableHotkeys={activeTab === "review"}
                                         className=" bg-[color:var(--surface-1)] p-5 shadow-[var(--soft-shadow)]"
                                     />
@@ -402,17 +359,17 @@ export function Component() {
                         </Tabs>
                     </Panel>
 
-                    <TaskSidebar task={displayTask} />
+                    <TaskSidebar task={task} />
                 </div>
             </Panel>
 
             <EditTaskDialog
                 open={editOpen}
                 onOpenChange={setEditOpen}
-                task={displayTask}
+                task={task}
             />
             <TaskDeleteDialog
-                task={displayTask}
+                task={task}
                 open={deleteOpen}
                 onOpenChange={setDeleteOpen}
                 onDeleted={() => {

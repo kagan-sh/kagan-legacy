@@ -15,11 +15,11 @@ from loguru import logger
 from starlette.responses import JSONResponse
 from uvicorn.server import HANDLED_SIGNALS
 
-from kagan.server._agent_routes import register_agent_routes
 from kagan.server._analytics_routes import register_analytics_routes
 from kagan.server._chat_routes import register_chat_routes
 from kagan.server._integration_routes import register_integration_routes
 from kagan.server._project_routes import register_project_routes
+from kagan.server._session_routes import register_session_routes
 from kagan.server._system_routes import register_system_routes
 from kagan.server._task_routes import register_task_routes
 from kagan.server._web_ui import register_web_ui
@@ -129,7 +129,7 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
     register_analytics_routes(mcp)
     register_chat_routes(mcp)
     register_integration_routes(mcp)
-    register_agent_routes(mcp)
+    register_session_routes(mcp)
 
     # Web UI must be last — it mounts a catch-all SPA fallback at /
     if opts.web_ui:

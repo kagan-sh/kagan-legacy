@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { SkipLink } from "@/components/a11y/skip-link";
@@ -6,35 +6,25 @@ import { ActivityBar } from "@/components/layout/activity-bar";
 import { HelpOverlay } from "@/components/layout/help-overlay";
 import { HeaderBar } from "@/components/layout/header-bar";
 import { MobileTabs } from "@/components/layout/mobile-tabs";
-import { ResizeHandle } from "@/components/layout/resize-handle";
-import { ChatSidePanel } from "@/components/session/chat-side-panel";
-import { OrchestratorChatPanel } from "@/components/session/orchestrator-chat-panel";
+import { SessionOverlay } from "@/components/session/SessionOverlay";
 import { SessionPicker } from "@/components/session/session-picker";
 import { IntegrationImportDialog } from "@/components/board/integration-import-dialog";
-import { ErrorBoundary } from "@/components/shared/error-boundary";
-import { toast } from "sonner";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { apiClient } from "@/lib/api/client";
-import type { WireChatSessionSummary } from "@kagan/shared-api-client";
 import {
     fetchTasksAtom,
     projectSwitchVersionAtom,
 } from "@/lib/atoms/board";
 import {
     commandPaletteOpenAtom,
-    clearRightRailDismissalAtom,
-    dismissRightRailContextAtom,
     helpOverlayOpenAtom,
     integrationImportOpenAtom,
-    rightRailChatSessionIdAtom,
-    rightRailModeAtom,
-    rightRailTaskIdAtom,
     sessionPickerOpenAtom,
 } from "@/lib/atoms/ui";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { type DockedChatRailMode, cycleDockMode } from "@/lib/layout/dock-mode";
+import { useSessionOverlay } from "@/lib/hooks/use-session-overlay";
 
 function AppLayout() {
     useEventStream();
@@ -46,64 +36,25 @@ function AppLayout() {
     const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
     const [integrationImportOpen, setIntegrationImportOpen] =
         useAtom(integrationImportOpenAtom);
-    const [railMode, setRailMode] = useAtom(rightRailModeAtom);
-    const railTaskId = useAtomValue(rightRailTaskIdAtom);
-    const railChatSessionId = useAtomValue(rightRailChatSessionIdAtom);
-    const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
-    const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
-    const dismissRightRailContext = useSetAtom(dismissRightRailContextAtom);
-    const clearRightRailDismissal = useSetAtom(clearRightRailDismissalAtom);
     const projectVersion = useAtomValue(projectSwitchVersionAtom);
     const fetchTasks = useSetAtom(fetchTasksAtom);
     const [projectChecked, setProjectChecked] = useState(false);
-    const lastDockModeRef = useRef<DockedChatRailMode>("chat-right");
     const navigateRef = useRef(navigate);
     navigateRef.current = navigate;
-    const [railWidth, setRailWidth] = useState(448); // 28rem default
-    const [railHeight, setRailHeight] = useState(384); // 24rem default
 
-    const MIN_RAIL = 280;
-    const MAX_RAIL_W = 800;
-    const MAX_RAIL_H = 600;
-
-    const createOrGetSession = useCallback(
-        async (sessions: WireChatSessionSummary[]): Promise<string | null> => {
-            try {
-                const orchestratorSessions = sessions
-                    .filter((s) =>
-                        ['orchestrator', 'web'].includes(s.source.toLowerCase()),
-                    )
-                    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-
-                const sessionId =
-                    orchestratorSessions.length > 0
-                        ? orchestratorSessions[0]!.id
-                        : (await apiClient.createChatSession({})).id;
-
-                return sessionId;
-            } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : 'Failed to create session';
-                toast.error(message);
-                return null;
-            }
-        },
-        [],
-    );
+    const overlay = useSessionOverlay();
+    const workspaceRoute = location.pathname.startsWith("/workspace");
 
     // Reset project check when project switches (e.g. from welcome page)
-    const prevProjectVersionRef2 = useRef(projectVersion);
+    const prevProjectVersionRef = useRef(projectVersion);
     useEffect(() => {
-        if (projectVersion !== prevProjectVersionRef2.current) {
-            prevProjectVersionRef2.current = projectVersion;
+        if (projectVersion !== prevProjectVersionRef.current) {
+            prevProjectVersionRef.current = projectVersion;
             setProjectChecked(false);
         }
     }, [projectVersion]);
 
-    // Verify active project before rendering the board.  Eagerly fetch tasks
-    // so data is ready when the board mounts — avoids a blank-screen flash.
-    // navigate is accessed via ref to avoid effect re-runs from unstable
-    // useNavigate() references caused by WebSocket-driven re-renders.
+    // Verify active project before rendering the board.
     useEffect(() => {
         if (projectChecked) return;
         let cancelled = false;
@@ -113,9 +64,6 @@ function AppLayout() {
                 if (cancelled) return;
                 const active = projects.find((p) => p.active);
                 if (active) {
-                    // Render the board immediately — don't block on task fetch.
-                    // fetchTasks runs in parallel; the board shows a loading
-                    // state until tasks arrive via SSE or the fetch resolves.
                     setProjectChecked(true);
                     fetchTasks();
                 } else {
@@ -131,155 +79,10 @@ function AppLayout() {
         };
     }, [projectChecked, fetchTasks]);
 
-    const currentTaskId = useMemo(() => {
-        const taskMatch = /^\/task\/([^/?]+)/.exec(location.pathname);
-        if (taskMatch) return taskMatch[1];
-        const sessionMatch = /^\/session\/([^/?]+)/.exec(location.pathname);
-        if (sessionMatch) return sessionMatch[1];
-        return null;
-    }, [location.pathname]);
-    const currentChatSessionId = useMemo(() => {
-        const chatMatch = /^\/chat\/([^/?]+)/.exec(location.pathname);
-        return chatMatch?.[1] ?? null;
-    }, [location.pathname]);
-    const workspaceRoute = location.pathname.startsWith("/workspace");
-    const rightRailVisible = !workspaceRoute &&
-        railMode !== "none" &&
-        Boolean(railTaskId || railChatSessionId) &&
-        !(currentChatSessionId && railChatSessionId === currentChatSessionId);
-
-    const closeChatRail = useCallback(() => {
-        dismissRightRailContext();
-        setRailMode("none");
-    }, [dismissRightRailContext, setRailMode]);
-
-    const openChatRail = useCallback((mode: DockedChatRailMode = "chat-right") => {
-        const nextTaskId = currentTaskId ?? railTaskId;
-        if (!nextTaskId) return;
-        clearRightRailDismissal({ kind: "task", id: nextTaskId });
-        setRailTaskId(nextTaskId);
-        setRailChatSessionId(null);
-        setRailMode(mode);
-    }, [
-        clearRightRailDismissal,
-        currentTaskId,
-        railTaskId,
-        setRailChatSessionId,
-        setRailMode,
-        setRailTaskId,
-    ]);
-
-    const setChatRailLayout = useCallback((
-        mode: "chat-right" | "chat-bottom" | "chat-fullscreen",
-    ) => {
-        if (mode === "chat-right" || mode === "chat-bottom") {
-            lastDockModeRef.current = mode;
-        }
-        setRailMode(mode);
-    }, [setRailMode]);
-
-    const toggleAIPanel = useCallback(async () => {
+    const toggleAIPanel = useCallback(() => {
         if (workspaceRoute) return;
-        const railOpen = rightRailVisible;
-        const hasTask = Boolean(currentTaskId ?? railTaskId);
-        if (
-            railOpen &&
-            (railMode === "chat-right" || railMode === "chat-bottom")
-        ) {
-            const next = cycleDockMode(railMode);
-            if (next === "none") {
-                closeChatRail();
-            } else {
-                setChatRailLayout(next);
-            }
-        } else if (railOpen) {
-            closeChatRail();
-        } else if (hasTask) {
-            openChatRail("chat-right");
-        } else {
-            try {
-                const sessions = await apiClient.getChatSessions();
-                const sessionId = await createOrGetSession(sessions);
-                if (sessionId) {
-                    clearRightRailDismissal({ kind: "session", id: sessionId });
-                    setRailTaskId(null);
-                    setRailChatSessionId(sessionId);
-                    setRailMode("chat-right");
-                }
-            } catch {
-                setSessionPickerOpen(true);
-            }
-        }
-    }, [
-        closeChatRail,
-        createOrGetSession,
-        clearRightRailDismissal,
-        currentTaskId,
-        openChatRail,
-        railChatSessionId,
-        railMode,
-        railTaskId,
-        rightRailVisible,
-        setChatRailLayout,
-        setRailChatSessionId,
-        setRailMode,
-        setRailTaskId,
-        setSessionPickerOpen,
-        workspaceRoute,
-    ]);
-
-    useEffect(() => {
-        if (railMode === "chat-right" || railMode === "chat-bottom") {
-            lastDockModeRef.current = railMode;
-        }
-    }, [railMode]);
-
-    // On project switch: auto-attach to latest orchestrator session for new project
-    const prevProjectVersionRef = useRef(projectVersion);
-    useEffect(() => {
-        if (projectVersion === prevProjectVersionRef.current) return;
-        prevProjectVersionRef.current = projectVersion;
-        if (isMobile) return;
-
-        // Always create a fresh session for the new project context
-        void (async () => {
-            try {
-                const sessionId = await createOrGetSession([]);
-                if (sessionId) {
-                    setRailTaskId(null);
-                    setRailChatSessionId(sessionId);
-                    if (railMode === "none") {
-                        setRailMode("chat-right");
-                    }
-                }
-            } catch {
-                // Best-effort — user can manually switch via Session Switcher
-            }
-        })();
-    }, [
-        projectVersion,
-        isMobile,
-        createOrGetSession,
-        railMode,
-        setRailChatSessionId,
-        setRailMode,
-        setRailTaskId,
-    ]);
-
-    useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => {
-            const railOpen = rightRailVisible;
-
-            // Esc — close chat rail (interrupt-first: chat-input-bar stops propagation when busy)
-            if (event.key === "Escape" && railOpen) {
-                event.preventDefault();
-                closeChatRail();
-            }
-        };
-
-        window.addEventListener("keydown", onKeyDown);
-        return () => window.removeEventListener("keydown", onKeyDown);
-    }, [closeChatRail, rightRailVisible]);
+        overlay.toggle();
+    }, [overlay, workspaceRoute]);
 
     if (!projectChecked) {
         return (
@@ -312,17 +115,21 @@ function AppLayout() {
                             onToggleAIPanel={toggleAIPanel}
                             onToggleFullscreen={() => {
                                 if (workspaceRoute) return;
-                                if (railMode === "chat-fullscreen") {
-                                    setChatRailLayout(lastDockModeRef.current);
-                                } else if (railMode !== "none") {
-                                    setChatRailLayout("chat-fullscreen");
+                                if (overlay.layout === "fullscreen") {
+                                    overlay.setLayout("docked");
+                                } else if (overlay.isOpen) {
+                                    overlay.setLayout("fullscreen");
+                                } else {
+                                    overlay.toggle();
+                                    overlay.setLayout("fullscreen");
                                 }
                             }}
                             aiPanelAvailable={!workspaceRoute}
-                            aiPanelOpen={rightRailVisible}
+                            aiPanelOpen={overlay.isOpen}
                             aiPanelFullscreen={
                                 !workspaceRoute &&
-                                railMode === "chat-fullscreen"
+                                overlay.isOpen &&
+                                overlay.layout === "fullscreen"
                             }
                         />
                     )}
@@ -333,153 +140,18 @@ function AppLayout() {
                                 id="main-content"
                                 className={cn(
                                     "min-h-0 min-w-0 flex-1 overflow-y-auto bg-[color:var(--surface-0)] pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0",
-                                    !workspaceRoute &&
-                                        railMode === "chat-fullscreen" &&
-                                        "overflow-hidden",
                                 )}
                             >
                                 <Outlet />
                             </main>
-
-                            {!isMobile &&
-                            rightRailVisible &&
-                            railMode === "chat-right" ? (
-                                <div
-                                    className="relative hidden shrink-0 lg:block"
-                                    style={{ width: railWidth }}
-                                >
-                                    <ResizeHandle
-                                        edge="left"
-                                        onResize={(d) =>
-                                            setRailWidth((w) =>
-                                                Math.min(
-                                                    MAX_RAIL_W,
-                                                    Math.max(MIN_RAIL, w + d),
-                                                ),
-                                            )
-                                        }
-                                    />
-                                    {railTaskId ? (
-                                        <ErrorBoundary level="widget">
-                                            <ChatSidePanel
-                                                taskId={railTaskId}
-                                                layout="chat-right"
-                                                onSetLayout={setChatRailLayout}
-                                                onClose={closeChatRail}
-                                            />
-                                        </ErrorBoundary>
-                                    ) : railChatSessionId ? (
-                                        <ErrorBoundary level="widget">
-                                            <OrchestratorChatPanel
-                                                sessionId={railChatSessionId}
-                                                layout="chat-right"
-                                                onSetLayout={setChatRailLayout}
-                                                onClose={closeChatRail}
-                                            />
-                                        </ErrorBoundary>
-                                    ) : null}
-                                </div>
-                            ) : null}
                         </div>
-
-                        {!isMobile &&
-                        rightRailVisible &&
-                        railMode === "chat-bottom" ? (
-                            <div
-                                className="relative hidden shrink-0 lg:block"
-                                style={{ height: railHeight }}
-                            >
-                                <ResizeHandle
-                                    edge="top"
-                                    onResize={(d) =>
-                                        setRailHeight((h) =>
-                                            Math.min(
-                                                MAX_RAIL_H,
-                                                Math.max(MIN_RAIL, h + d),
-                                            ),
-                                        )
-                                    }
-                                />
-                                {railTaskId ? (
-                                    <ErrorBoundary level="widget">
-                                        <ChatSidePanel
-                                            taskId={railTaskId}
-                                            layout="chat-bottom"
-                                            onSetLayout={setChatRailLayout}
-                                            onClose={closeChatRail}
-                                        />
-                                    </ErrorBoundary>
-                                ) : railChatSessionId ? (
-                                    <ErrorBoundary level="widget">
-                                        <OrchestratorChatPanel
-                                            sessionId={railChatSessionId}
-                                            layout="chat-bottom"
-                                            onSetLayout={setChatRailLayout}
-                                            onClose={closeChatRail}
-                                        />
-                                    </ErrorBoundary>
-                                ) : null}
-                            </div>
-                        ) : null}
                     </div>
                 </div>
 
                 {isMobile && <MobileTabs />}
             </div>
 
-            {isMobile &&
-            rightRailVisible ? (
-                <div className="fixed inset-0 z-50 flex flex-col bg-[color:var(--surface-0)]">
-                    {railTaskId ? (
-                        <ErrorBoundary level="widget">
-                            <ChatSidePanel
-                                taskId={railTaskId}
-                                layout="chat-fullscreen"
-                                onSetLayout={setChatRailLayout}
-                                onClose={closeChatRail}
-                            />
-                        </ErrorBoundary>
-                    ) : railChatSessionId ? (
-                        <ErrorBoundary level="widget">
-                            <OrchestratorChatPanel
-                                sessionId={railChatSessionId}
-                                layout="chat-fullscreen"
-                                onSetLayout={setChatRailLayout}
-                                onClose={closeChatRail}
-                            />
-                        </ErrorBoundary>
-                    ) : null}
-                </div>
-            ) : null}
-
-            {!isMobile &&
-            rightRailVisible &&
-            railMode === "chat-fullscreen" ? (
-                <div className="glass-surface pointer-events-none fixed inset-0 z-40 hidden p-4 lg:block">
-                    <div className="pointer-events-auto flex h-full w-full overflow-hidden">
-                        {railTaskId ? (
-                            <ErrorBoundary level="widget">
-                                <ChatSidePanel
-                                    taskId={railTaskId}
-                                    layout="chat-fullscreen"
-                                    onSetLayout={setChatRailLayout}
-                                    onClose={closeChatRail}
-                                />
-                            </ErrorBoundary>
-                        ) : railChatSessionId ? (
-                            <ErrorBoundary level="widget">
-                                <OrchestratorChatPanel
-                                    sessionId={railChatSessionId}
-                                    layout="chat-fullscreen"
-                                    onSetLayout={setChatRailLayout}
-                                    onClose={closeChatRail}
-                                />
-                            </ErrorBoundary>
-                        ) : null}
-                    </div>
-                </div>
-            ) : null}
-
+            <SessionOverlay />
             <SessionPicker />
             <HelpOverlay />
             <IntegrationImportDialog

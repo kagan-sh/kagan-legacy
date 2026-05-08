@@ -111,7 +111,7 @@ async def test_overlay_footer_shows_cycle_agent_hint(board: KaganDriver) -> None
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
 
-        panel = app.screen.query_one("#orch-chat", ChatPanel)
+        panel = app.screen.query_one("#chat-panel", ChatPanel)
         assert panel._footer_mode == "overlay"
 
 
@@ -130,7 +130,7 @@ async def test_overlay_footer_does_not_contain_ctrl_shift_t(board: KaganDriver) 
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
 
-        panel = app.screen.query_one("#orch-chat", ChatPanel)
+        panel = app.screen.query_one("#chat-panel", ChatPanel)
         assert panel._footer_mode == "overlay"
 
         # Read hint directly from the StatusBar reactive
@@ -182,31 +182,39 @@ async def test_replay_does_not_animate_historical_chunks(board: KaganDriver) -> 
 # ---------------------------------------------------------------------------
 
 
-async def test_ctrl_down_cycles_attached_session(board: KaganDriver) -> None:
-    """Ctrl+Down rotates attachment: None → row1 → row2 → None."""
+async def test_ctrl_down_cycles_selected_session(board: KaganDriver) -> None:
+    """Ctrl+Down rotates selection: orchestrator → row1 → row2 → orchestrator."""
 
-    from kagan.core._sessions_query import ActiveAgentRow
+    from kagan.core._session_items import SessionCapabilities, SessionItem
     from kagan.tui import KaganApp
     from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
-    from kagan.tui.widgets.running_agents_bar import RunningAgentsBar
+    from kagan.tui.widgets.session_list import SessionList
 
-    def _make_row(session_id: str, task_id: str, title: str) -> ActiveAgentRow:
-        return ActiveAgentRow(
+    def _make_item(session_id: str, task_id: str, title: str) -> SessionItem:
+        return SessionItem(
+            id=session_id,
+            type="task",
+            role="worker",
+            status="running",
+            title=title,
+            backend="claude",
+            project_id=None,
             task_id=task_id,
-            task_title=title,
-            task_status="in_progress",
             session_id=session_id,
-            agent_role="worker",
-            agent_backend="claude",
-            session_status="running",
-            started_at=datetime.now(tz=UTC),
-            last_event_at=None,
-            input_tokens=None,
-            output_tokens=None,
+            chat_session_id=None,
+            updated_at="",
+            capabilities=SessionCapabilities(
+                can_chat=False,
+                can_stream=False,
+                can_replay=True,
+                can_stop=True,
+                can_close=False,
+                has_kagan_tools=True,
+            ),
         )
 
-    row1 = _make_row("sess-aaa", "task-1", "Task Alpha")
-    row2 = _make_row("sess-bbb", "task-2", "Task Beta")
+    item1 = _make_item("sess-aaa", "task-1", "Task Alpha")
+    item2 = _make_item("sess-bbb", "task-2", "Task Beta")
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
@@ -216,27 +224,27 @@ async def test_ctrl_down_cycles_attached_session(board: KaganDriver) -> None:
         await pilot.pause()
         overlay = app.screen
         assert isinstance(overlay, OrchestratorOverlay)
-        assert overlay._attached_session_id is None
+        assert overlay._selected_session_id is None
 
-        # Inject fake rows into the agents bar
-        agents_bar = overlay.query_one("#orch-agents-bar", RunningAgentsBar)
-        agents_bar._rows = [row1, row2]
+        # Inject fake items into the session list
+        session_list = overlay.query_one("#orch-session-list", SessionList)
+        session_list._items = [item1, item2]
         await pilot.pause()
 
-        # Ctrl+Down: None → row1
+        # Ctrl+Down: orchestrator → row1
         await pilot.press("ctrl+down")
         await pilot.pause()
         await pilot.pause()
-        assert overlay._attached_session_id == "sess-aaa"
+        assert overlay._selected_session_id == "sess-aaa"
 
         # Ctrl+Down: row1 → row2
         await pilot.press("ctrl+down")
         await pilot.pause()
         await pilot.pause()
-        assert overlay._attached_session_id == "sess-bbb"
+        assert overlay._selected_session_id == "sess-bbb"
 
-        # Ctrl+Down: row2 → None (wrap around)
+        # Ctrl+Down: row2 → orchestrator (wrap around)
         await pilot.press("ctrl+down")
         await pilot.pause()
         await pilot.pause()
-        assert overlay._attached_session_id is None
+        assert overlay._selected_session_id is None

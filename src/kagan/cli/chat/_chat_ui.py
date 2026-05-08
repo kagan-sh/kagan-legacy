@@ -27,8 +27,8 @@ def print_help_documentation() -> None:
     spec_by_name = {spec.name: spec for spec in SLASH_COMMAND_REGISTRY.specs()}
     sections = [
         ("Global", ["help", "flow", "status", "analytics", "clear", "exit"]),
-        ("Sessions", ["new", "sessions", "delete"]),
-        ("Agents", ["attach", "detach"]),
+        ("Sessions", ["new", "sessions", "switch", "stop", "close", "delete"]),
+        ("Agents", ["agents"]),
         ("Workspace", ["project", "agents", "tool"]),
     ]
 
@@ -183,25 +183,52 @@ def print_session_list(items: list[Any]) -> None:
     table.add_column(no_wrap=True)
     table.add_column(style="dim", no_wrap=True)
     table.add_column(style="dim", no_wrap=True)
+    table.add_column(style="dim", no_wrap=True)
     table.add_column(no_wrap=True)
     for item in items:
         marker = "[bold cyan]● current[/bold cyan]" if item.is_current else ""
+        cap_parts: list[str] = []
+        if getattr(item, "can_chat", False):
+            cap_parts.append("chat")
+        if getattr(item, "can_replay", False):
+            cap_parts.append("replay")
+        if getattr(item, "can_stop", False):
+            cap_parts.append("stop")
+        if getattr(item, "can_close", False):
+            cap_parts.append("close")
+        caps = ", ".join(cap_parts)
+        backend = getattr(item, "agent_backend", None) or ""
+        status = getattr(item, "status", "") or getattr(item, "source", "")
         table.add_row(
             str(item.index),
             item.label,
-            item.agent_backend or "",
-            item.updated_relative or "",
+            backend,
+            status,
+            caps,
             marker,
         )
     _console.print(table)
     _console.print()
-    _console.print("[dim]/sessions <n> attach · /new create · /delete <n> remove[/dim]")
+    _console.print(
+        "[dim]/sessions <n> switch · /new create · /stop · /close · /delete <n> remove[/dim]"
+    )
 
 
 def build_session_picker_option(item: Any) -> SearchPickerOption:
     """Build a picker option from a session list item."""
-    meta_parts = [part for part in (item.agent_backend, item.updated_relative) if part]
-    if item.is_current:
+    meta_parts = [
+        part
+        for part in (getattr(item, "agent_backend", None), getattr(item, "updated_relative", None))
+        if part
+    ]
+    cap_parts: list[str] = []
+    if getattr(item, "can_chat", False):
+        cap_parts.append("chat")
+    if getattr(item, "can_replay", False):
+        cap_parts.append("replay")
+    if cap_parts:
+        meta_parts.append(", ".join(cap_parts))
+    if getattr(item, "is_current", False):
         meta_parts.append("current")
     return SearchPickerOption(
         value=item.session_id,
@@ -221,7 +248,6 @@ def show_tool_report(renderer: CLIRenderer | None, query: str | None) -> None:
         with _console.pager(styles=False):
             _console.print(report, highlight=False)
         return
-
     _console.print(report, highlight=False)
 
 

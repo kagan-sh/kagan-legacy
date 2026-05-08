@@ -308,6 +308,7 @@ class ChatSessions:
         agent_backend: str | None = None,
         project_id: str | None = None,
         session_id: str | None = None,
+        session_type: str | None = None,
     ) -> ChatSession:
         sid = (session_id or uuid4().hex[:16]).strip()
         now = _utc_now()
@@ -317,6 +318,7 @@ class ChatSessions:
             source=source,
             agent_backend=agent_backend,
             project_id=project_id,
+            session_type=session_type or "orchestrator",
             created_at=now,
             updated_at=now,
         )
@@ -329,6 +331,29 @@ class ChatSessions:
 
         return await _db_async(self._engine, _write, commit=True)
 
+    async def create_general(
+        self,
+        *,
+        backend: str,
+        label: str | None = None,
+        project_id: str | None = None,
+    ) -> ChatSession:
+        """Create a general session — raw backend chat without Kagan orchestration."""
+        row = await self.create(
+            source="general",
+            label=label or f"General {backend}",
+            agent_backend=backend,
+            project_id=project_id,
+            session_type="general",
+        )
+        await self.append_message(
+            row.id,
+            "system",
+            "General session: this chat talks directly to the selected backend "
+            "without Kagan project tools, task context, or orchestration prompts.",
+        )
+        return row
+
     # ------------------------------------------------------------------ update
 
     async def update(
@@ -339,6 +364,7 @@ class ChatSessions:
         source: str | None = None,
         agent_backend: str | None = None,
         project_id: str | None = None,
+        session_type: str | None = None,
     ) -> ChatSession | None:
         """Patch metadata on an existing session. Returns the updated row, or None if missing.
 
@@ -363,6 +389,8 @@ class ChatSessions:
                 row.agent_backend = agent_backend
             if project_id is not None:
                 row.project_id = project_id
+            if session_type is not None:
+                row.session_type = session_type
             row.updated_at = now
             s.add(row)
             s.flush()

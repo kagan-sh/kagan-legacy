@@ -63,12 +63,16 @@ class LongLivedACPFactory:
     ``client`` is the :class:`KaganCore` instance; ``agent_backend`` selects the
     ACP-capable backend. ``cwd`` is the orchestrator working directory and the
     location where ``.mcp.json`` is written.
+
+    When ``raw`` is True, no orchestrator system prompt is injected and no MCP
+    tools are registered — the backend receives user blocks verbatim.
     """
 
     client: Any
     agent_backend: str
     cwd: str | os.PathLike[str]
     attachments: list[dict[str, str]] | None = None
+    raw: bool = False
 
     _stack: AsyncExitStack | None = field(default=None, init=False, repr=False)
     _conn: Any = field(default=None, init=False, repr=False)
@@ -233,13 +237,14 @@ class LongLivedACPFactory:
         resolved_cwd = Path(self.cwd)
         mcp_path = resolved_cwd / ".mcp.json"
 
-        mcp_content = build_mcp_manifest(
-            session_id=mcp_session_id,
-            db_path=db_path,
-            role="ORCHESTRATOR",
-            project_id=self.client.active_project_id,
-        )
-        await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
+        if not self.raw:
+            mcp_content = build_mcp_manifest(
+                session_id=mcp_session_id,
+                db_path=db_path,
+                role="ORCHESTRATOR",
+                project_id=self.client.active_project_id,
+            )
+            await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
 
         backend = get_backend_spec(self.agent_backend)
         env = build_agent_environment(
@@ -337,26 +342,29 @@ class LongLivedACPFactory:
         from kagan.cli.chat.acp import _acp_process_exit_message, _new_session_with_mcp_fallback
         from kagan.core import ACP_TIMEOUT_HINT
 
-        mcp_servers: list[Any] = [
-            McpServerStdio(
-                name="kagan",
-                command="kagan",
-                args=[
-                    "mcp",
-                    "--session-id",
-                    mcp_session_id,
-                    "--db",
-                    db_path,
-                    "--admin",
-                    *(
-                        ["--project-id", self.client.active_project_id]
-                        if self.client.active_project_id
-                        else []
-                    ),
-                ],
-                env=[],
-            )
-        ]
+        if self.raw:
+            mcp_servers: list[Any] = []
+        else:
+            mcp_servers = [
+                McpServerStdio(
+                    name="kagan",
+                    command="kagan",
+                    args=[
+                        "mcp",
+                        "--session-id",
+                        mcp_session_id,
+                        "--db",
+                        db_path,
+                        "--admin",
+                        *(
+                            ["--project-id", self.client.active_project_id]
+                            if self.client.active_project_id
+                            else []
+                        ),
+                    ],
+                    env=[],
+                )
+            ]
         try:
             return await _new_session_with_mcp_fallback(
                 conn,
@@ -383,7 +391,19 @@ class LongLivedACPFactory:
         Engine callers pass plain ``TextContentBlock`` user blocks; we prepend
         the resolved orchestrator system prompt and append any image/text
         attachments configured on the factory.
+
+        When ``raw`` is True, blocks are passed through verbatim (no system
+        prompt injection, no "User request:" wrapper).
         """
+        if self.raw:
+            out: list[Any] = list(prompt_blocks)
+            for att in self.attachments or []:
+                if att.get("type") == "image":
+                    out.append(acp.image_block(data=att["data"], mime_type=att["mime_type"]))
+                else:
+                    out.append(acp.text_block(f"--- {att['name']} ---\n{att['data']}"))
+            return out
+
         from kagan.cli.chat.prompt import _format_user_request_block
         from kagan.core import resolve_orchestrator_prompt
 
@@ -401,7 +421,7 @@ class LongLivedACPFactory:
                 passthrough.append(block)
         user_text = "\n\n".join(user_text_parts)
 
-        out: list[Any] = [
+        out = [
             acp.text_block(system_prompt),
             acp.text_block(_format_user_request_block(user_text)),
         ]
@@ -424,4 +444,25 @@ class LongLivedACPFactory:
             logger.debug("Failed to remove MCP manifest at {}", path)
 
 
-__all__ = ["LongLivedACPFactory"]
+def make_raw_backend_acp_factory(
+    *,
+    client: Any,
+    default_agent_backend: str,
+    cwd: str | None = None,
+    attachments: list[dict[str, str]] | None = None,
+) -> Any:
+    """Return a long-lived ACP factory configured for raw backend mode.
+
+    No orchestrator system prompt, no MCP tools — user blocks are forwarded
+    verbatim to the selected backend.
+    """
+    return LongLivedACPFactory(
+        client=client,
+        agent_backend=default_agent_backend,
+        cwd=cwd or ".",
+        attachments=attachments,
+        raw=True,
+    )
+
+
+__all__ = ["LongLivedACPFactory", "make_raw_backend_acp_factory"]

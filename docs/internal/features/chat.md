@@ -170,16 +170,6 @@ ______________________________________________________________________
 **When** the command executes
 **Then** it prints the current session's ID, title, agent backend, message count, and creation time.
 
-### `/attach` and `/detach` — Switch chat target
-
-See [Attach + Detach](#attach--detach) below for full behaviours. In short:
-
-- `/attach <task-id|session-id>` — attach to a running worker or reviewer
-  session (full UUID or 8-char prefix; matches by session id or task id).
-- `/detach` — return to orchestrator mode.
-
-______________________________________________________________________
-
 ### `/exit` — Exit REPL
 
 **Given** the user types `/exit` or `Ctrl+D`
@@ -436,66 +426,17 @@ and handles the TUI action locally.
 
 ______________________________________________________________________
 
-## Attach + Detach
-
-### `/attach <task-id|session-id>`
-
-**Given** there is at least one running worker or reviewer session in the
-active project
-**When** the user types `/attach <id>` (full UUID or 8-char prefix; either a
-session id or a task id)
-**Then** the controller resolves the most relevant session via
-`client.resolve_active_session` / `client.list_running_agents` and calls
-`client.attach_chat`. Subsequent turns are observed read-only against that
-session until `/detach`.
-
-**Given** the argument does not match any running agent
-**When** the command is processed
-**Then** the REPL shows a not-found error and stays in orchestrator mode.
-
-**Given** the command is invoked with no argument
-**When** the command is parsed
-**Then** the REPL prints `Usage: /attach <task-id|session-id>`.
-
-### `/detach`
-
-**Given** the chat is attached to an agent session
-**When** the user types `/detach`
-**Then** the controller calls `client.attach_chat(..., session_id=None)` and
-the REPL returns to orchestrator mode.
-
-### Post-turn agents rail
-
-**Given** there is at least one active worker or reviewer session
-**When** an orchestrator turn completes
-**Then** the REPL prints a compact rail (`● N local agents · ↓ to manage`) plus
-one detail line per agent (role, task title, elapsed, token total).
-
-**Given** there are no active agents
-**When** an orchestrator turn completes
-**Then** the rail is suppressed entirely — no nag.
-
-### `↓` picker
-
-**Given** the user presses `↓` at the REPL prompt
-**When** at least one agent is running
-**Then** a one-shot Textual picker opens listing `main` (orchestrator / detach)
-followed by every active session; selecting an entry attaches (or, for
-`main`, detaches).
-
-______________________________________________________________________
-
 ## Test Coverage
 
-| File                                           | Tests                                                     |
-| ---------------------------------------------- | --------------------------------------------------------- |
-| `tests/unit/test_chat_repl.py`                 | REPL entry points, loop behavior, scope binding           |
-| `tests/unit/test_chat_commands.py`             | Slash command parsing and execution                       |
-| `tests/unit/test_chat_policy.py`               | Authorization checks and session gating                   |
-| `tests/unit/test_chat_controller_streaming.py` | ACP streaming, chunk handling, error paths                |
-| `tests/unit/test_chat_acp_warmup.py`           | Warmup handshake + prompt initialization                  |
-| `tests/core/test_chat_attach_cli.py`           | `/attach` + `/detach` end-to-end through `ChatController` |
-| `tests/unit/test_chat_picker_choice.py`        | `_resolve_picker_choice` boundary cases                   |
-| `tests/unit/test_chat_rail_rendering.py`       | Agents-rail formatting (header + detail rows)             |
+| File                                           | Tests                                                 |
+| ---------------------------------------------- | ----------------------------------------------------- |
+| `tests/unit/test_chat_repl.py`                 | REPL entry points, loop behavior, scope binding       |
+| `tests/unit/test_chat_commands.py`             | Slash command parsing and execution                   |
+| `tests/unit/test_chat_policy.py`               | Authorization checks and session gating               |
+| `tests/unit/test_chat_controller_streaming.py` | ACP streaming, chunk handling, error paths            |
+| `tests/unit/test_chat_acp_warmup.py`           | Warmup handshake + prompt initialization              |
+| `tests/cli/test_chat_sessions.py`              | `/switch`, `/stop`, `/close` through `ChatController` |
+| `tests/unit/test_chat_picker_choice.py`        | `_resolve_picker_choice` boundary cases               |
+| `tests/unit/test_chat_rail_rendering.py`       | Agents-rail formatting (header + detail rows)         |
 
 **All tests use mocked ACP connections.** Real agent spawn is integration-level.

@@ -45,7 +45,7 @@ async def test_task_with_no_sessions_opens_overlay_in_orchestrator_mode(
         # The overlay should have been auto-pushed in orchestrator mode
         assert isinstance(app.screen, OrchestratorOverlay)
         overlay = app.screen
-        assert overlay._attached_session_id is None
+        assert overlay._selected_session_id is None
 
 
 async def test_task_screen_renders_chat_hint(board: KaganDriver) -> None:

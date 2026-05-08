@@ -19,14 +19,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import {
   commandPaletteOpenAtom,
   helpOverlayOpenAtom,
-  rightRailModeAtom,
-  rightRailTaskIdAtom,
   sessionPickerOpenAtom,
+  sessionOverlayOpenAtom,
+  sessionOverlayLayoutAtom,
 } from '@/lib/atoms/ui';
 import { useGlobalShortcuts } from '@/lib/hooks/use-global-shortcuts';
 import { HelpOverlay } from '@/components/layout/help-overlay';
 
-// ── apiClient mock — useGlobalShortcuts imports it for the Cmd+. session flow ──
+// ── apiClient mock ──
 
 vi.mock('@/lib/api/client', () => ({
   apiClient: {
@@ -120,56 +120,50 @@ describe('HelpOverlay global shortcut parity', () => {
     expect(store.get(helpOverlayOpenAtom)).toBe(true);
   });
 
-  // Row: Cmd/Ctrl + . → Cycle AI panel dock mode
-  // Handler: cycles chat-right → chat-bottom → none when the rail is open.
-  it('Cmd+. cycles the AI panel dock mode (Cycle AI panel dock mode row)', () => {
-    // Give the rail a task context so the handler can open/cycle it.
-    store.set(rightRailTaskIdAtom, 'task-xyz');
+  // Row: Cmd/Ctrl + . → Toggle Session Overlay
+  it('Cmd+. toggles the session overlay (Toggle Session Overlay row)', () => {
     renderHarness(store, ['/task/task-xyz']);
 
-    // First press: opens rail in chat-right
+    // First press: opens overlay in docked mode
     fireEvent.keyDown(document, { key: '.', metaKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-right');
+    expect(store.get(sessionOverlayOpenAtom)).toBe(true);
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('docked');
 
-    // Second press: advances to chat-bottom
+    // Second press: closes the overlay
     fireEvent.keyDown(document, { key: '.', metaKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-bottom');
-
-    // Third press: closes the rail (none)
-    fireEvent.keyDown(document, { key: '.', metaKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('none');
+    expect(store.get(sessionOverlayOpenAtom)).toBe(false);
   });
 
-  it('Ctrl+. cycles the AI panel dock mode (Cycle AI panel dock mode row)', () => {
-    store.set(rightRailTaskIdAtom, 'task-xyz');
+  it('Ctrl+. toggles the session overlay (Toggle Session Overlay row)', () => {
     renderHarness(store, ['/task/task-xyz']);
 
     fireEvent.keyDown(document, { key: '.', ctrlKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-right');
+    expect(store.get(sessionOverlayOpenAtom)).toBe(true);
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('docked');
   });
 
   // Row: Cmd/Ctrl + Shift + F → Fullscreen AI Panel
-  it('Cmd+Shift+F enters fullscreen when rail is open (Fullscreen AI Panel row)', () => {
-    store.set(rightRailTaskIdAtom, 'task-xyz');
-    store.set(rightRailModeAtom, 'chat-right');
+  it('Cmd+Shift+F enters fullscreen when overlay is open (Fullscreen AI Panel row)', () => {
+    store.set(sessionOverlayOpenAtom, true);
+    store.set(sessionOverlayLayoutAtom, 'docked');
     renderHarness(store, ['/task/task-xyz']);
 
     fireEvent.keyDown(document, { key: 'f', metaKey: true, shiftKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-fullscreen');
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('fullscreen');
   });
 
   it('Cmd+Shift+F exits fullscreen back to docked mode (Fullscreen AI Panel row)', () => {
-    store.set(rightRailTaskIdAtom, 'task-xyz');
-    store.set(rightRailModeAtom, 'chat-right');
+    store.set(sessionOverlayOpenAtom, true);
+    store.set(sessionOverlayLayoutAtom, 'docked');
     renderHarness(store, ['/task/task-xyz']);
 
     // Enter fullscreen
     fireEvent.keyDown(document, { key: 'f', metaKey: true, shiftKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-fullscreen');
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('fullscreen');
 
-    // Exit fullscreen → back to last docked mode
+    // Exit fullscreen → back to docked mode
     fireEvent.keyDown(document, { key: 'f', metaKey: true, shiftKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-right');
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('docked');
   });
 
   // Verify Cmd/Ctrl+Shift+P requires the Shift modifier — plain Cmd+P must NOT open the palette.
@@ -186,12 +180,12 @@ describe('HelpOverlay global shortcut parity', () => {
       command: store.get(commandPaletteOpenAtom),
       session: store.get(sessionPickerOpenAtom),
       help: store.get(helpOverlayOpenAtom),
-      rail: store.get(rightRailModeAtom),
+      overlay: store.get(sessionOverlayOpenAtom),
     };
     fireEvent.keyDown(document, { key: 't', ctrlKey: true, shiftKey: true });
     expect(store.get(commandPaletteOpenAtom)).toBe(before.command);
     expect(store.get(sessionPickerOpenAtom)).toBe(before.session);
     expect(store.get(helpOverlayOpenAtom)).toBe(before.help);
-    expect(store.get(rightRailModeAtom)).toBe(before.rail);
+    expect(store.get(sessionOverlayOpenAtom)).toBe(before.overlay);
   });
 });

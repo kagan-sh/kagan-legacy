@@ -60,10 +60,10 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 6. AI Panel
+## 6. Session Overlay
 
 - Two modes: orchestrator and task session
-  - `Ctrl+.` toggles AI Panel, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
+  - `Ctrl+.` toggles Session Overlay, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
 - Streaming output appends fragments as they arrive, drains words on a short timer, and follows the newest content without duplicating finalized text
 - `Enter` send, `Shift+Enter` newline, `Tab` accept completion
 - `Ctrl+C` clears input text; `Esc` stops the active agent
@@ -90,13 +90,13 @@ ______________________________________________________________________
   the chord again re-focuses the overlay's chat input.
   *Tests:* `tests/tui/test_orchestrator_overlay.py`.
 - The overlay has two modes: orchestrator (talks to the project orchestrator
-  chat session) and attached (re-streams a worker / reviewer session from
+  chat session) and session (re-streams a worker / reviewer session from
   persisted events plus the core task event stream).
-- `Esc` from an attached stream detaches back to orchestrator; `Esc` from
+- `Esc` from a session stream returns back to orchestrator; `Esc` from
   orchestrator closes the overlay.
-- A `RunningAgentsBar` under the chat input lists active sessions; `↓` from
-  the input focuses the bar, `Enter` attaches, `Esc` returns focus to the
-  input. *Tests:* `tests/tui/test_running_agents_bar.py`.
+- A `SessionList` under the chat input lists active sessions; `↓` from
+  the input focuses the list, `Enter` switches, `Esc` returns focus to the
+  input. *Tests:* `tests/tui/test_session_list.py`.
 - `Ctrl+Up` / `Ctrl+Down` cycle the attached stream through
   `[Orchestrator, ...running workers/reviewers]`. Selection is matched by
   `session_id`, so the choice is stable across polls even when the running

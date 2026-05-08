@@ -155,7 +155,6 @@ from kagan.core._sessions import (
     list_task_sessions,
     resolve_session_binding,
 )
-from kagan.core._sessions_query import list_running_agents
 from kagan.core._settings import get_settings, set_settings
 from kagan.core._subprocess import resolve_spawn_command
 from kagan.core._task_classification import classify_task
@@ -367,7 +366,6 @@ __all__ = [
     "list_checkpoints",
     "list_projects",
     "list_repos",
-    "list_running_agents",
     "list_task_sessions",
     "load_persona_definitions",
     "merge_task",

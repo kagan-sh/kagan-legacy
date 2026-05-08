@@ -1,25 +1,29 @@
-// @kagan chat participant — orchestrator chat, task watching, and board
+// @kagan chat participant — orchestrator chat, general sessions, and board
 // status inside the native VS Code Chat panel.
 
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import { ApiError } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
-import { SSE_TYPE, CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
-import { formatToolName, renderEvent, type RenderableEvent } from "@kagan/shared-api-client";
-import type { ChatStreamEvent, ChatWatchEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "@kagan/shared-api-client";
-import { parseAttachPrompt, pickReusableChatSessionId, resolveAgentSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
+import { CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
+import { formatToolName } from "@kagan/shared-api-client";
+import type { ChatStreamEvent, ChatWatchEvent, TaskStatus } from "@kagan/shared-api-client";
+import {
+  pickReusableChatSessionId,
+  resetStickyChatStateIfNewConversation,
+  parseSwitchPrompt,
+} from "./chat.participant.helpers.js";
 
 // ── Participant state ──────────────────────────────────────────────────────
-// Collected in a single class so deactivate() can reset it cleanly via
-// context.subscriptions.push({ dispose: () => state.reset() }).
 
 class ChatParticipantState implements vscode.Disposable {
+  /** The currently selected unified session (orchestrator, general, or task). */
   activeChatSessionId: string | null = null;
   sessionCreating: Promise<string> | null = null;
-  watchingTaskId: string | null = null;
-  /** Session currently attached via /attach. */
-  attachedSessionId: string | null = null;
+  /** Cached session type to avoid querying on every turn. */
+  selectedSessionType: string | null = null;
+  /** Cached session role (for task sessions). */
+  selectedSessionRole: string | null = null;
 
   private watchUnsubscribe: (() => void) | null = null;
   private watchedSessionId: string | null = null;
@@ -35,15 +39,13 @@ class ChatParticipantState implements vscode.Disposable {
   }
 
   subscribeToSessionWatch(client: KaganClient, sessionId: string): void {
-    // Skip if already watching this session — avoids tearing down and reopening
-    // the SSE connection on every chat turn for the same session.
     if (this.watchedSessionId === sessionId && this.watchUnsubscribe) return;
     this.stopWatchSubscription();
     this.watchedSessionId = sessionId;
     this.watchUnsubscribe = client.watchChatSession(
       sessionId,
       (event: ChatWatchEvent) => this.handleWatchEvent(event),
-      (err: Error) => console.warn("[kagan] /watch error:", err.message),
+      (err: Error) => console.warn("[kagan] watch error:", err.message),
     );
   }
 
@@ -80,8 +82,8 @@ class ChatParticipantState implements vscode.Disposable {
     this.stopWatchSubscription();
     this.activeChatSessionId = null;
     this.sessionCreating = null;
-    this.watchingTaskId = null;
-    this.attachedSessionId = null;
+    this.selectedSessionType = null;
+    this.selectedSessionRole = null;
   }
 
   dispose(): void {
@@ -106,12 +108,11 @@ export function registerChatParticipant(
 
   participant.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "kagan.svg");
 
-  // Command to open chat pre-filled for a specific task or session.
-  // Accepts either a raw string or a structured object { kind, ... }.
+  // Command to open chat pre-filled for a specific session.
   const openChat = vscode.commands.registerCommand("kagan.chat.open", (arg?: unknown) => {
     let query = "@kagan";
     if (typeof arg === "string") {
-      query = `@kagan /watch ${arg}`;
+      query = `@kagan /switch ${arg}`;
     } else if (typeof arg === "object" && arg !== null && "kind" in arg) {
       const item = arg as {
         kind: string;
@@ -119,41 +120,90 @@ export function registerChatParticipant(
         sessionId?: string;
         taskTitle?: string;
       };
-      if (item.kind === "attach" && item.sessionId) {
-        query = `@kagan /attach ${item.sessionId}`;
+      if (item.kind === "switch" && item.sessionId) {
+        query = `@kagan /switch ${item.sessionId}`;
       } else if (item.kind === "task" && (item.task?.id || item.task?.title)) {
-        query = `@kagan /watch ${item.task.id ?? item.task.title}`;
+        query = `@kagan /switch ${item.task.id ?? item.task.title}`;
       }
     }
     vscode.commands.executeCommand("workbench.action.chat.open", { query });
   });
 
-  // kagan.attachToSession — internal command invoked by running-agent tree clicks.
-  const attachToSession = vscode.commands.registerCommand(
-    "kagan.attachToSession",
+  // kagan.switchSession — internal command invoked by session tree clicks.
+  const switchSession = vscode.commands.registerCommand(
+    "kagan.switchSession",
     (sessionId: unknown) => {
       const id = typeof sessionId === "string" ? sessionId.trim() : "";
       if (!id) {
-        void vscode.window.showWarningMessage(
-          "Choose a running agent session from the Kagan view to attach chat.",
-        );
+        void vscode.window.showWarningMessage("Choose a session from the Kagan view to switch.");
         return;
       }
       vscode.commands.executeCommand("workbench.action.chat.open", {
-        query: `@kagan /attach ${id}`,
+        query: `@kagan /switch ${id}`,
       });
     },
   );
 
-  // kagan.detachFromSession — command palette + tree-node context menu.
-  const detachFromSession = vscode.commands.registerCommand("kagan.detachFromSession", () => {
-    state.attachedSessionId = null;
-    vscode.commands.executeCommand("workbench.action.chat.open", {
-      query: `@kagan /detach`,
-    });
+  // kagan.stopSession — command palette + tree-node context menu.
+  const stopSession = vscode.commands.registerCommand("kagan.stopSession", async () => {
+    const sessionId = state.activeChatSessionId;
+    if (!sessionId) {
+      void vscode.window.showWarningMessage("No session selected.");
+      return;
+    }
+    try {
+      await client.stopSession(sessionId);
+      void vscode.window.showInformationMessage(`Session ${sessionId.slice(0, 8)} stopped.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(`Failed to stop session: ${message}`);
+    }
   });
 
-  context.subscriptions.push(participant, openChat, attachToSession, detachFromSession, state);
+  // kagan.closeSession — command palette + tree-node context menu.
+  const closeSession = vscode.commands.registerCommand("kagan.closeSession", async () => {
+    const sessionId = state.activeChatSessionId;
+    if (!sessionId) {
+      void vscode.window.showWarningMessage("No session selected.");
+      return;
+    }
+    try {
+      await client.closeSession(sessionId);
+      state.activeChatSessionId = null;
+      state.selectedSessionType = null;
+      state.selectedSessionRole = null;
+      void vscode.window.showInformationMessage(`Session ${sessionId.slice(0, 8)} closed.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(`Failed to close session: ${message}`);
+    }
+  });
+
+  // kagan.newGeneralSession — create and switch to a new general session.
+  const newGeneralSession = vscode.commands.registerCommand("kagan.newGeneralSession", async () => {
+    try {
+      const session = await client.createSession({ type: "general" });
+      state.activeChatSessionId = session.id;
+      state.selectedSessionType = session.type;
+      state.selectedSessionRole = session.role;
+      vscode.commands.executeCommand("workbench.action.chat.open", {
+        query: `@kagan Switched to new general session \`${session.id.slice(0, 8)}\`.`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(`Failed to create general session: ${message}`);
+    }
+  });
+
+  context.subscriptions.push(
+    participant,
+    openChat,
+    switchSession,
+    stopSession,
+    closeSession,
+    newGeneralSession,
+    state,
+  );
 }
 
 // ── Request handler ────────────────────────────────────────────────────────
@@ -161,44 +211,49 @@ export function registerChatParticipant(
 async function handleRequest(
   state: ChatParticipantState,
   client: KaganClient,
-  sse: SSEStream,
+  _sse: SSEStream,
   request: vscode.ChatRequest,
   chatCtx: vscode.ChatContext,
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<void> {
   const next = resetStickyChatStateIfNewConversation(
-    { activeChatSessionId: state.activeChatSessionId, watchingTaskId: state.watchingTaskId },
+    { activeChatSessionId: state.activeChatSessionId },
     chatCtx,
   );
   state.activeChatSessionId = next.activeChatSessionId;
-  state.watchingTaskId = next.watchingTaskId;
 
   switch (request.command) {
     case "status":
       await handleStatus(client, stream);
       return;
-    case "watch":
-      await handleWatch(state, client, sse, request.prompt, stream, token);
+    case "sessions":
+      await handleSessions(client, stream);
       return;
-    case "attach":
-      await handleAttach(state, client, request.prompt, stream, token);
+    case "switch":
+      await handleSwitch(state, client, request.prompt, stream);
       return;
-    case "detach":
-      await handleDetach(state, stream);
+    case "stop":
+      await handleStop(state, client, stream);
+      return;
+    case "close":
+      await handleClose(state, client, stream);
       return;
     default:
-      // If attached to a session, stream the session tail
-      if (state.attachedSessionId) {
-        await handleAttachedTurn(state, client, stream, token);
+      if (!state.activeChatSessionId) {
+        await handleChat(state, client, request.prompt, chatCtx, stream, token);
         return;
       }
-      // If watching a task, send follow-up instead of orchestrator chat
-      if (state.watchingTaskId && request.prompt.trim()) {
-        await handleFollowUp(state, client, state.watchingTaskId, request.prompt.trim(), stream);
+      if (state.selectedSessionType === "task") {
+        stream.markdown(
+          "Task sessions are read-only. Switch to an orchestrator or general session to chat.\n",
+        );
         return;
       }
-      // Default: orchestrator chat — send the message to the Kagan orchestrator
+      if (state.selectedSessionType === "general") {
+        await handleGeneralTurn(state, client, request.prompt, stream, token);
+        return;
+      }
       await handleChat(state, client, request.prompt, chatCtx, stream, token);
   }
 }
@@ -248,6 +303,8 @@ async function handleChat(
 
   stream.progress("Starting orchestrator session...");
   state.activeChatSessionId = await getOrCreateSession(state, client, chatCtx);
+  state.selectedSessionType = "orchestrator";
+  state.selectedSessionRole = null;
   state.subscribeToSessionWatch(client, state.activeChatSessionId);
 
   stream.progress("Thinking...");
@@ -268,7 +325,6 @@ async function handleChat(
       );
       if (choice === "Interrupt & take over") {
         await client.interruptChatTurn(state.activeChatSessionId, "takeover");
-        // Small delay so the server processes the interrupt before retry
         await new Promise((resolve) => setTimeout(resolve, 300));
         try {
           const retryResponse = await client.chatStream(state.activeChatSessionId, text, abort.signal);
@@ -282,8 +338,8 @@ async function handleChat(
     }
     const message = err instanceof Error ? err.message : String(err);
     stream.markdown(`\n\n**Error:** ${message}\n`);
-    // Session may be stale — clear it so next turn creates a fresh one
     state.activeChatSessionId = null;
+    state.selectedSessionType = null;
   }
 }
 
@@ -323,7 +379,6 @@ async function streamChatResponse(
             stream.markdown(`\n\n\`${formatToolName(event.tool)}\`\n\n`);
             break;
           case "CHAT_TOOL_PROGRESS":
-            // Quiet — tool completion will show in output
             break;
           case "CHAT_DONE":
             return;
@@ -369,406 +424,171 @@ async function getOrCreateSession(
   return state.sessionCreating;
 }
 
-// ── /attach ────────────────────────────────────────────────────────────────
+// ── /switch ────────────────────────────────────────────────────────────────
 
-/**
- * Handle `/attach <id>`.
- *
- * Resolution order:
- *  1. Parse the prompt as a UUID or 8-char prefix.
- *  2. Look up running agents to resolve task-id → session-id.
- *  3. If the token is already a session-id-shaped string, try it directly via
- *     getSessionReplay to verify the session exists.
- *  4. On success: store session in state, render replay tail, button to detach.
- *  5. On failure: render an error message.
- */
-async function handleAttach(
+async function handleSwitch(
   state: ChatParticipantState,
   client: KaganClient,
   prompt: string,
   stream: vscode.ChatResponseStream,
-  token: vscode.CancellationToken,
 ): Promise<void> {
-  const parsed = parseAttachPrompt(prompt);
+  const parsed = parseSwitchPrompt(prompt);
   if (!parsed) {
-    stream.markdown(`**Unknown task or session:** \`${prompt.trim() || "(empty)"}\`\n\nProvide a full session/task UUID or an 8-character prefix.\n`);
-    stream.button({ command: "kagan.detachFromSession", title: "Back to orchestrator" });
+    stream.markdown(
+      `**Invalid session ID:** \`${prompt.trim() || "(empty)"}\`\n\nProvide a full session UUID or an 8-character prefix.\n`,
+    );
     return;
   }
 
   stream.progress("Resolving session...");
 
-  let resolvedSessionId: string | null = null;
-  let sessionTitle = parsed.id;
-
   try {
-    const running = await client.getRunningAgents();
-    const found = resolveAgentSessionId(parsed.id, running.agents);
-    if (found) {
-      resolvedSessionId = found;
-      const row = running.agents.find((a) => a.session_id === found);
-      if (row) sessionTitle = row.task_title;
-    }
-  } catch {
-    // Best-effort — fall through to direct session lookup
-  }
+    const response = await client.getSessions();
+    const sessions = response.sessions;
+    const lower = parsed.id.toLowerCase();
 
-  if (!resolvedSessionId) {
-    // Attempt to verify the id directly as a session id
-    try {
-      await client.getSessionReplay(parsed.id, { limit: 1 });
-      resolvedSessionId = parsed.id;
-    } catch {
-      stream.markdown(`**Unknown task or session:** \`${parsed.id}\`\n`);
+    const exact = sessions.find((s) => s.id.toLowerCase() === lower);
+    const prefix = sessions.find((s) => s.id.toLowerCase().startsWith(lower));
+    const taskMatch = sessions.find((s) => s.task_id?.toLowerCase() === lower);
+    const matched = exact ?? prefix ?? taskMatch;
+
+    if (!matched) {
+      stream.markdown(`**Session not found:** \`${parsed.id}\`\n`);
       return;
     }
-  }
 
-  state.attachedSessionId = resolvedSessionId;
+    state.activeChatSessionId = matched.id;
+    state.selectedSessionType = matched.type;
+    state.selectedSessionRole = matched.role;
 
-  stream.markdown(`**Attached to session** \`${resolvedSessionId.slice(0, 8)}\` — ${sessionTitle}\n\n`);
-
-  // Fetch replay tail (last 200 events)
-  stream.progress("Fetching session replay...");
-  try {
-    const replay = await client.getSessionReplay(resolvedSessionId, {
-      limit: 200,
-      direction: "backward",
-    });
-    if (replay.events.length > 0) {
-      const wireEvents: WireEvent[] = replay.events.map((e) => ({
-        id: e.id,
-        type: e.event_type,
-        session_id: e.session_id ?? resolvedSessionId,
-        payload: e.payload ?? {},
-        created_at: e.created_at,
-        task_id: "",
-      }));
-      renderHistory(wireEvents, stream);
-      stream.markdown("\n\n---\n\n");
-    } else {
-      stream.markdown("*No events in replay yet.*\n\n");
-    }
-  } catch {
-    stream.markdown("*Could not load session replay.*\n\n");
-  }
-
-  stream.button({ command: "kagan.detachFromSession", title: "Detach" });
-
-  if (!token.isCancellationRequested) {
-    stream.progress("Live...");
-    await streamSessionLive(resolvedSessionId, client, stream, token);
+    const rolePart = matched.role ? ` · ${matched.role}` : "";
+    stream.markdown(
+      `**Switched to session** \`${matched.id.slice(0, 8)}\` — ${matched.type}${rolePart} — ${matched.title}\n`,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`**Error switching session:** ${message}\n`);
   }
 }
 
-// ── /detach ─────────────────────────────────────────────────────────────────
+// ── /sessions ──────────────────────────────────────────────────────────────
 
-async function handleDetach(
-  state: ChatParticipantState,
+async function handleSessions(
+  client: KaganClient,
   stream: vscode.ChatResponseStream,
 ): Promise<void> {
-  if (!state.attachedSessionId) {
-    stream.markdown("Not currently attached to any session.\n");
+  try {
+    const response = await client.getSessions();
+    if (response.sessions.length === 0) {
+      stream.markdown("No active sessions.\n");
+      return;
+    }
+
+    stream.markdown("**Sessions:**\n\n");
+    for (const session of response.sessions) {
+      const rolePart = session.role ? ` · ${session.role}` : "";
+      stream.markdown(
+        `- \`${session.id.slice(0, 8)}\` — **${session.type}**${rolePart} — ${session.status} — ${session.title}\n`,
+      );
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`**Error loading sessions:** ${message}\n`);
+  }
+}
+
+// ── /stop ──────────────────────────────────────────────────────────────────
+
+async function handleStop(
+  state: ChatParticipantState,
+  client: KaganClient,
+  stream: vscode.ChatResponseStream,
+): Promise<void> {
+  const sessionId = state.activeChatSessionId;
+  if (!sessionId) {
+    stream.markdown("No session selected.\n");
     return;
   }
-  const prev = state.attachedSessionId;
-  state.attachedSessionId = null;
-  stream.markdown(`Detached from session \`${prev.slice(0, 8)}\`. Back in orchestrator mode.\n`);
-  stream.button({ command: "kagan.board.refresh", title: "Refresh Board" });
-}
 
-// ── attached turn (default when state.attachedSessionId is set) ────────────
-
-async function handleAttachedTurn(
-  state: ChatParticipantState,
-  client: KaganClient,
-  stream: vscode.ChatResponseStream,
-  token: vscode.CancellationToken,
-): Promise<void> {
-  const sessionId = state.attachedSessionId!;
-  stream.markdown(`*Attached to \`${sessionId.slice(0, 8)}\` — streaming live tail.*\n\n`);
-  stream.button({ command: "kagan.detachFromSession", title: "Detach" });
-  await streamSessionLive(sessionId, client, stream, token);
-}
-
-// ── Session live tail via replay polling ───────────────────────────────────
-
-/**
- * Stream live worker/reviewer events by polling the supported session replay
- * endpoint forward from the last rendered event.
- */
-async function streamSessionLive(
-  sessionId: string,
-  client: KaganClient,
-  stream: vscode.ChatResponseStream,
-  token: vscode.CancellationToken,
-): Promise<void> {
-  let cursor: string | undefined;
-  let sessionActive = true;
-
-  while (!token.isCancellationRequested && sessionActive) {
-    await new Promise<void>((resolve) => setTimeout(resolve, 3_000));
-    if (token.isCancellationRequested) break;
-
-    try {
-      const page = await client.getSessionReplay(sessionId, {
-        cursor,
-        limit: 50,
-        direction: "forward",
-      });
-
-      if (page.events.length > 0) {
-        cursor = page.events[page.events.length - 1]?.id;
-        const wireEvents: WireEvent[] = page.events.map((e) => ({
-          id: e.id,
-          type: e.event_type,
-          session_id: e.session_id ?? sessionId,
-          payload: e.payload ?? {},
-          created_at: e.created_at,
-          task_id: "",
-        }));
-        renderHistory(wireEvents, stream);
-      }
-
-      // Check if session ended
-      if (!page.has_more && page.events.some((e) => isTerminalEvent(e.event_type))) {
-        sessionActive = false;
-      }
-    } catch {
-      // Server unreachable — stop polling
-      sessionActive = false;
-    }
+  try {
+    await client.stopSession(sessionId);
+    stream.markdown(`Session \`${sessionId.slice(0, 8)}\` stopped.\n`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`**Error stopping session:** ${message}\n`);
   }
 }
 
-function isTerminalEvent(eventType: string): boolean {
-  return (
-    eventType === "AGENT_COMPLETED" ||
-    eventType === "AGENT_FAILED" ||
-    eventType === "AGENT_CANCELLED"
-  );
-}
+// ── /close ─────────────────────────────────────────────────────────────────
 
-// ── /watch ─────────────────────────────────────────────────────────────────
-
-async function handleWatch(
+async function handleClose(
   state: ChatParticipantState,
   client: KaganClient,
-  sse: SSEStream,
+  stream: vscode.ChatResponseStream,
+): Promise<void> {
+  const sessionId = state.activeChatSessionId;
+  if (!sessionId) {
+    stream.markdown("No session selected.\n");
+    return;
+  }
+
+  try {
+    await client.closeSession(sessionId);
+    stream.markdown(`Session \`${sessionId.slice(0, 8)}\` closed.\n`);
+    state.activeChatSessionId = null;
+    state.selectedSessionType = null;
+    state.selectedSessionRole = null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`**Error closing session:** ${message}\n`);
+  }
+}
+
+// ── General session chat turn ──────────────────────────────────────────────
+
+async function handleGeneralTurn(
+  state: ChatParticipantState,
+  client: KaganClient,
   prompt: string,
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<void> {
-  const task = await pickTask(client, prompt);
-  if (!task) {
-    stream.markdown("No tasks found.");
-    stream.button({ command: "kagan.task.create", title: "Create Task" });
+  const text = prompt.trim();
+  if (!text) {
+    stream.markdown("Send a message to chat with the general session.\n");
     return;
   }
 
-  state.watchingTaskId = task.id;
-  stream.markdown(`**${task.title}** -- ${task.status}\n\n`);
+  stream.progress("Sending message...");
 
-  if (task.status === "IN_PROGRESS") {
-    // Show brief tail of recent output, then stream live
-    const events = await client.getTaskEvents(task.id, { limit: 10, tail: true });
-    if (events.length > 0) {
-      renderHistory(events, stream);
-      stream.markdown("\n\n---\n\n");
-    }
-    stream.progress("Streaming live...");
-    await streamLive(task.id, sse, stream, token);
-  } else {
-    // For non-running tasks, show last 15 meaningful events
-    const events = await client.getTaskEvents(task.id, { limit: 15, tail: true });
-    renderHistory(events, stream);
-  }
+  const abort = new AbortController();
+  token.onCancellationRequested(() => abort.abort());
 
-  const latest = await safeGetTask(client, task.id);
-  renderActions(latest ?? task, stream);
-}
-
-// ── Follow-up ─────────────────────────────────────────────────────────
-
-async function handleFollowUp(
-  state: ChatParticipantState,
-  client: KaganClient,
-  taskId: string,
-  text: string,
-  stream: vscode.ChatResponseStream,
-): Promise<void> {
   try {
-    stream.progress("Sending follow-up...");
-    await client.sendFollowUp(taskId, text);
-    stream.markdown(`> **Follow-up sent** to task \`${taskId}\`:\n> ${text}\n`);
+    const response = await client.chatStream(state.activeChatSessionId!, text, abort.signal);
+    await streamChatResponse(response, stream, abort.signal);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    stream.markdown(`\n\n**Error sending follow-up:** ${message}\n`);
-    state.watchingTaskId = null;
-  }
-}
-
-// ── Task resolution ────────────────────────────────────────────────────────
-
-async function pickTask(client: KaganClient, prompt: string): Promise<WireTask | undefined> {
-  const trimmed = prompt.trim();
-
-  if (trimmed) {
-    const all = await client.getTasks();
-    const match = all.find(
-      (t) =>
-        t.title.toLowerCase().includes(trimmed.toLowerCase()) ||
-        t.id.startsWith(trimmed),
-    );
-    if (match) return match;
-  }
-
-  const running = await client.getTasks("IN_PROGRESS" as TaskStatus);
-  if (running.length > 0) return running[0];
-
-  const review = await client.getTasks("REVIEW" as TaskStatus);
-  if (review.length > 0) return review[0];
-
-  const all = await client.getTasks();
-  return all[0];
-}
-
-// ── Historical event rendering ─────────────────────────────────────────────
-
-function renderHistory(events: WireEvent[], stream: vscode.ChatResponseStream): void {
-  let textBuf = "";
-  let lastThought = false;
-
-  const flushText = () => {
-    if (!textBuf) return;
-    stream.markdown(textBuf);
-    textBuf = "";
-  };
-
-  for (const event of events) {
-    const rendered = renderEvent(event.type, event.payload ?? {}, event.id, event.session_id ?? "");
-    if (!rendered) continue;
-
-    if (rendered.kind === "text" || rendered.kind === "thought") {
-      const thought = rendered.kind === "thought";
-      if (textBuf && thought !== lastThought) flushText();
-      if (thought && !lastThought) textBuf += "\n\n> *Thinking:* ";
-      textBuf += rendered.body;
-      lastThought = thought;
-    } else {
-      flushText();
-      dispatchRenderable(rendered, stream);
-    }
-  }
-
-  flushText();
-}
-
-// ── Live SSE streaming ─────────────────────────────────────────────────────
-
-function streamLive(
-  taskId: string,
-  sse: SSEStream,
-  stream: vscode.ChatResponseStream,
-  token: vscode.CancellationToken,
-): Promise<void> {
-  return new Promise<void>((resolve) => {
-    let resolved = false;
-    const done = () => {
-      if (resolved) return;
-      resolved = true;
-      subscription.dispose();
-      resolve();
-    };
-
-    const subscription = sse.onMessage((msg: SSEMessage) => {
-      if (msg.type !== SSE_TYPE.SESSION_EVENT) return;
-      if (msg.task_id !== taskId) return;
-
-      const rendered = renderEvent(msg.event.type, msg.event.payload ?? {}, msg.event.id, msg.event.session_id ?? "");
-      if (!rendered) return;
-
-      if (rendered.kind === "text" || rendered.kind === "thought") {
-        if (rendered.body) stream.markdown(rendered.body);
-        return;
+    if (abort.signal.aborted) return;
+    if (err instanceof ApiError && err.errorCode === "TURN_IN_PROGRESS") {
+      const choice = await vscode.window.showWarningMessage(
+        "A turn is already running in this session. Interrupt it?",
+        "Interrupt & take over",
+        "Cancel",
+      );
+      if (choice === "Interrupt & take over") {
+        await client.interruptChatTurn(state.activeChatSessionId!, "takeover");
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        try {
+          const retryResponse = await client.chatStream(state.activeChatSessionId!, text, abort.signal);
+          await streamChatResponse(retryResponse, stream, abort.signal);
+          return;
+        } catch {
+          // fall through to generic error
+        }
       }
-
-      if (rendered.kind === "tool_update") return;
-
-      const isTerminal =
-        rendered.kind === "error" ||
-        rendered.kind === "merge" ||
-        (rendered.kind === "note" && msg.event.type === "AGENT_COMPLETED");
-
-      dispatchRenderable(rendered, stream);
-      if (isTerminal) done();
-    });
-
-    token.onCancellationRequested(done);
-  });
-}
-
-// ── Shared renderable dispatcher ───────────────────────────────────────────
-
-/**
- * Write a non-text, non-thought {@link RenderableEvent} to the chat stream.
- *
- * Callers are responsible for handling `text`, `thought`, and `tool_update`
- * before reaching this helper — those three kinds have caller-specific logic
- * (buffering in renderHistory, body-guard + no-op in streamLive).
- */
-function dispatchRenderable(
-  rendered: RenderableEvent,
-  stream: vscode.ChatResponseStream,
-): void {
-  switch (rendered.kind) {
-    case "tool_start":
-      stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
-      break;
-    case "status_change":
-      stream.markdown(`\n\n---\n*${rendered.title}*\n\n`);
-      break;
-    case "note":
-      stream.markdown(`\n\n---\n**${rendered.title}**\n\n`);
-      break;
-    case "error":
-      stream.markdown(`\n\n---\n**${rendered.title}:** ${rendered.body || "unknown error"}\n\n`);
-      break;
-    case "plan":
-      stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
-      break;
-    case "verdict":
-      stream.markdown(`\n- **[${rendered.title}]** ${rendered.body}\n`);
-      break;
-    case "merge": {
-      const suffix = rendered.body ? `: ${rendered.body}` : "";
-      stream.markdown(`\n\n---\n**${rendered.title}**${suffix}\n\n`);
-      break;
+      return;
     }
-  }
-}
-
-// ── Action buttons ─────────────────────────────────────────────────────────
-
-function renderActions(task: WireTask, stream: vscode.ChatResponseStream): void {
-  if (task.status === "REVIEW") {
-    stream.button({ command: "kagan.task.diff", title: "View Diff", arguments: [{ kind: "task", task }] });
-    stream.button({ command: "kagan.review.approve", title: "Approve", arguments: [{ kind: "task", task }] });
-    stream.button({ command: "kagan.review.reject", title: "Reject", arguments: [{ kind: "task", task }] });
-    stream.button({ command: "kagan.review.merge", title: "Merge", arguments: [{ kind: "task", task }] });
-  } else if (task.status === "BACKLOG") {
-    stream.button({ command: "kagan.task.run", title: "Run Task", arguments: [{ kind: "task", task }] });
-  } else if (task.status === "DONE") {
-    stream.button({ command: "kagan.task.diff", title: "View Diff", arguments: [{ kind: "task", task }] });
-  }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-async function safeGetTask(client: KaganClient, taskId: string): Promise<WireTask | undefined> {
-  try {
-    return await client.getTask(taskId);
-  } catch {
-    return undefined;
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`\n\n**Error:** ${message}\n`);
   }
 }

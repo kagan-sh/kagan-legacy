@@ -278,22 +278,38 @@ export interface MentionResponse {
   state?: string | null;
 }
 
-export interface ActiveAgentRowResponse {
-  task_id: string;
-  task_title: string;
-  task_status: string;
-  session_id: string;
-  agent_role?: string | null;
-  agent_backend: string;
-  session_status: string;
-  started_at: string;
-  last_event_at?: string | null;
-  input_tokens?: number | null;
-  output_tokens?: number | null;
+export interface SessionCapabilitiesResponse {
+  can_chat: boolean;
+  can_stream: boolean;
+  can_replay: boolean;
+  can_stop: boolean;
+  can_close: boolean;
+  has_kagan_tools: boolean;
 }
 
-export interface RunningAgentsResponse {
-  agents: ActiveAgentRowResponse[];
+export interface SessionItemResponse {
+  id: string;
+  type: string;
+  role: string | null;
+  status: string;
+  title: string;
+  backend: string | null;
+  project_id: string | null;
+  task_id: string | null;
+  session_id: string | null;
+  chat_session_id: string | null;
+  updated_at: string;
+  capabilities: SessionCapabilitiesResponse;
+}
+
+export interface SessionsResponse {
+  sessions: SessionItemResponse[];
+}
+
+export interface CreateSessionRequest {
+  type: string;
+  backend?: string | null;
+  title?: string | null;
 }
 
 export interface SessionReplayEvent {
@@ -338,6 +354,7 @@ export interface ChatSessionCreateRequest {
   label?: string | null;
   source?: string;
   project_id?: string | null;
+  session_type?: string | null;
 }
 
 export interface ChatSessionPatchRequest {

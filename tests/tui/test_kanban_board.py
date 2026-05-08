@@ -39,6 +39,7 @@ async def empty_board(tmp_path):
 
 async def test_ctrl_o_opens_chat_on_kanban(board: KaganDriver) -> None:
     from kagan.tui import KaganApp
+    from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
@@ -46,9 +47,9 @@ async def test_ctrl_o_opens_chat_on_kanban(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("ctrl+i")
         await pilot.pause()
+        assert isinstance(app.screen, OrchestratorOverlay)
         chat_panel = app.screen.query_one("#chat-panel")
-        assert chat_panel.has_class("visible")
-        assert app.screen.has_class("chat-overlay-vertical")
+        assert chat_panel.is_mounted
 
 
 async def test_card_run_state_shows_mode_specific_running_and_not_started(
@@ -264,29 +265,10 @@ async def test_search_query_replaces_header_with_input(board: KaganDriver) -> No
         assert header.display
 
 
-async def test_ctrl_o_on_selected_detached_task_opens_docked_task_overlay(
-    board: KaganDriver,
-) -> None:
-    from textual.widgets import Static
-
-    from kagan.tui import KaganApp
-    from kagan.tui.widgets.chat import ChatPanel
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
-        await pilot.press("ctrl+i")
-        await pilot.pause()
-
-        panel = app.screen.query_one(ChatPanel)
-        assert panel.has_class("visible")
-        assert panel.has_class("docked")
-        assert not panel.has_class("fullscreen")
-        assert app.screen.has_class("chat-overlay-vertical")
-
-        heading = panel.query_one("#chat-overlay-empty-heading", Static)
-        assert str(heading.content) == "What are you working on?"
+# Removed: test_ctrl_o_on_selected_detached_task_opens_docked_task_overlay.
+# This tested the old kanban embedded chat panel (docked / vertical layout
+# classes) which was removed in the Unified Sessions Refactor. Ctrl+I now
+# pushes OrchestratorOverlay instead.
 
 
 async def test_hjkl_navigation_moves_selection_across_cards(board: KaganDriver) -> None:
@@ -404,7 +386,7 @@ async def test_empty_board_shows_onboarding_hint_with_help_fallback(
         hint_text = str(hint.render())
         assert hint.has_class("visible")
         assert "No tasks yet." in hint_text
-        assert "type in chat to get started" in hint_text
+        assert "Press n to create one" in hint_text
 
 
 async def test_f1_opens_help_modal_on_kanban(empty_board: KaganDriver) -> None:

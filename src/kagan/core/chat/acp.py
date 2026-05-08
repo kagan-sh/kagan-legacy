@@ -227,12 +227,16 @@ def make_spawn_per_turn_acp_factory(
     default_agent_backend: str | None = None,
     cwd: Path | None = None,
     attachments: list[dict[str, str]] | None = None,
+    raw: bool = False,
 ) -> ACPSessionFactory:
     """Return an ``ACPSessionFactory`` backed by one fresh ACP process per turn.
 
     The private wrapper exists only because pyrefly cannot prove protocol
     compatibility for dynamic objects with a ``prompt`` attribute. The public
     API is the helper function, and all spawn state lives in this closure.
+
+    When ``raw`` is True, the backend receives user blocks verbatim — no
+    orchestrator system prompt and no MCP tools.
     """
 
     async def prompt(
@@ -250,6 +254,7 @@ def make_spawn_per_turn_acp_factory(
             default_agent_backend=default_agent_backend,
             cwd=cwd,
             attachments=attachments,
+            raw=raw,
             session_id=session_id,
             prompt_blocks=prompt_blocks,
             on_update=on_update,
@@ -296,6 +301,7 @@ async def run_spawn_per_turn_acp_prompt(
     default_agent_backend: str | None = None,
     cwd: Path | None = None,
     attachments: list[dict[str, str]] | None = None,
+    raw: bool = False,
     session_id: str,
     prompt_blocks: list[Any],
     on_update: Callable[[Any], Awaitable[None]],
@@ -322,6 +328,7 @@ async def run_spawn_per_turn_acp_prompt(
             on_update=on_update,
             attachments=attachments,
             cwd=cwd,
+            lightweight=raw,
             permission_resolver=permission_resolver,
         )
     )

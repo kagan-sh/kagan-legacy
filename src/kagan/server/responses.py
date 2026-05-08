@@ -384,40 +384,41 @@ class IntegrationSyncResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
-# ── Running agents ───────────────────────────────────────────────────────────
+# ── Unified session ───────────────────────────────────────────────────────────
 
 
-class ActiveAgentRowResponse(BaseModel):
-    """Wire shape for a single running-agent row (Task + Session join)."""
-
-    task_id: str
-    task_title: str
-    task_status: str
-    session_id: str
-    agent_role: str | None = None
-    agent_backend: str
-    session_status: str
-    started_at: str
-    last_event_at: str | None = None
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-
-    @field_validator("started_at", mode="before")
-    @classmethod
-    def _coerce_started_at(cls, v: Any) -> str:
-        result = _dt_iso(v)
-        return result or ""
-
-    @field_validator("last_event_at", mode="before")
-    @classmethod
-    def _coerce_last_event_at(cls, v: Any) -> str | None:
-        return _dt_iso(v)
+class SessionCapabilitiesResponse(_OrmBase):
+    can_chat: bool
+    can_stream: bool
+    can_replay: bool
+    can_stop: bool
+    can_close: bool
+    has_kagan_tools: bool
 
 
-class RunningAgentsResponse(BaseModel):
-    """Response for GET /api/v1/agents/running."""
+class SessionItemResponse(_OrmBase):
+    id: str
+    type: str
+    role: str | None
+    status: str
+    title: str
+    backend: str | None
+    project_id: str | None
+    task_id: str | None
+    session_id: str | None
+    chat_session_id: str | None
+    updated_at: str
+    capabilities: SessionCapabilitiesResponse
 
-    agents: list[ActiveAgentRowResponse]
+
+class SessionsResponse(BaseModel):
+    sessions: list[SessionItemResponse]
+
+
+class CreateSessionRequest(BaseModel):
+    type: str
+    backend: str | None = None
+    title: str | None = None
 
 
 # ── Session replay ────────────────────────────────────────────────────────────
@@ -487,8 +488,10 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "IntegrationInfo": IntegrationInfo,
     "IntegrationSyncResult": IntegrationSyncResult,
     "MentionResponse": MentionResponse,
-    "ActiveAgentRowResponse": ActiveAgentRowResponse,
-    "RunningAgentsResponse": RunningAgentsResponse,
+    "SessionCapabilitiesResponse": SessionCapabilitiesResponse,
+    "SessionItemResponse": SessionItemResponse,
+    "SessionsResponse": SessionsResponse,
+    "CreateSessionRequest": CreateSessionRequest,
     "SessionReplayEvent": SessionReplayEvent,
     "SessionReplayPage": SessionReplayPage,
 }

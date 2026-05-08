@@ -91,6 +91,7 @@ async def test_session_resume_modal_opens_and_resumes_project(
         await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
         assert app.project is not None
         assert app.project.id == project_id
+        await app.orchestrator_sessions.ensure_loaded()
         assert app.orchestrator_sessions.current_session_id() == "resume01"
 
     await driver.teardown()

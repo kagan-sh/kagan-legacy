@@ -6,9 +6,9 @@ import { MemoryRouter, useLocation } from 'react-router';
 import {
   commandPaletteOpenAtom,
   helpOverlayOpenAtom,
-  rightRailModeAtom,
-  rightRailTaskIdAtom,
   sessionPickerOpenAtom,
+  sessionOverlayOpenAtom,
+  sessionOverlayLayoutAtom,
 } from '@/lib/atoms/ui';
 import { useGlobalShortcuts } from '@/lib/hooks/use-global-shortcuts';
 
@@ -150,38 +150,35 @@ describe('useGlobalShortcuts', () => {
     document.body.removeChild(input);
   });
 
-  it('Mod+. cycles chat-right to chat-bottom to closed', () => {
+  it('Mod+. toggles the session overlay open and closed', () => {
     renderHarness(store, ['/task/task-456']);
 
     fireEvent.keyDown(document, { key: '.', ctrlKey: true });
-    expect(store.get(rightRailTaskIdAtom)).toBe('task-456');
-    expect(store.get(rightRailModeAtom)).toBe('chat-right');
+    expect(store.get(sessionOverlayOpenAtom)).toBe(true);
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('docked');
 
     fireEvent.keyDown(document, { key: '.', ctrlKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-bottom');
-
-    fireEvent.keyDown(document, { key: '.', ctrlKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('none');
+    expect(store.get(sessionOverlayOpenAtom)).toBe(false);
   });
 
   it('accepts keyboard-code Period for the AI panel shortcut', () => {
     renderHarness(store, ['/task/task-456']);
 
     fireEvent.keyDown(document, { key: 'Unidentified', code: 'Period', metaKey: true });
-    expect(store.get(rightRailTaskIdAtom)).toBe('task-456');
-    expect(store.get(rightRailModeAtom)).toBe('chat-right');
+    expect(store.get(sessionOverlayOpenAtom)).toBe(true);
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('docked');
   });
 
-  it('Cmd+Shift+F toggles chat fullscreen when the rail is open', () => {
-    store.set(rightRailTaskIdAtom, 'task-456');
-    store.set(rightRailModeAtom, 'chat-right');
+  it('Cmd+Shift+F toggles overlay fullscreen when the overlay is open', () => {
+    store.set(sessionOverlayOpenAtom, true);
+    store.set(sessionOverlayLayoutAtom, 'docked');
     renderHarness(store, ['/task/task-456']);
 
     fireEvent.keyDown(document, { key: 'f', metaKey: true, shiftKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-fullscreen');
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('fullscreen');
 
     fireEvent.keyDown(document, { key: 'f', metaKey: true, shiftKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-right');
+    expect(store.get(sessionOverlayLayoutAtom)).toBe('docked');
   });
 
   it('Cmd+Shift+W toggles board and workspace routes', () => {

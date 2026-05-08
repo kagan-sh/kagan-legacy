@@ -124,7 +124,7 @@ async def test_backlog_task_auto_pushes_orchestrator_overlay(board: KaganDriver)
         assert isinstance(app.screen, OrchestratorOverlay)
         overlay = app.screen
         # Orchestrator mode (no session attached) by default for a task with no sessions
-        assert overlay._attached_session_id is None
+        assert overlay._selected_session_id is None
 
 
 async def test_escape_from_auto_overlay_reaches_task_screen(board: KaganDriver) -> None:

@@ -52,8 +52,8 @@ ______________________________________________________________________
 - `/task/:id` adapts its default tab by task state and workspace availability
 - three tabs: **Overview**, **Changes**, and **Review**
 - tab auto-selection: `REVIEW` with workspace opens Review; `BACKLOG` opens Overview; workspace present opens Changes; otherwise Overview
-- live streaming happens in the **ChatSidePanel** overlay (right rail), which auto-opens when a task has an active session
-- the ChatSidePanel has a Worker/Reviewer lane toggle in its header, a LIVE indicator, and filters events by the active session ID
+- live streaming happens in the **SessionOverlay** overlay (right rail), which auto-opens when a task has an active session
+- the SessionOverlay has a Worker/Reviewer lane toggle in its header, a LIVE indicator, and filters events by the active session ID
 - URL deep-linking via `?lane=worker|reviewer` auto-opens the overlay with the specified lane
 - "Watch stream" on the board inspector opens `/task/:id?lane=worker` (overlay auto-opens)
 - sticky action bar keeps lifecycle controls and run controls visible
@@ -61,9 +61,9 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 5. ChatSidePanel Streaming Overlay
+## 5. SessionOverlay Streaming Overlay
 
-- live execution streaming surfaces in the **ChatSidePanel**, a right-rail overlay on the task detail page
+- live execution streaming surfaces in the **SessionOverlay**, a right-rail overlay on the task detail page
 - the overlay auto-opens when a task has an active session or when navigating with `?lane=worker|reviewer`
 - Worker/Reviewer lane toggle in the overlay header switches streaming context
 - LIVE indicator and streaming status use the shared animated wave glyph
@@ -96,7 +96,7 @@ ______________________________________________________________________
 
 ## 8. Realtime & Accessibility
 
-- board, task (including ChatSidePanel overlay), and chat views react to SSE updates
+- board, task (including SessionOverlay overlay), and chat views react to SSE updates
 - visible keyboard focus, strong border contrast, skip link support, and reduced-motion respect
 - typography is split between UI and code surfaces for readability in long work sessions
 
@@ -106,14 +106,14 @@ ______________________________________________________________________
 
 - the right rail has one active target: a task stream (`rightRailTaskIdAtom`) or
   an orchestrator session (`rightRailChatSessionIdAtom`)
-- `ChatSidePanel` renders task worker/reviewer streams and follows
+- `SessionOverlay` renders task worker/reviewer streams and follows
   `/task/:id?lane=worker|reviewer`
 - `OrchestratorChatPanel` renders project orchestrator sessions in the rail,
   workspace, or `/chat/:id`
 - the help overlay keeps `Esc` streaming behavior separate from rail/session
   switching copy
 
-*Tests:* `packages/web/src/components/session/chat-side-panel.test.tsx`,
+*Tests:* `packages/web/src/components/session/session-overlay.test.tsx`,
 `packages/web/src/components/layout/app-layout.test.tsx`.
 
 ### Preflight gate

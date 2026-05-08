@@ -54,8 +54,8 @@ const CHAT_STREAM_FRAMES = [
 // the global SSE stream. We add a second, standalone HTTP server on port 47867
 // that serves the chat-specific routes:
 //   GET  /api/settings
-//   GET  /api/chat/sessions
-//   GET  /api/chat/sessions/:id/watch
+//   GET  /api/v1/sessions
+//   GET  /api/chat/sessions/:id/watch (live orchestrator chat SSE)
 //   GET  /api/chat/sessions/:id/messages
 //   POST /api/chat/:id/stream
 //
@@ -109,13 +109,35 @@ async function handleChatRequest(
     return;
   }
 
-  // GET /api/chat/sessions
-  if (req.method === "GET" && url.pathname === "/api/chat/sessions") {
-    jsonOk(res, [TEST_CHAT_SESSION]);
+  // GET /api/v1/sessions
+  if (req.method === "GET" && url.pathname === "/api/v1/sessions") {
+    jsonOk(res, {
+      sessions: [{
+        id: `orch:${TEST_CHAT_SESSION.id}`,
+        type: "orchestrator",
+        role: null,
+        status: "idle",
+        title: TEST_CHAT_SESSION.label,
+        backend: TEST_CHAT_SESSION.agent_backend,
+        project_id: null,
+        task_id: null,
+        session_id: null,
+        chat_session_id: TEST_CHAT_SESSION.id,
+        updated_at: TEST_CHAT_SESSION.updated_at,
+        capabilities: {
+          can_chat: true,
+          can_stream: true,
+          can_replay: false,
+          can_stop: true,
+          can_close: true,
+          has_kagan_tools: true,
+        },
+      }],
+    });
     return;
   }
 
-  // GET /api/chat/sessions/:id/messages?after_id=N — catch-up for watchChatSession
+  // GET /api/chat/sessions/:id/messages?after_id=N — catch-up for live chat SSE
   if (
     req.method === "GET" &&
     /^\/api\/chat\/sessions\/[^/]+\/messages$/.test(url.pathname)
@@ -124,7 +146,7 @@ async function handleChatRequest(
     return;
   }
 
-  // GET /api/chat/sessions/:id/watch — keep-alive SSE
+  // GET /api/chat/sessions/:id/watch — live orchestrator chat keep-alive SSE
   if (
     req.method === "GET" &&
     /^\/api\/chat\/sessions\/[^/]+\/watch$/.test(url.pathname)
@@ -307,17 +329,17 @@ suite("Chat participant", () => {
     );
   });
 
-  test("fake server chat/sessions endpoint returns the test session", async () => {
-    // Exercise the route that KaganClient.getChatSessions() calls — used by
-    // getOrCreateSession() in the participant.
-    const raw = await httpGet("127.0.0.1", CHAT_SERVER_PORT, "/api/chat/sessions");
+  test("fake server unified sessions endpoint returns the test session", async () => {
+    // Exercise the route that KaganClient.getSessions() calls.
+    const raw = await httpGet("127.0.0.1", CHAT_SERVER_PORT, "/api/v1/sessions");
     const envelope = JSON.parse(raw) as {
       ok: boolean;
-      data: typeof TEST_CHAT_SESSION[];
+      data: { sessions: Array<{ id: string; chat_session_id: string }> };
     };
     assert.equal(envelope.ok, true);
-    assert.equal(envelope.data.length, 1);
-    assert.equal(envelope.data[0].id, CHAT_SESSION_ID);
+    assert.equal(envelope.data.sessions.length, 1);
+    assert.equal(envelope.data.sessions[0].id, `orch:${CHAT_SESSION_ID}`);
+    assert.equal(envelope.data.sessions[0].chat_session_id, CHAT_SESSION_ID);
   });
 
   // TODO(vscode-chat-invoke): As of 2026-05-08, vscode.chat.sendRequest() is not

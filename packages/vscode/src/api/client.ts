@@ -5,7 +5,7 @@ import {
   type BackendStats,
   type ChatMessageDetailResponse,
   type TurnStatusResponse,
-  type ChatWatchEvent,
+  type ChatWatchEvent as LiveChatEvent,
   type DoctorReportResponse,
   type Mention,
   type SearchMentionsInput,
@@ -30,7 +30,7 @@ export interface KaganClientConfig {
  * Inherits all HTTP plumbing (auth headers, envelope unwrapping, URL
  * normalisation) from the shared class. This subclass adds:
  *   - chatStream() with 409 TURN_IN_PROGRESS special handling
- *   - watchChatSession() with reconnection and catch-up logic
+ *   - followChatSession() with reconnection and catch-up logic for live chat
  *   - VS Code-specific endpoints (analytics, mentions, doctor, github)
  *   - streamRequest() — raw fetch helper for SSE paths that must bypass
  *     envelope unwrapping (streaming SSE, /health raw status)
@@ -110,14 +110,14 @@ export class KaganClient extends KaganApiClient {
   }
 
   /**
-   * Subscribe to the per-session SSE watch stream.
+   * Subscribe to the per-session SSE stream for live orchestrator chat.
    * Returns a dispose function; call it to unsubscribe and close the stream.
    * On unexpected disconnects, waits 3 s then reconnects automatically.
    * After reconnect, catches up via GET /messages?after_id=lastSeenId.
    */
-  watchChatSession(
+  followChatSession(
     sessionId: string,
-    onEvent: (event: ChatWatchEvent) => void,
+    onEvent: (event: LiveChatEvent) => void,
     onError?: (err: Error) => void,
   ): () => void {
     let disposed = false;
@@ -137,12 +137,12 @@ export class KaganClient extends KaganApiClient {
 
     const reconnect = async () => {
       if (disposed) return;
-      // Catch up on missed messages before resuming the watch stream
+      // Catch up on missed messages before resuming the live chat stream.
       try {
         const missed = await this.getChatMessages(sessionId, lastSeenId);
         for (const msg of missed) {
           lastSeenId = Math.max(lastSeenId, msg.id);
-          const event: ChatWatchEvent = msg.role === "user"
+          const event: LiveChatEvent = msg.role === "user"
             ? { t: "CHAT_USER_MESSAGE", message_id: msg.id, content: msg.content }
             : {
                 t: "CHAT_ASSISTANT_MESSAGE",
@@ -155,10 +155,10 @@ export class KaganClient extends KaganApiClient {
       } catch {
         // Best-effort — don't block reconnect on catch-up failure
       }
-      if (!disposed) void startWatch();
+      if (!disposed) void startLiveStream();
     };
 
-    const startWatch = async () => {
+    const startLiveStream = async () => {
       if (disposed) return;
       controller = new AbortController();
       const { signal } = controller;
@@ -171,7 +171,7 @@ export class KaganClient extends KaganApiClient {
         );
 
         if (!response.ok || !response.body) {
-          throw new Error(`Watch stream failed: ${response.status}`);
+          throw new Error(`Live chat stream failed: ${response.status}`);
         }
 
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -190,7 +190,7 @@ export class KaganClient extends KaganApiClient {
               const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
               if (!dataLine) continue;
               try {
-                const event = JSON.parse(dataLine.slice(6)) as ChatWatchEvent;
+                const event = JSON.parse(dataLine.slice(6)) as LiveChatEvent;
                 if ("id" in event && typeof (event as Record<string, unknown>).id === "number") {
                   lastSeenId = Math.max(lastSeenId, (event as Record<string, unknown>).id as number);
                 }
@@ -214,7 +214,7 @@ export class KaganClient extends KaganApiClient {
       scheduleReconnect();
     };
 
-    void startWatch();
+    void startLiveStream();
 
     return () => {
       disposed = true;
@@ -312,24 +312,24 @@ export class KaganClient extends KaganApiClient {
 
   // ── Unified sessions ───────────────────────────────────────────────────
 
-  /** GET /api/sessions */
+  /** GET /api/v1/sessions */
   getSessions(): Promise<SessionsResponse> {
-    return this.get<SessionsResponse>("/api/sessions");
+    return this.get<SessionsResponse>("/api/v1/sessions");
   }
 
-  /** POST /api/sessions */
+  /** POST /api/v1/sessions */
   createSession(input: CreateSessionRequest): Promise<SessionItemResponse> {
-    return this.post<SessionItemResponse>("/api/sessions", input);
+    return this.post<SessionItemResponse>("/api/v1/sessions", input);
   }
 
-  /** POST /api/sessions/:sessionId/stop */
+  /** POST /api/v1/sessions/:sessionId/stop */
   stopSession(sessionId: string): Promise<void> {
-    return this.post<void>(`/api/sessions/${sessionId}/stop`, {});
+    return this.post<void>(`/api/v1/sessions/${sessionId}/stop`, {});
   }
 
-  /** POST /api/sessions/:sessionId/close */
+  /** POST /api/v1/sessions/:sessionId/close */
   closeSession(sessionId: string): Promise<void> {
-    return this.post<void>(`/api/sessions/${sessionId}/close`, {});
+    return this.post<void>(`/api/v1/sessions/${sessionId}/close`, {});
   }
 
   // ── Private ────────────────────────────────────────────────────────────

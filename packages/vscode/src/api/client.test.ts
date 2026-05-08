@@ -127,7 +127,7 @@ describe("KaganClient", () => {
   });
 
   it("lists unified sessions", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
           ok: true,
@@ -170,10 +170,14 @@ describe("KaganClient", () => {
     const result = await client.getSessions();
     expect(result.sessions).toHaveLength(1);
     expect(result.sessions[0].type).toBe("orchestrator");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:8765/api/v1/sessions",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
   it("creates a unified session", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
           ok: true,
@@ -211,6 +215,10 @@ describe("KaganClient", () => {
     const client = new KaganClient("127.0.0.1:8765");
     const result = await client.createSession({ type: "general", backend: "claude-code" });
     expect(result.type).toBe("general");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:8765/api/v1/sessions",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("stops a session", async () => {
@@ -224,7 +232,7 @@ describe("KaganClient", () => {
     const client = new KaganClient("127.0.0.1:8765");
     await expect(client.stopSession("sess-1")).resolves.toEqual({});
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:8765/api/sessions/sess-1/stop",
+      "http://127.0.0.1:8765/api/v1/sessions/sess-1/stop",
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -240,7 +248,7 @@ describe("KaganClient", () => {
     const client = new KaganClient("127.0.0.1:8765");
     await expect(client.closeSession("sess-1")).resolves.toEqual({});
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:8765/api/sessions/sess-1/close",
+      "http://127.0.0.1:8765/api/v1/sessions/sess-1/close",
       expect.objectContaining({ method: "POST" }),
     );
   });

@@ -47,7 +47,7 @@
         "id": "kagan.agent",
         "fullName": "Kagan",
         "name": "kagan",
-        "description": "Chat with the Kagan orchestrator, watch tasks, and check board status",
+        "description": "Chat with Kagan sessions and check board status",
         "isSticky": true,
         "commands": [
           {
@@ -189,7 +189,7 @@
       },
       {
         "command": "kagan.chat.open",
-        "title": "Watch in Chat",
+        "title": "Open Session in Chat",
         "category": "Kagan",
         "icon": "$(comment-discussion)"
       },
@@ -461,11 +461,6 @@
           "type": "string",
           "default": "kagan",
           "description": "Command used to start the local Kagan server automatically; the extension runs `<command> serve`"
-        },
-        "kagan.autoWatchOnAttach": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically open the Chat panel and stream task output when the IDE is opened via Attach to Task"
         }
       }
     }

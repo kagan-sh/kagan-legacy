@@ -7,49 +7,53 @@ import { ApiError } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
 import { CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
 import { formatToolName } from "@kagan/shared-api-client";
-import type { ChatStreamEvent, ChatWatchEvent, TaskStatus } from "@kagan/shared-api-client";
+import type { ChatStreamEvent, ChatWatchEvent as LiveChatEvent, TaskStatus } from "@kagan/shared-api-client";
 import {
-  pickReusableChatSessionId,
+  pickReusableOrchestratorSession,
   resetStickyChatStateIfNewConversation,
   parseSwitchPrompt,
+  resolveSwitchSession,
+  switchTokenForSession,
 } from "./chat.participant.helpers.js";
 
 // ── Participant state ──────────────────────────────────────────────────────
 
 class ChatParticipantState implements vscode.Disposable {
+  /** Raw chat session id used by the live chat streaming endpoints. */
+  activeRawChatSessionId: string | null = null;
   /** The currently selected unified session (orchestrator, general, or task). */
-  activeChatSessionId: string | null = null;
+  selectedSessionId: string | null = null;
   sessionCreating: Promise<string> | null = null;
   /** Cached session type to avoid querying on every turn. */
   selectedSessionType: string | null = null;
   /** Cached session role (for task sessions). */
   selectedSessionRole: string | null = null;
 
-  private watchUnsubscribe: (() => void) | null = null;
-  private watchedSessionId: string | null = null;
+  private liveStreamUnsubscribe: (() => void) | null = null;
+  private liveStreamSessionId: string | null = null;
   private remoteChunkBuffer = "";
 
-  stopWatchSubscription(): void {
-    if (this.watchUnsubscribe) {
-      this.watchUnsubscribe();
-      this.watchUnsubscribe = null;
+  stopLiveStreamSubscription(): void {
+    if (this.liveStreamUnsubscribe) {
+      this.liveStreamUnsubscribe();
+      this.liveStreamUnsubscribe = null;
     }
-    this.watchedSessionId = null;
+    this.liveStreamSessionId = null;
     this.remoteChunkBuffer = "";
   }
 
-  subscribeToSessionWatch(client: KaganClient, sessionId: string): void {
-    if (this.watchedSessionId === sessionId && this.watchUnsubscribe) return;
-    this.stopWatchSubscription();
-    this.watchedSessionId = sessionId;
-    this.watchUnsubscribe = client.watchChatSession(
+  subscribeToLiveChat(client: KaganClient, sessionId: string): void {
+    if (this.liveStreamSessionId === sessionId && this.liveStreamUnsubscribe) return;
+    this.stopLiveStreamSubscription();
+    this.liveStreamSessionId = sessionId;
+    this.liveStreamUnsubscribe = client.followChatSession(
       sessionId,
-      (event: ChatWatchEvent) => this.handleWatchEvent(event),
-      (err: Error) => console.warn("[kagan] watch error:", err.message),
+      (event: LiveChatEvent) => this.handleWatchEvent(event),
+      (err: Error) => console.warn("[kagan] live chat stream error:", err.message),
     );
   }
 
-  handleWatchEvent(event: ChatWatchEvent): void {
+  handleWatchEvent(event: LiveChatEvent): void {
     switch (event.t) {
       case CHAT_WATCH_TYPE.CHAT_CHUNK:
         this.remoteChunkBuffer += event.content;
@@ -79,8 +83,9 @@ class ChatParticipantState implements vscode.Disposable {
   }
 
   reset(): void {
-    this.stopWatchSubscription();
-    this.activeChatSessionId = null;
+    this.stopLiveStreamSubscription();
+    this.activeRawChatSessionId = null;
+    this.selectedSessionId = null;
     this.sessionCreating = null;
     this.selectedSessionType = null;
     this.selectedSessionRole = null;
@@ -146,7 +151,7 @@ export function registerChatParticipant(
 
   // kagan.stopSession — command palette + tree-node context menu.
   const stopSession = vscode.commands.registerCommand("kagan.stopSession", async () => {
-    const sessionId = state.activeChatSessionId;
+    const sessionId = sessionActionId(state);
     if (!sessionId) {
       void vscode.window.showWarningMessage("No session selected.");
       return;
@@ -162,14 +167,15 @@ export function registerChatParticipant(
 
   // kagan.closeSession — command palette + tree-node context menu.
   const closeSession = vscode.commands.registerCommand("kagan.closeSession", async () => {
-    const sessionId = state.activeChatSessionId;
+    const sessionId = sessionActionId(state);
     if (!sessionId) {
       void vscode.window.showWarningMessage("No session selected.");
       return;
     }
     try {
       await client.closeSession(sessionId);
-      state.activeChatSessionId = null;
+      state.activeRawChatSessionId = null;
+      state.selectedSessionId = null;
       state.selectedSessionType = null;
       state.selectedSessionRole = null;
       void vscode.window.showInformationMessage(`Session ${sessionId.slice(0, 8)} closed.`);
@@ -183,7 +189,8 @@ export function registerChatParticipant(
   const newGeneralSession = vscode.commands.registerCommand("kagan.newGeneralSession", async () => {
     try {
       const session = await client.createSession({ type: "general" });
-      state.activeChatSessionId = session.id;
+      state.selectedSessionId = session.id;
+      state.activeRawChatSessionId = session.chat_session_id ?? session.id;
       state.selectedSessionType = session.type;
       state.selectedSessionRole = session.role;
       vscode.commands.executeCommand("workbench.action.chat.open", {
@@ -218,10 +225,15 @@ async function handleRequest(
   token: vscode.CancellationToken,
 ): Promise<void> {
   const next = resetStickyChatStateIfNewConversation(
-    { activeChatSessionId: state.activeChatSessionId },
+    { activeRawChatSessionId: state.activeRawChatSessionId },
     chatCtx,
   );
-  state.activeChatSessionId = next.activeChatSessionId;
+  state.activeRawChatSessionId = next.activeRawChatSessionId;
+  if (!state.activeRawChatSessionId) {
+    state.selectedSessionId = null;
+    state.selectedSessionType = null;
+    state.selectedSessionRole = null;
+  }
 
   switch (request.command) {
     case "status":
@@ -240,7 +252,7 @@ async function handleRequest(
       await handleClose(state, client, stream);
       return;
     default:
-      if (!state.activeChatSessionId) {
+      if (!state.activeRawChatSessionId) {
         await handleChat(state, client, request.prompt, chatCtx, stream, token);
         return;
       }
@@ -302,10 +314,10 @@ async function handleChat(
   }
 
   stream.progress("Starting orchestrator session...");
-  state.activeChatSessionId = await getOrCreateSession(state, client, chatCtx);
+  state.activeRawChatSessionId = await getOrCreateSession(state, client, chatCtx);
   state.selectedSessionType = "orchestrator";
   state.selectedSessionRole = null;
-  state.subscribeToSessionWatch(client, state.activeChatSessionId);
+  state.subscribeToLiveChat(client, state.activeRawChatSessionId);
 
   stream.progress("Thinking...");
 
@@ -313,7 +325,7 @@ async function handleChat(
   token.onCancellationRequested(() => abort.abort());
 
   try {
-    const response = await client.chatStream(state.activeChatSessionId, text, abort.signal);
+    const response = await client.chatStream(state.activeRawChatSessionId, text, abort.signal);
     await streamChatResponse(response, stream, abort.signal);
   } catch (err) {
     if (abort.signal.aborted) return;
@@ -324,10 +336,10 @@ async function handleChat(
         "Cancel",
       );
       if (choice === "Interrupt & take over") {
-        await client.interruptChatTurn(state.activeChatSessionId, "takeover");
+        await client.interruptChatTurn(state.activeRawChatSessionId, "takeover");
         await new Promise((resolve) => setTimeout(resolve, 300));
         try {
-          const retryResponse = await client.chatStream(state.activeChatSessionId, text, abort.signal);
+          const retryResponse = await client.chatStream(state.activeRawChatSessionId, text, abort.signal);
           await streamChatResponse(retryResponse, stream, abort.signal);
           return;
         } catch {
@@ -338,7 +350,8 @@ async function handleChat(
     }
     const message = err instanceof Error ? err.message : String(err);
     stream.markdown(`\n\n**Error:** ${message}\n`);
-    state.activeChatSessionId = null;
+    state.activeRawChatSessionId = null;
+    state.selectedSessionId = null;
     state.selectedSessionType = null;
   }
 }
@@ -402,21 +415,27 @@ async function getOrCreateSession(
   client: KaganClient,
   chatCtx: vscode.ChatContext,
 ): Promise<string> {
-  if (state.activeChatSessionId && !isNewConversation(chatCtx)) return state.activeChatSessionId;
+  if (state.activeRawChatSessionId && !isNewConversation(chatCtx)) return state.activeRawChatSessionId;
   if (state.sessionCreating) return state.sessionCreating;
 
   state.sessionCreating = (async () => {
     const settings = await client.getSettings().catch(() => ({} as Record<string, string | undefined>));
-    const sessions = await client.getChatSessions().catch(() => []);
-    const reusableSessionId = pickReusableChatSessionId(settings.chat_last_active_session, sessions);
-    if (reusableSessionId) {
-      state.activeChatSessionId = reusableSessionId;
-      return reusableSessionId;
+    const response = await client.getSessions().catch(() => ({ sessions: [] }));
+    const reusableSession = pickReusableOrchestratorSession(
+      settings.chat_last_active_session,
+      response.sessions,
+    );
+    if (reusableSession?.chat_session_id) {
+      state.activeRawChatSessionId = reusableSession.chat_session_id;
+      state.selectedSessionId = reusableSession.id;
+      return reusableSession.chat_session_id;
     }
 
-    const session = await client.createChatSession({ label: null, agent_backend: null, source: "vscode" });
-    state.activeChatSessionId = session.id;
-    return session.id;
+    const session = await client.createSession({ type: "orchestrator" });
+    const rawSessionId = session.chat_session_id ?? session.id.replace(/^orch:/, "");
+    state.activeRawChatSessionId = rawSessionId;
+    state.selectedSessionId = session.id;
+    return rawSessionId;
   })().finally(() => {
     state.sessionCreating = null;
   });
@@ -435,7 +454,7 @@ async function handleSwitch(
   const parsed = parseSwitchPrompt(prompt);
   if (!parsed) {
     stream.markdown(
-      `**Invalid session ID:** \`${prompt.trim() || "(empty)"}\`\n\nProvide a full session UUID or an 8-character prefix.\n`,
+      `**Invalid session ID:** \`${prompt.trim() || "(empty)"}\`\n\nUse a session token like \`orch:1234abcd\`, \`gen:1234abcd\`, \`task:1234abcd\`, or a raw prefix.\n`,
     );
     return;
   }
@@ -445,25 +464,21 @@ async function handleSwitch(
   try {
     const response = await client.getSessions();
     const sessions = response.sessions;
-    const lower = parsed.id.toLowerCase();
-
-    const exact = sessions.find((s) => s.id.toLowerCase() === lower);
-    const prefix = sessions.find((s) => s.id.toLowerCase().startsWith(lower));
-    const taskMatch = sessions.find((s) => s.task_id?.toLowerCase() === lower);
-    const matched = exact ?? prefix ?? taskMatch;
+    const matched = resolveSwitchSession(sessions, parsed.id);
 
     if (!matched) {
       stream.markdown(`**Session not found:** \`${parsed.id}\`\n`);
       return;
     }
 
-    state.activeChatSessionId = matched.id;
+    state.selectedSessionId = matched.id;
+    state.activeRawChatSessionId = matched.chat_session_id;
     state.selectedSessionType = matched.type;
     state.selectedSessionRole = matched.role;
 
     const rolePart = matched.role ? ` · ${matched.role}` : "";
     stream.markdown(
-      `**Switched to session** \`${matched.id.slice(0, 8)}\` — ${matched.type}${rolePart} — ${matched.title}\n`,
+      `**Switched to session** \`${switchTokenForSession(matched)}\` — ${matched.type}${rolePart} — ${matched.title}\n`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -487,8 +502,9 @@ async function handleSessions(
     stream.markdown("**Sessions:**\n\n");
     for (const session of response.sessions) {
       const rolePart = session.role ? ` · ${session.role}` : "";
+      const switchToken = switchTokenForSession(session);
       stream.markdown(
-        `- \`${session.id.slice(0, 8)}\` — **${session.type}**${rolePart} — ${session.status} — ${session.title}\n`,
+        `- \`${switchToken}\` — **${session.type}**${rolePart} — ${session.status} — ${session.title}\n`,
       );
     }
   } catch (err) {
@@ -504,7 +520,7 @@ async function handleStop(
   client: KaganClient,
   stream: vscode.ChatResponseStream,
 ): Promise<void> {
-  const sessionId = state.activeChatSessionId;
+  const sessionId = sessionActionId(state);
   if (!sessionId) {
     stream.markdown("No session selected.\n");
     return;
@@ -526,7 +542,7 @@ async function handleClose(
   client: KaganClient,
   stream: vscode.ChatResponseStream,
 ): Promise<void> {
-  const sessionId = state.activeChatSessionId;
+  const sessionId = sessionActionId(state);
   if (!sessionId) {
     stream.markdown("No session selected.\n");
     return;
@@ -535,13 +551,21 @@ async function handleClose(
   try {
     await client.closeSession(sessionId);
     stream.markdown(`Session \`${sessionId.slice(0, 8)}\` closed.\n`);
-    state.activeChatSessionId = null;
+    state.activeRawChatSessionId = null;
+    state.selectedSessionId = null;
     state.selectedSessionType = null;
     state.selectedSessionRole = null;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     stream.markdown(`**Error closing session:** ${message}\n`);
   }
+}
+
+function sessionActionId(state: ChatParticipantState): string | null {
+  if (state.selectedSessionId) return state.selectedSessionId;
+  if (!state.activeRawChatSessionId) return null;
+  if (state.selectedSessionType === "general") return `gen:${state.activeRawChatSessionId}`;
+  return `orch:${state.activeRawChatSessionId}`;
 }
 
 // ── General session chat turn ──────────────────────────────────────────────
@@ -565,7 +589,7 @@ async function handleGeneralTurn(
   token.onCancellationRequested(() => abort.abort());
 
   try {
-    const response = await client.chatStream(state.activeChatSessionId!, text, abort.signal);
+    const response = await client.chatStream(state.activeRawChatSessionId!, text, abort.signal);
     await streamChatResponse(response, stream, abort.signal);
   } catch (err) {
     if (abort.signal.aborted) return;
@@ -576,10 +600,10 @@ async function handleGeneralTurn(
         "Cancel",
       );
       if (choice === "Interrupt & take over") {
-        await client.interruptChatTurn(state.activeChatSessionId!, "takeover");
+        await client.interruptChatTurn(state.activeRawChatSessionId!, "takeover");
         await new Promise((resolve) => setTimeout(resolve, 300));
         try {
-          const retryResponse = await client.chatStream(state.activeChatSessionId!, text, abort.signal);
+          const retryResponse = await client.chatStream(state.activeRawChatSessionId!, text, abort.signal);
           await streamChatResponse(retryResponse, stream, abort.signal);
           return;
         } catch {

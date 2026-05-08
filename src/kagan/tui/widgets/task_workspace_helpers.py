@@ -131,8 +131,11 @@ async def hydrate_workspace_panels(
             loading=False,
             no_workspace=False,
         )
+        selected_path = diff_view.current_file_path()
         diff_pane.update_diff(diff_text)
-        if files:
+        if selected_path is not None and selected_path in files:
+            diff_view.set_selected_file(selected_path)
+        elif files:
             diff_view.set_selected_file(files[0])
         return
 

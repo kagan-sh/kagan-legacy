@@ -204,12 +204,12 @@ class TaskScreen(_TaskReviewMixin, Screen[None]):
     def _switch_tab(self, tab_id: str, *, user_initiated: bool = True) -> None:
         tabs = self.query_one("#ts-tabs", TabbedContent)
         self.set_focus(None)
+        if user_initiated:
+            self._user_switched_tab = True
         tabs.active = tab_id
         self.call_after_refresh(lambda: self._focus_tab_after_switch(tab_id))
         self._sync_action_bar()
         self.refresh_bindings()
-        if user_initiated:
-            self._user_switched_tab = True
 
     def action_switch_tab(self, tab_id: str) -> None:
         self._switch_tab(tab_id)
@@ -226,11 +226,18 @@ class TaskScreen(_TaskReviewMixin, Screen[None]):
                 self.set_focus(self.query_one(DiffFileTree))
                 return
 
-        if tab_id in {"overview", "review"}:
+        if tab_id == "overview":
+            with contextlib.suppress(NoMatches):
+                self.set_focus(self.query_one("#ts-overview-scroll", VerticalScroll))
+            return
+
+        if tab_id == "review":
             for node in self.query(".ts-detail-criterion"):
                 if isinstance(node, Checkbox):
                     self.set_focus(node)
                     return
+            with contextlib.suppress(NoMatches):
+                self.set_focus(self.query_one("#ts-review-scroll", VerticalScroll))
 
     async def action_primary_action(self) -> None:
         task = self._task_model

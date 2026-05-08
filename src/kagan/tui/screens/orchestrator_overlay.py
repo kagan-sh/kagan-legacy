@@ -72,7 +72,7 @@ class OrchestratorOverlay(ModalScreen[None]):
         layout: vertical;
     }
     #orch-breadcrumb {
-        height: 1;
+        height: 2;
         width: 100%;
         padding: 0 1;
         background: $surface;
@@ -81,9 +81,18 @@ class OrchestratorOverlay(ModalScreen[None]):
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    #orch-chat {
+    /* The global chat.tcss rule sets dock: bottom; layer: overlay; display: none
+       on all ChatPanel instances.  Override those here so the panel flows
+       naturally inside the Vertical#orch-container instead of docking to the
+       bottom edge of the modal and being hidden. */
+    OrchestratorOverlay #orch-chat {
+        dock: none;
         height: 1fr;
         width: 100%;
+        max-height: 100%;
+        offset-y: 0;
+        border-top: none;
+        display: block;
     }
     """
 
@@ -222,6 +231,19 @@ class OrchestratorOverlay(ModalScreen[None]):
         if panel is None:
             return
 
+        # chat.tcss sets dock: bottom; layer: overlay; display: none on every
+        # ChatPanel widget.  Those rules are applied via the global app
+        # stylesheet which has higher specificity than DEFAULT_CSS, so they
+        # cannot be overridden purely through CSS here.  Apply inline styles
+        # directly so the panel flows inside the Vertical#orch-container rather
+        # than docking to the bottom edge and being hidden.
+        panel.styles.dock = "none"
+        panel.styles.layer = "default"
+        panel.styles.offset = ("0", "0")
+        panel.styles.height = "1fr"
+        panel.styles.max_height = "1fr"  # override the 50% cap from global CSS
+        panel.styles.border_top = ("none", "transparent")
+        panel.set_visible(True)
         panel.set_mode_title(_ORCHESTRATOR_TITLE)
         panel.set_session_kind(SessionKind.ORCHESTRATOR)
         panel.hydrate_current_session_history(self._orchestrator_history)

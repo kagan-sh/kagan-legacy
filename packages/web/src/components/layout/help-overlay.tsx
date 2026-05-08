@@ -27,8 +27,6 @@ const SHORTCUTS: ShortcutSection[] = [
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
       { keys: ['Cmd/Ctrl', '.'], description: 'Cycle AI panel dock mode' },
       { keys: ['Cmd/Ctrl', 'Shift', 'F'], description: 'Fullscreen AI Panel' },
-      { keys: ['Cmd/Ctrl', '↑', '↓'], description: 'Switch active agent' },
-      { keys: ['Esc', '(attached)'], description: 'Detach to orchestrator' },
       { keys: ['Esc', '(chat input, streaming)'], description: 'Stop & edit last message' },
     ],
   },

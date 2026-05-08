@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createElement, type ReactNode } from 'react';
 import { createStore, Provider } from 'jotai';
 import { MemoryRouter } from 'react-router';
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import {
   commandPaletteOpenAtom,
   helpOverlayOpenAtom,
@@ -23,10 +23,8 @@ import {
   rightRailTaskIdAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
-import { chatAttachAtom } from '@/lib/atoms/chat-attach';
-import { setRunningAgentsAtom } from '@/lib/atoms/running-agents';
 import { useGlobalShortcuts } from '@/lib/hooks/use-global-shortcuts';
-import type { ActiveAgentRowResponse } from '@kagan/shared-api-client';
+import { HelpOverlay } from '@/components/layout/help-overlay';
 
 // ── apiClient mock — useGlobalShortcuts imports it for the Cmd+. session flow ──
 
@@ -34,7 +32,6 @@ vi.mock('@/lib/api/client', () => ({
   apiClient: {
     getChatSessions: vi.fn().mockResolvedValue([]),
     createChatSession: vi.fn().mockResolvedValue({ id: 'new-session' }),
-    getRunningAgents: vi.fn().mockResolvedValue({ agents: [] }),
   },
 }));
 
@@ -59,22 +56,6 @@ function renderHarness(
   render(createElement(ShortcutsHarness), { wrapper: Wrapper });
 }
 
-function makeAgent(sessionId: string, taskTitle: string): ActiveAgentRowResponse {
-  return {
-    task_id: `task-${sessionId}`,
-    task_title: taskTitle,
-    task_status: 'IN_PROGRESS',
-    session_id: sessionId,
-    agent_role: 'worker',
-    agent_backend: 'claude-code',
-    session_status: 'running',
-    started_at: new Date(Date.now() - 10_000).toISOString(),
-    last_event_at: null,
-    input_tokens: 100,
-    output_tokens: 50,
-  };
-}
-
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('HelpOverlay global shortcut parity', () => {
@@ -83,6 +64,19 @@ describe('HelpOverlay global shortcut parity', () => {
   beforeEach(() => {
     store = createStore();
     vi.clearAllMocks();
+  });
+
+  it('does not advertise the hidden active-agent shortcut', () => {
+    store.set(helpOverlayOpenAtom, true);
+    render(
+      createElement(
+        Provider,
+        { store },
+        createElement(HelpOverlay),
+      ),
+    );
+
+    expect(screen.queryByText('Switch active agent')).not.toBeInTheDocument();
   });
 
   // Row: Cmd/Ctrl + Shift + P → Open Quick Actions
@@ -176,50 +170,6 @@ describe('HelpOverlay global shortcut parity', () => {
     // Exit fullscreen → back to last docked mode
     fireEvent.keyDown(document, { key: 'f', metaKey: true, shiftKey: true });
     expect(store.get(rightRailModeAtom)).toBe('chat-right');
-  });
-
-  // Row: Cmd/Ctrl + ↑/↓ → Switch active agent
-  // Handler: cycles chatAttachAtom through orchestrator + running agents.
-  // Full cycle coverage lives in OrchestratorOverlay.test.tsx; here we verify
-  // the documented key chords reach the handler (i.e. they do not get swallowed
-  // by an earlier branch or fail the guard when an attached session is present).
-
-  // The Arrow handler calls event.preventDefault() when the guard passes.
-  // We verify this to confirm the handler code matches the documented chord.
-  // Full cycle correctness is covered by OrchestratorOverlay.test.tsx.
-  // For Ctrl+Arrow: the handler only fires when (runningAgents.agents.length > 0 || chatAttach !== null).
-  // We verify using fireEvent and checking the atom side-effect.
-  // The atom-level cycling is comprehensively covered by OrchestratorOverlay.test.tsx.
-  // Here we confirm the Ctrl+Arrow chord is intercepted by the global handler:
-  // when guard passes (chatAttach !== null), the handler prevents default AND
-  // updates the attach atom; when guard fails, both the atom and default are unchanged.
-  it('Ctrl+Arrow is a no-op when no agents running and not attached (Switch active agent row)', () => {
-    renderHarness(store);
-    // Guard: runningAgents.agents.length === 0 AND chatAttach === null → false.
-    fireEvent.keyDown(document, { key: 'ArrowDown', ctrlKey: true });
-    expect(store.get(chatAttachAtom)).toBeNull();
-
-    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true });
-    expect(store.get(chatAttachAtom)).toBeNull();
-  });
-
-  it('Ctrl+Arrow cycles active agents when running agents exist (Switch active agent row)', () => {
-    const alpha = makeAgent('agent-alpha', 'Alpha');
-    const beta = makeAgent('agent-beta', 'Beta');
-    store.set(setRunningAgentsAtom, [alpha, beta]);
-    renderHarness(store);
-
-    fireEvent.keyDown(document, { key: 'ArrowDown', ctrlKey: true });
-    expect(store.get(chatAttachAtom)?.attachedSessionId).toBe('agent-alpha');
-
-    fireEvent.keyDown(document, { key: 'ArrowDown', ctrlKey: true });
-    expect(store.get(chatAttachAtom)?.attachedSessionId).toBe('agent-beta');
-
-    fireEvent.keyDown(document, { key: 'ArrowDown', ctrlKey: true });
-    expect(store.get(chatAttachAtom)).toBeNull();
-
-    fireEvent.keyDown(document, { key: 'ArrowUp', metaKey: true });
-    expect(store.get(chatAttachAtom)?.attachedSessionId).toBe('agent-beta');
   });
 
   // Verify Cmd/Ctrl+Shift+P requires the Shift modifier — plain Cmd+P must NOT open the palette.

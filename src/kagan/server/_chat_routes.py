@@ -334,14 +334,14 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_session(request: Request, *, ctx: ServerContext) -> JSONResponse:
+    async def get_session(request: Request, *, ctx: ServerContext) -> Response:
         session_id = cast("str", request.path_params["session_id"])
         session = await _load_session_view(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
         etag = f'"{session.updated_at}"'
         if request.headers.get("If-None-Match") == etag:
-            return JSONResponse(None, status_code=304)
+            return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
         resp = _ok(_session_to_wire(session))
         resp.headers["ETag"] = etag
         resp.headers["Cache-Control"] = "no-cache"

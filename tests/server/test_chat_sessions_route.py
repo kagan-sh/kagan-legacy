@@ -13,9 +13,8 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from starlette.testclient import TestClient
@@ -28,6 +27,9 @@ from kagan.server.mcp.server import ServerContext, ServerOptions, _set_server_co
 from kagan.server.server import ApiServerOptions, create_api_server
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -159,6 +161,46 @@ async def test_list_sessions_content_length_matches_body_through_full_middleware
             payload = resp.json()
             assert payload["ok"] is True
             assert len(payload["data"]) == 5
+    finally:
+        await core.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_session_etag_hit_returns_empty_304_body(tmp_path: Path) -> None:
+    """ETag cache hits must not send JSON ``null`` with a 304 response."""
+    core = KaganCore(db_path=tmp_path / "etag_test.db")
+    project = await core.projects.create("ETag Project")
+    await core.projects.set_active(project.id)
+    row = await core.chat_sessions.create(
+        source="orchestrator",
+        label="Cached session",
+        agent_backend="claude-code",
+        project_id=project.id,
+    )
+
+    opts = ApiServerOptions(mcp_opts=ServerOptions())
+    mcp = create_api_server(opts)
+    ctx = ServerContext(
+        client=core,
+        opts=opts.mcp_opts,
+        presence=PresenceTracker(),
+        shutdown_event=asyncio.Event(),
+    )
+    _set_server_context(mcp, ctx)
+    app = mcp.streamable_http_app()
+    install_security_middleware(app)
+
+    try:
+        with TestClient(app, raise_server_exceptions=True) as client:
+            first = client.get(f"/api/chat/sessions/{row.id}")
+            assert first.status_code == 200
+            etag = first.headers["etag"]
+
+            cached = client.get(f"/api/chat/sessions/{row.id}", headers={"If-None-Match": etag})
+            assert cached.status_code == 304
+            assert cached.content == b""
+            assert cached.headers["etag"] == etag
+            assert cached.headers["cache-control"] == "no-cache"
     finally:
         await core.aclose()
 

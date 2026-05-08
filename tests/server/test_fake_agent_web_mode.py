@@ -17,8 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from sqlmodel import select
@@ -31,6 +30,9 @@ from kagan.core._fake_agent import (
 )
 from kagan.core.enums import SessionStatus
 from kagan.core.models import Session
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -78,7 +80,7 @@ async def _wait_for_condition(
 @pytest.fixture(autouse=False)
 def fast_fake_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Use a very short delay so fake-agent tests finish quickly."""
-    monkeypatch.setenv("KAGAN_FAKE_AGENT_DELAY_MS", "200")
+    monkeypatch.setenv("KAGAN_FAKE_AGENT_DELAY_MS", "1500")
     register_fake_backend()
 
 

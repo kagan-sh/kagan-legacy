@@ -180,22 +180,20 @@ class KaganCore:
             agent_role=agent_role,
         )
 
-    async def send_message_to_session(self, session_id: str, text: str) -> None:
-        """Inject a user message into a running agent session's event stream.
+    async def record_session_user_message_for_replay(self, session_id: str, text: str) -> None:
+        """Record a user message in an agent session's replay stream.
 
-        The message is recorded as an ``output_chunk`` event with
-        ``kind="user"`` so the orchestrator overlay's live stream and replay
-        render it as a ``UserInputWidget``.  This is the same event shape the
-        agent itself emits when it echoes a user turn.
+        This does not deliver input to the live agent process. It appends an
+        ``output_chunk`` event with ``kind="user"`` and ``replay_only=True`` so
+        UIs can show what the local user typed while attached to the session.
 
         Raises :class:`kagan.core.errors.KaganError` if the session does not
         exist or is in a terminal status (COMPLETED, FAILED, CANCELLED).  Only
-        sessions with status PENDING or RUNNING accept input — calling this on
-        any other status is a programming error from the caller's perspective.
+        sessions with status PENDING or RUNNING accept replay annotations.
 
         Args:
-            session_id: ID of the agent Session to inject into.
-            text: The user message text to inject.
+            session_id: ID of the agent Session to annotate.
+            text: The user message text to record.
         """
         from kagan.core._db_helpers import _db_async
         from kagan.core.enums import SessionStatus
@@ -226,6 +224,7 @@ class KaganCore:
         payload: dict = {
             "text": cleaned,
             "kind": "user",
+            "replay_only": True,
             "acp": {
                 "sessionUpdate": "user_message_chunk",
                 "content": {"type": "text", "text": cleaned},
@@ -237,6 +236,15 @@ class KaganCore:
             payload,
             session_id=session_id,
         )
+
+    async def send_message_to_session(self, session_id: str, text: str) -> None:
+        """Compatibility wrapper for replay-only attached-session annotations.
+
+        Despite the historical name, this method does not send input to a live
+        agent process. New callers should use
+        :meth:`record_session_user_message_for_replay`.
+        """
+        await self.record_session_user_message_for_replay(session_id, text)
 
     async def preflight(self, *, agent_backend: str | None = None) -> list[PreflightCheckResult]:
         return await asyncio.to_thread(run_all_checks, self._db_path, agent_backend)

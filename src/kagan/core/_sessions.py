@@ -518,12 +518,10 @@ class Sessions:
             # that wait_idle() can synchronise callers waiting for the
             # session to finish processing (settlement rule).
             self._events.register_agent_end_subscriber(session_obj.id)
-            from kagan.core._fake_agent import (
-                FAKE_AGENT_BACKEND,
-                spawn_fake_agent_via_acp,
-            )
 
-            if agent_backend == FAKE_AGENT_BACKEND:
+            if agent_backend == "fake-agent":
+                from kagan.core._fake_agent import spawn_fake_agent_via_acp
+
                 pid, reader_task = await spawn_fake_agent_via_acp(
                     session_id=session_obj.id,
                     task_id=task_id,

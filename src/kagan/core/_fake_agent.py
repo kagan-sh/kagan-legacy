@@ -131,6 +131,7 @@ _FAKE_BACKEND_SPEC = BackendSpec(
     executable="python",
     display_name="Fake Agent (E2E test fixture)",
     supports_acp=True,
+    acp_command=("python",),
     capabilities=frozenset(
         {
             BackendCapability.ACP_STREAMING,

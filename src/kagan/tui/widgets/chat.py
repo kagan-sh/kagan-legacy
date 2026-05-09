@@ -47,6 +47,13 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
     "a": "agents",
     "f": "flow",
 }
+
+
+def _overlay_cycle_agent_hint() -> str:
+    """Footer fragment for overlay mode (session cycling uses ↑/↓ in the input)."""
+    return "↑/↓ switch agent"
+
+
 _TUI_SLASH_COMMANDS: Final[frozenset[str]] = frozenset(
     {
         "agents",
@@ -136,6 +143,12 @@ class ChatPanel(Vertical):
     @dataclass
     class InterruptRequested(Message):
         pass
+
+    @dataclass
+    class CycleAgentRequested(Message):
+        """Overlay-only: user pressed ↑/↓ in the prompt to cycle attached streams."""
+
+        direction: Literal[-1, 1]
 
     @dataclass
     class InterruptCompleted(Message):
@@ -491,7 +504,7 @@ class ChatPanel(Vertical):
         """Switch hint display between docked and overlay layout.
 
         - ``"docked"``  — shows split/fullscreen/files/sessions shortcuts
-        - ``"overlay"`` — shows Ctrl+Up/Down cycle-agent shortcuts
+        - ``"overlay"`` — shows ↑/↓ cycle-agent shortcuts for the prompt row
         """
         self._footer_mode = mode
         self._refresh_status()
@@ -891,11 +904,29 @@ class ChatPanel(Vertical):
 
         return False
 
+    def _handle_overlay_cycle_agent(self, event: Key) -> bool:
+        """In overlay mode with prompt focused, ↑/↓ cycles orchestrator sessions."""
+        if self._footer_mode != "overlay" or not self._input_has_focus():
+            return False
+        if event.key == "up":
+            self.post_message(ChatPanel.CycleAgentRequested(direction=-1))
+            event.prevent_default()
+            event.stop()
+            return True
+        if event.key == "down":
+            self.post_message(ChatPanel.CycleAgentRequested(direction=1))
+            event.prevent_default()
+            event.stop()
+            return True
+        return False
+
     def on_key(self, event: Key) -> None:
         """Intercept arrow keys for slash/mention completion overlay navigation."""
         if self._handle_overlay_navigation(event):
             return
         if self._handle_input_editing(event):
+            return
+        if self._handle_overlay_cycle_agent(event):
             return
         self._handle_prompt_history(event)
 
@@ -1596,14 +1627,15 @@ class ChatPanel(Vertical):
             esc_hint = f"{close_key} back"
 
         if self._footer_mode == "overlay":
+            cycle = _overlay_cycle_agent_hint()
             if bool(self._slash_matches or self._mention_matches):
                 right = (
-                    f"Enter send · Tab complete · Ctrl+Up/Down switch agent · "
+                    f"Enter send · Tab complete · {cycle} · "
                     f"Ctrl+P files · Ctrl+K sessions · Ctrl+C clear · {esc_hint}"
                 )
             else:
                 right = (
-                    f"Enter send · Up/Down history · Ctrl+Up/Down switch agent · "
+                    f"Enter send · {cycle} · "
                     f"Ctrl+P files · Ctrl+K sessions · Ctrl+C clear · {esc_hint}"
                 )
         else:

@@ -18,11 +18,11 @@ export const routes: RouteObject[] = [
         element: <Navigate to="/welcome" replace />,
         errorElement: <RouteError />,
       },
-{
-            path: 'workspace',
-            element: <Navigate to="/chat" replace />,
-            errorElement: <RouteError />,
-          },
+      {
+        path: 'welcome',
+        lazy: () => import('@/pages/welcome-page'),
+        errorElement: <RouteError />,
+      },
       {
         lazy: () => import('@/components/layout/app-layout'),
         errorElement: <RouteError />,
@@ -52,7 +52,7 @@ export const routes: RouteObject[] = [
             lazy: () => import('@/pages/task-detail-page'),
             errorElement: <RouteError />,
           },
-            {
+          {
             path: 'chat',
             lazy: () => import('@/pages/chat-page'),
             errorElement: <RouteError />,

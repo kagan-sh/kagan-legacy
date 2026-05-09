@@ -254,3 +254,57 @@ async def test_ctrl_down_cycles_selected_session(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.pause()
         assert overlay._selected_session_id is None
+
+
+async def test_prompt_arrow_down_cycles_when_input_focused(board: KaganDriver) -> None:
+    """↓ in the prompt (overlay mode) rotates sessions like Ctrl+Down."""
+
+    from kagan.core._session_items import SessionCapabilities, SessionItem
+    from kagan.tui import KaganApp
+    from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
+    from kagan.tui.widgets.session_list import SessionList
+    from textual.widgets import Input
+
+    def _make_item(session_id: str, task_id: str, title: str) -> SessionItem:
+        return SessionItem(
+            id=session_id,
+            type="task",
+            role="worker",
+            status="running",
+            title=title,
+            backend="claude",
+            project_id=None,
+            task_id=task_id,
+            session_id=session_id,
+            chat_session_id=None,
+            updated_at="",
+            capabilities=SessionCapabilities(
+                can_chat=False,
+                can_stream=False,
+                can_replay=True,
+                can_stop=True,
+                can_close=False,
+                has_kagan_tools=True,
+            ),
+        )
+
+    item1 = _make_item("sess-arrow", "task-1", "Task Arrow")
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        await pilot.press("o")
+        await pilot.pause()
+        overlay = app.screen
+        assert isinstance(overlay, OrchestratorOverlay)
+
+        session_list = overlay.query_one("#orch-session-list", SessionList)
+        session_list._items = [item1]
+        await pilot.pause()
+
+        overlay.query_one("#chat-overlay-input", Input).focus()
+        await pilot.press("down")
+        await pilot.pause()
+        await pilot.pause()
+        assert overlay._selected_session_id == "sess-arrow"

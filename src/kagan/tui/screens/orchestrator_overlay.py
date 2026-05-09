@@ -328,11 +328,11 @@ class OrchestratorOverlay(ModalScreen[None]):
             self.query_one("#orch-session-list", Vertical).display = True
 
     def action_cycle_agent_next(self) -> None:
-        """Ctrl+Down: rotate through sessions."""
+        """Ctrl+Down (or ↓ in prompt): rotate through sessions."""
         self._cycle_session(direction=1)
 
     def action_cycle_agent_prev(self) -> None:
-        """Ctrl+Up: rotate backwards through sessions."""
+        """Ctrl+Up (or ↑ in prompt): rotate backwards through sessions."""
         self._cycle_session(direction=-1)
 
     def _cycle_session(self, *, direction: int) -> None:
@@ -488,6 +488,9 @@ class OrchestratorOverlay(ModalScreen[None]):
 
     def on_chat_panel_close_requested(self, _: ChatPanel.CloseRequested) -> None:
         self.action_handle_esc()
+
+    def on_chat_panel_cycle_agent_requested(self, message: ChatPanel.CycleAgentRequested) -> None:
+        self._cycle_session(direction=message.direction)
 
     def on_key_down(self) -> None:
         """Down arrow from the overlay focuses the session list."""

@@ -322,6 +322,11 @@ class LongLivedACPFactory:
                 f"during ACP initialize. {ACP_TIMEOUT_HINT}"
             ) from exc
         except (acp.RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
+            early_exit = await _acp_process_exit_message(
+                self.agent_backend, proc, during="initialize"
+            )
+            if early_exit is not None:
+                raise AgentError(early_exit) from exc
             hint = acp_process_exit_hint(agent_backend=self.agent_backend, details=str(exc))
             message = friendly_acp_error_message(
                 error=exc, agent_backend=self.agent_backend, during="initialize"

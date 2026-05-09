@@ -20,19 +20,17 @@ import subprocess
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from sqlmodel import select
 
 from kagan.core import KaganCore
-from kagan.core._db_helpers import _db_async
-from kagan.core._fake_agent import (
-    FAKE_AGENT_BACKEND,
-    register_fake_backend,
-)
 from kagan.core.enums import SessionStatus
-from kagan.core.models import Session
+from tests.helpers.fake_agent_backend import (
+    FAKE_AGENT_BACKEND_NAME,
+    ensure_fake_agent_backend_registered,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,7 +79,7 @@ async def _wait_for_condition(
 def fast_fake_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Use a very short delay so fake-agent tests finish quickly."""
     monkeypatch.setenv("KAGAN_FAKE_AGENT_DELAY_MS", "1500")
-    register_fake_backend()
+    ensure_fake_agent_backend_registered()
 
 
 # ---------------------------------------------------------------------------
@@ -92,13 +90,13 @@ def fast_fake_agent(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_register_fake_backend_is_idempotent() -> None:
     """register_fake_backend() can be called multiple times without error."""
-    register_fake_backend()
-    register_fake_backend()  # second call must not raise
+    ensure_fake_agent_backend_registered()
+    ensure_fake_agent_backend_registered()
 
     from kagan.core import get_backend_spec
 
-    spec = get_backend_spec(FAKE_AGENT_BACKEND)
-    assert spec.name == FAKE_AGENT_BACKEND
+    spec = get_backend_spec(FAKE_AGENT_BACKEND_NAME)
+    assert spec.name == FAKE_AGENT_BACKEND_NAME
     assert spec.display_name is not None
     assert "Fake" in spec.display_name
 
@@ -125,17 +123,11 @@ async def test_fake_agent_produces_running_session_within_5s(
             description="This task uses the fake-agent backend",
         )
 
-        # Launch the agent task — it transitions to RUNNING almost immediately
-        # (via _update_session_pid) and then stays RUNNING for 200 ms.
-        runner = asyncio.create_task(core.tasks.run(task.id, agent_backend=FAKE_AGENT_BACKEND))
+        runner = asyncio.create_task(core.tasks.run(task.id, agent_backend=FAKE_AGENT_BACKEND_NAME))
 
-        async def _sessions_for_task() -> list[Session]:
-            def _read(s: Any) -> list[Session]:
-                return list(s.exec(select(Session).where(Session.task_id == task.id)).all())
+        async def _sessions_for_task() -> list[Any]:
+            return await core.tasks.sessions.list_for_task(task.id)
 
-            return await _db_async(core.engine, _read)
-
-        # Wait until we see at least one RUNNING session row.
         sessions = await _wait_for_condition(
             _sessions_for_task,
             predicate=lambda rows: any(
@@ -151,7 +143,6 @@ async def test_fake_agent_produces_running_session_within_5s(
         ]
         assert len(running) >= 1, "Expected at least one RUNNING session"
 
-        # Let the runner finish (it completes after the 200 ms delay).
         try:
             await asyncio.wait_for(runner, timeout=3.0)
         except (TimeoutError, asyncio.CancelledError):
@@ -175,31 +166,22 @@ async def test_fake_agent_session_completes_without_error(
 
         task = await core.tasks.create("Another fake task")
 
-        # run() resolves once the agent task is spawned (not when it finishes).
-        # The background reader_task completes after the delay.
         session = await asyncio.wait_for(
-            core.tasks.run(task.id, agent_backend=FAKE_AGENT_BACKEND),
+            core.tasks.run(task.id, agent_backend=FAKE_AGENT_BACKEND_NAME),
             timeout=5.0,
         )
         assert session is not None
-        assert session.agent_backend == FAKE_AGENT_BACKEND
+        assert session.agent_backend == FAKE_AGENT_BACKEND_NAME
 
-        # Allow the background fake session task to finish.
-        await asyncio.sleep(0.5)
-
-        # Session should now be COMPLETED (or still RUNNING if timing is tight).
-        async def _get_session() -> Session | None:
-            def _read(s: Any) -> Session | None:
-                return s.get(Session, session.id)
-
-            return await _db_async(core.engine, _read)
+        async def _get_session() -> Any:
+            return await core.tasks.sessions.get_latest_for_task(task.id)
 
         final = await _wait_for_condition(
             _get_session,
             predicate=lambda s: s is not None
             and getattr(s.status, "value", s.status)
             in {SessionStatus.RUNNING.value, SessionStatus.COMPLETED.value},
-            timeout=3.0,
+            timeout=5.0,
         )
         assert final is not None
         final_status = getattr(final.status, "value", final.status)

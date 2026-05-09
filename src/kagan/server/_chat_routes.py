@@ -421,7 +421,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 async def _interrupt_reason(request: Request) -> str:
     try:
         body = await request.json()
-    except Exception:
+    except Exception:  # malformed or missing body — default reason below
         return "user"
     if not isinstance(body, dict):
         return "user"

@@ -1,8 +1,10 @@
+import asyncio
 import contextlib
 import shlex
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
+from loguru import logger
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -38,6 +40,10 @@ from kagan.tui.widgets.chat_transcript import ChatTranscript
 from kagan.tui.widgets.permission import PermissionPrompt
 from kagan.tui.widgets.status_bar import StatusBar
 from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
+
+if TYPE_CHECKING:
+    from kagan.core import KaganCore
+    from kagan.core.chat.events import PermissionRequest
 
 _SLASH_ALIASES: Final[dict[str, str]] = {
     "q": "exit",
@@ -213,6 +219,8 @@ class ChatPanel(Vertical):
         # Persistent input history — initialised with no-op until a project
         # id is available (set via :meth:`set_project_id`).
         self._file_history: KaganFileHistory | None = None
+        self._permission_waiter: asyncio.Future[None] | None = None
+        self._permission_meta: tuple[str, str, dict[str, Any]] | None = None
 
     @contextlib.contextmanager
     def state_only_updates(self):
@@ -632,6 +640,37 @@ class ChatPanel(Vertical):
         if self.is_mounted:
             self._render_decision_surface()
 
+    async def await_permission_resolution(
+        self,
+        core: "KaganCore",
+        session_id: str,
+        event: "PermissionRequest",
+    ) -> None:
+        """Block until the user resolves an engine permission prompt (or cancel).
+
+        Used by :func:`~kagan.tui.screens._chat_runner.send_chat_message` when the
+        orchestrator stream yields :class:`~kagan.core.chat.events.PermissionRequest`.
+        """
+        from kagan.cli.chat._permission_ui import _format_permission_tool
+
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self._permission_waiter = fut
+        self._permission_meta = (event.future_id, session_id, dict(event.tool_call))
+        try:
+            self.request_permission(
+                _format_permission_tool(event.tool_call),
+                timeout_seconds=30,
+            )
+            await fut
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await core.chat.resolve_permission(session_id, event.future_id, outcome="deny")
+            raise
+        finally:
+            self._permission_waiter = None
+            self._permission_meta = None
+
     def clear_messages(self) -> None:
         state = self._current_state()
         state.entries.clear()
@@ -806,10 +845,52 @@ class ChatPanel(Vertical):
 
     @on(PermissionPrompt.DecisionMade)
     def _on_permission_decision(self, event: PermissionPrompt.DecisionMade) -> None:
-        state = self._current_state()
-        state.decision_surface = None
-        self.add_system_message(f"Permission {event.decision}")
-        self._render_decision_surface()
+        meta = self._permission_meta
+        waiter = self._permission_waiter
+
+        if meta is None or waiter is None:
+            state = self._current_state()
+            state.decision_surface = None
+            self.add_system_message(f"Permission {event.decision}")
+            self._render_decision_surface()
+            return
+
+        future_id, session_id, tool_call = meta
+        core = getattr(self.app, "core", None)
+
+        async def _finish() -> None:
+            from kagan.cli.chat._permission_ui import _session_approvals, _tool_action_key
+
+            try:
+                if core is not None:
+                    key = _tool_action_key(tool_call)
+                    if event.decision == "allow":
+                        await core.chat.resolve_permission(
+                            session_id, future_id, outcome="allow_once"
+                        )
+                    elif event.decision == "allow_session":
+                        _session_approvals.grant(key)
+                        await core.chat.resolve_permission(
+                            session_id, future_id, outcome="allow_always"
+                        )
+                    elif event.decision == "allow_all":
+                        _session_approvals.grant_all()
+                        await core.chat.resolve_permission(
+                            session_id, future_id, outcome="allow_always"
+                        )
+                    elif event.decision in ("deny", "timeout"):
+                        await core.chat.resolve_permission(session_id, future_id, outcome="deny")
+            except Exception:
+                logger.exception("TUI permission resolution failed")
+            finally:
+                state_inner = self._current_state()
+                state_inner.decision_surface = None
+                self.add_system_message(f"Permission {event.decision}")
+                self._render_decision_surface()
+                if not waiter.done():
+                    waiter.set_result(None)
+
+        self.run_worker(_finish(), name="chat-permission-resolve", exit_on_error=False)
 
     def _handle_overlay_navigation(self, event: Key) -> bool:
         overlay_visible = bool(self._slash_matches or self._mention_matches)

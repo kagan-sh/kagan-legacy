@@ -12,10 +12,10 @@ This module owns that shared path. It also keeps the legacy
 ``stream_chunk_*``) used by the task event handler — they used to live in
 ``kanban_chat.py`` which is gone after R1 phase 4c.
 
-Permission events (``PermissionRequest`` / ``PermissionResolved``) emitted
-by the engine are not handled here; the bidirectional permission flow runs
-through the ACP path inside the spawn-per-turn ACP helper. See the module
-docstring of ``kagan.core.chat.acp``.
+Permission requests are surfaced in :func:`send_chat_message`: ``PermissionRequest``
+events wait on :meth:`~kagan.tui.widgets.chat.ChatPanel.await_permission_resolution`
+(auto-approving ``mcp__kagan*`` tools like the CLI). ``apply_chat_event_to_panel``
+does not render permission prompts — only stream/tool/turn events.
 """
 
 from __future__ import annotations
@@ -53,6 +53,7 @@ from kagan.core.chat import (
     ToolCallStart as ChatToolCallStart,
 )
 from kagan.core.chat._turn_display import TurnPhaseTracker
+from kagan.core.chat.events import PermissionRequest
 from kagan.core.errors import KaganError
 from kagan.tui.screens._agent_event_presenter import (
     acp_payload,
@@ -98,9 +99,8 @@ def apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
     behave identically to phases 1-3.
 
     ``UsageUpdate`` is rendered as a runtime-status nudge — full token / cost
-    UI lands later. ``PermissionRequest`` / ``PermissionResolved`` are not
-    handled here; the interactive permission flow runs through the ACP path
-    inside the spawn-per-turn ACP helper (see ``core/chat/acp.py``).
+    UI lands later. ``PermissionRequest`` is consumed in
+    :func:`send_chat_message` before this translator runs.
     """
     if isinstance(event, TurnStarted):
         panel._turn_tracker = TurnPhaseTracker()
@@ -213,7 +213,16 @@ async def send_chat_message(
                 prompt_blocks=[acp.text_block(prompt_text)],
                 agent_backend=backend,
             ):
-                if isinstance(event, AssistantChunk) and not event.thought:
+                if isinstance(event, PermissionRequest):
+                    from kagan.cli.chat._permission_ui import _tool_action_key
+
+                    if _tool_action_key(event.tool_call).startswith("mcp__kagan"):
+                        await core.chat.resolve_permission(
+                            chat_session_id, event.future_id, outcome="allow_once"
+                        )
+                    else:
+                        await panel.await_permission_resolution(core, chat_session_id, event)
+                elif isinstance(event, AssistantChunk) and not event.thought:
                     streamed_chunks.append(event.text)
                 if isinstance(event, AssistantMessagePersisted):
                     persisted_response = event.content

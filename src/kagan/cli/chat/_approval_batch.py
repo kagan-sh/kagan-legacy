@@ -240,10 +240,15 @@ def _handle_num_key(
     state["selected_option"] = idx
     if idx == 4:
         state["feedback_mode"] = True
-    elif idx == 2 or idx == 5:
+    elif idx == 2:
         from kagan.cli.chat._approval_types import _session_approvals
 
+        # Allow all for session: pre-approve this tool for the rest of the session.
         _session_approvals.grant_all()
+        resolve_all("allow_once")
+        app.exit(result=None)
+    elif idx == 5:
+        # Approve all remaining in this batch only (no session-wide trust).
         resolve_all("allow_once")
         app.exit(result=None)
     elif idx == 6:
@@ -314,10 +319,14 @@ async def _run_batch_interactive(
         opt = state["selected_option"]
         item_idx = state["focused_item"]
         fb = feedback_buffer.text.strip() if state["feedback_mode"] else state["feedback"]
-        if opt in (2, 5):
+        if opt == 2:
             from kagan.cli.chat._approval_types import _session_approvals
 
             _session_approvals.grant_all()
+            resolve_all("allow_once")
+            app.exit(result=None)
+            return
+        if opt == 5:
             resolve_all("allow_once")
             app.exit(result=None)
             return
@@ -437,9 +446,6 @@ def _run_legacy_batch_input(
                     resolve_item(j, 0, "")
                 return
             elif raw in {"6", "a"}:
-                from kagan.cli.chat._approval_types import _session_approvals
-
-                _session_approvals.grant_all()
                 for j in range(i, len(items)):
                     resolve_item(j, 0, "")
                 return

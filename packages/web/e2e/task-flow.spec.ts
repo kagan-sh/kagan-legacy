@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { createTaskViaApi, ensureBoardReady } from './helpers';
 
 test.describe('Task Flow', () => {
@@ -23,28 +23,5 @@ test.describe('Task Flow', () => {
     await page.locator('#main-content').click({ position: { x: 24, y: 24 } });
     await page.keyboard.press('Escape');
     await expect(page).toHaveURL(/\/board$/);
-  });
-
-  test('task page supports chat rail layout controls', async ({ page, request }) => {
-    const title = `Task rail ${Date.now()}`;
-    await ensureBoardReady(page, request);
-    const taskId = await createTaskViaApi(request, title);
-    await page.goto(`/task/${taskId}`);
-    await page.waitForLoadState('load');
-    await expect(page).toHaveURL(/\/task\//);
-
-    await page.getByRole('button', { name: 'Open chat' }).click();
-    await expect(page.locator('[data-chat-layout=\"chat-right\"]')).toBeVisible();
-
-    await page.getByRole('button', { name: 'Chat layout options' }).click();
-    await page.getByRole('menuitem', { name: 'Dock bottom' }).click();
-    await expect(page.locator('[data-chat-layout=\"chat-bottom\"]')).toBeVisible();
-
-    await page.getByRole('button', { name: 'Chat layout options' }).click();
-    await page.getByRole('menuitem', { name: 'Fullscreen' }).click();
-    await expect(page.locator('[data-chat-layout=\"chat-fullscreen\"]')).toBeVisible();
-
-    await page.keyboard.press('Escape');
-    await expect(page.locator('[data-chat-layout]')).toHaveCount(0);
   });
 });

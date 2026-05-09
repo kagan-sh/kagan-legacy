@@ -381,6 +381,7 @@ export function ChatInputBar({
 
         <Textarea
           ref={inputRef}
+          data-testid="chat-composer-input"
           value={text}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}

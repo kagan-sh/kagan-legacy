@@ -31,10 +31,10 @@ async def board(tmp_path):
 
 async def test_orchestrator_returns_no_response_does_not_corrupt_history(
     board: KaganDriver,
+    monkeypatch,
 ) -> None:
     """When the engine yields no content, history is unchanged and error message appears."""
     import asyncio
-    from unittest.mock import AsyncMock, patch
 
     from kagan.tui import KaganApp
     from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
@@ -58,23 +58,25 @@ async def test_orchestrator_returns_no_response_does_not_corrupt_history(
             panel.add_system_message("Orchestrator returned no response.")
             return list(history)
 
-        with patch(
+        async def _noop_persist(*args, **kwargs):
+            pass
+
+        monkeypatch.setattr(
             "kagan.tui.screens.orchestrator_overlay.send_chat_message",
-            new=_no_response_send,
-        ):
-            # Also patch persist_active to be a no-op
-            with patch.object(
-                overlay.kagan_app.orchestrator_sessions,
-                "persist_active",
-                new_callable=AsyncMock,
-            ):
-                task = asyncio.create_task(overlay._send_orchestrator_message("test prompt"))
-                for _ in range(10):
-                    await pilot.pause()
-                    if task.done():
-                        break
-                if not task.done():
-                    task.cancel()
+            _no_response_send,
+        )
+        monkeypatch.setattr(
+            overlay.kagan_app.orchestrator_sessions,
+            "persist_active",
+            _noop_persist,
+        )
+        task = asyncio.create_task(overlay._send_orchestrator_message("test prompt"))
+        for _ in range(10):
+            await pilot.pause()
+            if task.done():
+                break
+        if not task.done():
+            task.cancel()
 
         history_after = list(overlay._orchestrator_history)
         assert history_after == history_before, (
@@ -90,10 +92,10 @@ async def test_orchestrator_returns_no_response_does_not_corrupt_history(
 
 async def test_orchestrator_agent_error_surfaces_as_message_and_keeps_history(
     board: KaganDriver,
+    monkeypatch,
 ) -> None:
     """An AgentError from send_chat_message shows an error message; history unchanged."""
     import asyncio
-    from unittest.mock import patch
 
     from kagan.core.errors import AgentError, KaganError
     from kagan.tui import KaganApp
@@ -118,17 +120,17 @@ async def test_orchestrator_agent_error_surfaces_as_message_and_keeps_history(
             panel.add_system_message("Orchestrator error: handshake failed")
             raise KaganError("handshake failed") from AgentError("handshake failed")
 
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.orchestrator_overlay.send_chat_message",
-            new=_raising_send,
-        ):
-            task = asyncio.create_task(overlay._send_orchestrator_message("test prompt"))
-            for _ in range(10):
-                await pilot.pause()
-                if task.done():
-                    break
-            if not task.done():
-                task.cancel()
+            _raising_send,
+        )
+        task = asyncio.create_task(overlay._send_orchestrator_message("test prompt"))
+        for _ in range(10):
+            await pilot.pause()
+            if task.done():
+                break
+        if not task.done():
+            task.cancel()
 
         history_after = list(overlay._orchestrator_history)
         assert history_after == history_before, "History must not be mutated on AgentError"

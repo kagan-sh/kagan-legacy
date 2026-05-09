@@ -158,10 +158,8 @@ async def test_reduce_motion_off_does_not_apply_css_class(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_build_agent_backend_options_installed_before_unavailable() -> None:
+def test_build_agent_backend_options_installed_before_unavailable(monkeypatch) -> None:
     """Available backends come before unavailable ones in the picker options."""
-    from unittest.mock import patch
-
     from kagan.tui.screens.setup import _build_agent_backend_options
 
     mock_availability = {"claude-code": True, "codex": False, "gemini": True}
@@ -180,11 +178,15 @@ def test_build_agent_backend_options_installed_before_unavailable() -> None:
         "gemini": _MockSpec("Gemini"),
     }
 
-    with (
-        patch("kagan.tui.screens.setup.list_available_backends", return_value=mock_availability),
-        patch("kagan.tui.screens.setup.list_backend_specs", return_value=mock_specs),
-    ):
-        options = _build_agent_backend_options()
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_available_backends",
+        lambda *a, **kw: mock_availability,
+    )
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_backend_specs",
+        lambda *a, **kw: mock_specs,
+    )
+    options = _build_agent_backend_options()
 
     values = [v for _, v in options]
     available_indices = [i for i, v in enumerate(values) if v in {"claude-code", "gemini"}]
@@ -199,10 +201,8 @@ def test_build_agent_backend_options_installed_before_unavailable() -> None:
     assert separator_indices[0] < unavailable_indices[0], "Separator before unavailable group"
 
 
-def test_build_agent_backend_options_no_separator_when_all_available() -> None:
+def test_build_agent_backend_options_no_separator_when_all_available(monkeypatch) -> None:
     """No separator is added when all backends are installed."""
-    from unittest.mock import patch
-
     from kagan.tui.screens.setup import _build_agent_backend_options
 
     mock_availability = {"claude-code": True, "codex": True}
@@ -220,10 +220,14 @@ def test_build_agent_backend_options_no_separator_when_all_available() -> None:
         "codex": _MockSpec("Codex"),
     }
 
-    with (
-        patch("kagan.tui.screens.setup.list_available_backends", return_value=mock_availability),
-        patch("kagan.tui.screens.setup.list_backend_specs", return_value=mock_specs),
-    ):
-        options = _build_agent_backend_options()
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_available_backends",
+        lambda *a, **kw: mock_availability,
+    )
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_backend_specs",
+        lambda *a, **kw: mock_specs,
+    )
+    options = _build_agent_backend_options()
 
     assert all(v != "---" for _, v in options), "No separator when all available"

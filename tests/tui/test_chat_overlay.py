@@ -6,8 +6,6 @@ Targeted waits only — no wait_for_workers().
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 from tests.helpers.driver import KaganDriver
 
@@ -32,7 +30,7 @@ async def board(tmp_path):
 
 
 async def test_boot_with_optional_backend_warns_shows_no_degraded_toast(
-    tmp_path,
+    tmp_path, monkeypatch
 ) -> None:
     """When the default backend passes and non-default backends WARN,
     the 'Degraded mode' toast must NOT be shown at startup."""
@@ -89,10 +87,10 @@ async def test_boot_with_optional_backend_warns_shows_no_degraded_toast(
         notified.append(str(message))
         return original_notify(message, *args, **kwargs)
 
-    with patch.object(app, "notify", side_effect=_capture_notify):
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.pause()
+    monkeypatch.setattr(app, "notify", _capture_notify)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.pause()
 
     degraded = [m for m in notified if "Degraded mode" in m]
     assert not degraded, (

@@ -1,6 +1,8 @@
 # Testing Guide
 
-How to write tests for Kagan.
+How to write tests for Kagan. Product scenarios are described in
+[`docs/internal/features/web.md`](./features/web.md), [`tui.md`](./features/tui.md), and
+[`chat.md`](./features/chat.md) — keep Tier A tests aligned with those documents.
 
 ______________________________________________________________________
 
@@ -10,16 +12,63 @@ Tests are **behavioral specifications**. Each test describes what the system doe
 perspective — not how internal services are wired. A test name like
 `test_auto_task_runs_to_completion_and_moves_to_review` is the spec.
 
-**Real everything, fake agent.** Tests use a real database (in-memory SQLite), real git
-(temp repos), and real services. The only fake is `FakeAgentFactory`, which simulates agent
-responses. If you're mocking a service, you're writing a unit test — put it elsewhere.
+**Real everything, fake agent.** Primary workflows use a real database (typically SQLite on disk
+or temp dirs), real git (temp repos), and real HTTP/SSE/TUI where the scenario demands it. The
+only intentional fake is **agent behavior**: `FakeAgentFactory` in Python behavioral tests,
+`register_fake_backend()` / **`fake-agent`** for deterministic ACP (`kagan web --fake-agent`,
+`KAGAN_FAKE_AGENT=1`), or the hermetic **echo ACP subprocess** in [`tests/integration/acp_real/`](../integration/acp_real/).
+
+The suite today still contains **many unit tests and monkeypatched HTTP/server tests** — see
+[`testing-rationalization-matrix.md`](testing-rationalization-matrix.md) for migration and deletion
+candidates. New tests should prefer **real seams** over mocks unless you are in an explicit
+contract carve-out (below).
+
+______________________________________________________________________
+
+## CI tiers and evidence
+
+Evidence is split so PRs stay fast while regressions still surface.
+
+### Tier A — PR gate (merge-blocking)
+
+Run on every PR / local `uv run poe check`:
+
+1. **Lint / typecheck / unit-fast slices** — existing project gates (`ruff`, `pyrefly`, web `tsc`, Vitest).
+1. **Python behavioral** — `tests/core/`, `tests/mcp/`, `tests/tui/` specs via [`KaganDriver`](../../tests/helpers/driver.py) where applicable.
+1. **Playwright smoke** — `cd packages/web && pnpm exec playwright test` against an isolated
+   [`packages/web/playwright.config.ts`](../../packages/web/playwright.config.ts) server (temp DB,
+   `KAGAN_FAKE_AGENT=1`, short `KAGAN_FAKE_AGENT_DELAY_MS` for managed runs). Covers board navigation,
+   Chat workspace (`packages/web/e2e/workspace-chat.spec.ts`: board → Chat → session → user message),
+   task/session overlay after a fake-agent run (`chat.spec.ts`), and related flows **without** mocking
+   `fetch` or `apiClient`. Asserting **assistant streaming text** in the live DOM is optional Tier B
+   follow-up if product gaps prevent deterministic chunk visibility in CI.
+
+### Tier B — Nightly or manual / extended
+
+- Full Vitest (`pnpm run web:test`), VS Code integration/e2e (`pnpm run vscode:test:*`), larger TUI
+  snapshots.
+- Playwright with `BASE_URL` pointing at a long-lived dev server (caller owns isolation).
+
+### Tier C — Contract carve-outs (keep even if Tier A grows)
+
+These catch regressions that **end-to-end UI tests rarely reach** or that **must stay sub-second**:
+
+| Area                             | Location                                                                                                                                                                   | Why E2E alone is insufficient                                                                |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **ACP / StreamReader contracts** | [`tests/integration/acp_real/`](../../tests/integration/acp_real/)                                                                                                         | Real SDK types (`ClientSideConnection`) diverge from stubs; caught historical shipping bugs. |
+| **Git / path security**          | [`tests/unit/core/test_git_validation.py`](../../tests/unit/core/test_git_validation.py), [`test_worktrees_security.py`](../../tests/unit/core/test_worktrees_security.py) | Must reject malicious paths without spinning a browser.                                      |
+| **Wire / codegen drift**         | `scripts/generate_wire_types.py`, CI wire drift check                                                                                                                      | TS/Python envelope parity is structural.                                                     |
+| **Slash / parser contracts**     | [`tests/unit/test_chat_commands.py`](../../tests/unit/test_chat_commands.py) (and related)                                                                                 | Pure grammar — cheap and precise; optional long-term if superseded by CLI smoke.             |
+
+Feature narratives live in [`docs/internal/features/`](./features/) — map scenarios there to Tier A
+Playwright or Python smoke tests when adding coverage.
 
 ______________________________________________________________________
 
 ## The DSL
 
-All tests flow through `KaganDriver`. Test files never import from `kagan.core` internals,
-repositories, or adapters. They import from `tests.helpers` and `kagan.core` (public API).
+Behavioral Python tests flow through `KaganDriver`. Test files never import from `kagan.core` internals,
+repositories, or adapters for domain assertions. They import from `tests.helpers` and `kagan.core` (public API).
 
 ```text
 Test Cases  →  KaganDriver (DSL)  →  CoreDriver / TuiDriver  →  Real system
@@ -39,37 +88,26 @@ ______________________________________________________________________
 
 ## Unit Tests
 
-Unit tests live in `tests/unit/` — but only when they earn their place. A unit test earns
-its place when it validates a **contract** (schema, shape, data structure) that acceptance
-tests exercise but don't assert on directly, or when it tests **platform-dependent edges**
-(e.g. XDG path fallback) that acceptance tests can't reach.
+Unit tests live in `tests/unit/` — when they validate a **contract** (schema, shape, security edge)
+that Tier A does not assert, or **platform-dependent** behavior (XDG paths, env sanitization).
 
 - Unit tests **may** import from `kagan.core._*` private modules.
 - Every unit test file must use `pytestmark = [pytest.mark.unit]`.
-- If an acceptance test covers the same behavior, the unit test does not belong.
+- If Tier A E2E + a behavioral test fully cover the same user-visible behavior, prefer deleting the duplicate unit test (see matrix).
 
 ______________________________________________________________________
 
 ## Real-stdio integration tests
 
 Tests in `tests/integration/` exercise the *real* third-party SDK constructors and stdio path
-without depending on a provider binary. They sit between unit and the `KAGAN_INTEGRATION_TESTS=1`
-end-to-end suite, and they catch contracts unit-stubs falsify by accepting too much.
+without depending on a provider binary. They sit between unit and the optional `KAGAN_INTEGRATION_TESTS=1`
+heavy suite.
 
 The current suite (`tests/integration/acp_real/`) drives the real `acp.client.connection.ClientSideConnection`
 over either:
 
-1. **TCP-loopback streams** (`tests/helpers/acp_loopback.py`) — yields real `asyncio.StreamReader`
-   / `asyncio.StreamWriter` pairs via `asyncio.start_server` + `asyncio.open_connection`. Catches
-   `isinstance(asyncio.StreamReader)` gates and read-method shape contracts in milliseconds.
-1. **A hermetic echo subprocess** (`tests/helpers/echo_agent.py`, vendored from the ACP SDK
-   examples) invoked via `sys.executable`. Speaks the real ACP wire protocol, exercises
-   handshake → session → prompt → notification → teardown end-to-end.
-
-Add a test here whenever a regression escapes through stubbed SDK fakes. Example: 0.19.0b34
-shipped a `ClientSideConnection requires asyncio StreamWriter/StreamReader` runtime error
-because the always-on suite stubbed `_FakeConnection` and never constructed the real SDK
-type. Both checks now live in `acp_real/test_stream_wrappers.py`.
+1. **TCP-loopback streams** (`tests/helpers/acp_loopback.py`).
+1. **Hermetic echo subprocess** (`tests/helpers/echo_agent.py`) via `sys.executable`.
 
 - Files use `pytestmark = [pytest.mark.integration]` and run on every PR (no env-var gate).
 - They must not require any agent binary on PATH; spawn-based tests use `sys.executable`.
@@ -100,91 +138,37 @@ ______________________________________________________________________
 
 ## Test Organization
 
-Test files mirror sections in `docs/internal/features/*.md` (one file per feature section):
+Test files should mirror [`docs/internal/features/*.md`](./features/). Exact filenames evolve —
+prefer the rationalization matrix over this stale tree.
 
 ```text
 tests/
-├── core/                                # kagan.core (behavioral)
-│   ├── test_cli_surface.py              # CLI help text, exit codes (snapshot carve-out)
-│   ├── test_client_lifecycle.py          # Client construction, context manager, bootstrap
-│   ├── test_projects_and_repos.py
-│   ├── test_tasks.py
-│   ├── test_task_lifecycle.py
-│   ├── test_workspaces.py
-│   ├── test_sessions_attached.py
-│   ├── test_sessions_detached.py
-│   ├── test_reviews.py
-│   └── test_settings_and_audit.py
-├── unit/                                # schema/contract validation only
-│   ├── test_agent_registry.py           # backend registry data structure
-│   ├── test_config_paths.py             # XDG/env path resolution edges
-│   ├── test_acp_session.py              # ACP session handling edges
-│   ├── test_agent_spawn_acp.py          # ACP agent spawn edges
-│   ├── test_chat_commands.py            # Chat slash command parsing
-│   ├── test_chat_policy.py              # Chat policy logic
-│   ├── test_secret_scrubbing.py         # Security: secret redaction patterns
-│   ├── test_textual_compat.py           # Platform: asyncio subprocess filter
-│   ├── test_tool_profiles.py            # Agent role → tool access schema
-│   ├── test_tui_keybinding_namespace.py # Structural: binding centralization
-│   ├── test_tui_tutorial_overlay.py     # Tutorial step navigation logic
-│   └── core/                            # Core-specific contracts
-│       ├── test_git_validation.py       # Security: ref name, path traversal
-│       ├── test_worktrees_security.py   # Security: worktree path injection
-│       └── test_runtime_env.py          # Platform: env sanitization
-├── tui/                                 # kagan.tui (behavioral)
-│   ├── test_welcome_and_onboarding.py
-│   ├── test_kanban_board.py
-│   ├── test_task_authoring.py
-│   ├── test_task_output.py
-│   ├── test_review_and_diff.py
-│   ├── test_chat_overlay.py
-│   ├── test_chat_modes.py               # Orchestrator/task chat mode switching
-│   ├── test_session_and_backend.py
-│   ├── test_settings_modal.py           # Settings screen behaviors
-│   ├── test_workspace_screen.py         # Workspace provisioning screen
-│   └── test_task_screen_review_no_criteria.py  # Review gate without acceptance criteria
-├── mcp/                                 # kagan.server.mcp (behavioral)
-│   ├── test_task_tools.py
-│   ├── test_session_tools_attached.py
-│   ├── test_session_tools_detached.py
-│   ├── test_project_and_repo_tools.py
-│   ├── test_review_tools.py
-│   ├── test_settings_and_audit_tools.py
-│   ├── test_diagnostics_optional.py
-│   ├── test_resources_read_only.py
-│   ├── test_prompts.py
-│   ├── test_access_control.py
-│   ├── test_smoke.py                    # Transport & lifespan smoke tests
-│   └── test_mcp_driver_parity.py        # McpDriver CRUD parity checks
-├── server/                              # kagan.server (REST/SSE contract)
-│   ├── test_access_control.py           # HTTP route access tier enforcement
-│   ├── test_integration.py              # REST lifecycle, JSON error envelopes
-│   ├── test_middleware.py               # Rate limiting middleware
-│   ├── test_presence.py                 # Presence tracker contracts
-│   ├── test_server.py                   # Health endpoint
-│   ├── test_sse_polling.py              # Cross-process DB polling
-│   └── test_web_ui.py                   # SPA static file serving
-├── integrations/                        # kagan.core.integrations (behavioral)
-│   └── test_github.py                    # GitHub sync: preflight, preview, create, skip, re-import, labels
-├── integration/                          # real-stdio integration (real SDK, hermetic agent)
-│   └── acp_real/
-│       └── test_stream_wrappers.py      # Stream wrappers + spawn pipeline against the echo agent
-└── helpers/                             # DSL: KaganDriver, FakeAgent, fixtures
-    ├── acp_loopback.py                   # TCP-loopback fixture yielding real asyncio.StreamReader/Writer
-    └── echo_agent.py                     # Vendored ACP echo agent (run as subprocess via sys.executable)
+├── core/              # kagan.core behavioral
+├── unit/              # contracts / security / parser edges
+├── tui/               # Textual Pilot + KaganDriver
+├── mcp/               # MCP tools via driver
+├── server/            # REST/SSE (often monkeypatched today — migration candidates)
+├── integration/acp_real/
+├── cli/
+└── helpers/           # KaganDriver, FakeAgent, echo_agent, acp_loopback
 ```
 
-Name tests as specs: `test_<behavior>_<expected_outcome>`. Each file has 2-6 tests,
-each test is 5-15 lines. The suite targets under 60 seconds.
+Name tests as specs: `test_<behavior>_<expected_outcome>`.
 
 ______________________________________________________________________
 
 ## Markers
 
-```python
+```text
 @pytest.mark.unit           # Implementation details (tests/unit/ only)
 @pytest.mark.smoke          # Fast, core behaviors
 @pytest.mark.slow           # Workspace provisioning, merges
+```
+
+Recommended future markers (document only until wired in CI):
+
+```text
+@pytest.mark.smoke_e2e      # Playwright / subprocess CLI smoke (optional job)
 ```
 
 ______________________________________________________________________
@@ -199,6 +183,9 @@ board.configure_agent(responses=["<blocked reason='needs API key'/>"])
 board.configure_review_agent(verdict="approve", summary="LGTM")
 ```
 
+Web / Playwright: [`packages/web/playwright.config.ts`](../../packages/web/playwright.config.ts) passes
+`KAGAN_FAKE_AGENT=1` so `kagan web` registers the **`fake-agent`** backend (`kagan.core._fake_agent`).
+
 ______________________________________________________________________
 
 ## MCP Tests
@@ -211,27 +198,6 @@ async def test_task_create_via_mcp(board):
     assert result["status"] == "BACKLOG"
 ```
 
-Access tier enforcement:
-
-```python
-@pytest.mark.parametrize(
-    "tier,tool,allowed",
-    [
-        ("readonly", "task_list", True),
-        ("readonly", "task_create", False),
-        ("default", "task_create", True),
-        ("default", "task_delete", False),
-        ("admin", "task_delete", True),
-    ],
-)
-async def test_access_tier_gates(board, tier, tool, allowed):
-    if allowed:
-        await board.mcp_call(tool, {}, tier=tier)
-    else:
-        with pytest.raises(PermissionDenied):
-            await board.mcp_call(tool, {}, tier=tier)
-```
-
 ______________________________________________________________________
 
 ## TUI Tests
@@ -239,84 +205,70 @@ ______________________________________________________________________
 Use `app.run_test()` with `Pilot`. Use targeted waits (`wait_for_screen`,
 `pilot.pause()`), never `wait_for_workers()` — orphaned background workers cause timeouts.
 
+Smoke journeys: [`tests/tui/test_e2e_smoke_workspace.py`](../../tests/tui/test_e2e_smoke_workspace.py),
+[`tests/tui/test_orchestrator_overlay.py`](../../tests/tui/test_orchestrator_overlay.py).
+
 ______________________________________________________________________
 
 ## Web Client Tests
 
-Web tests follow a two-layer split:
+### Vitest (component / hook)
 
-1. **Vitest + @testing-library/react** for isolated component/state behavior (fast, no server)
-1. **Playwright** for end-to-end behavior against a real running `kagan web` instance
-
-Vitest conventions:
-
-- Tests live in `packages/web/src/**/*.test.ts` and `packages/web/src/**/*.test.tsx`
-- Prefer `.test.tsx` for component suites that render React trees
-- Mock API singletons (`apiClient`) with `vi.mock()`
-- Prefer behavior assertions (rendered output, grouped state, visible status labels)
+- Tests live in `packages/web/src/**/*.test.ts` and `packages/web/src/**/*.test.tsx`.
+- **Prefer** exercising pure render logic, hooks with **in-memory state**, or **real module imports**
+  without stubbing `fetch` — avoid `vi.mock('@/lib/api/client')` for **product-critical journeys**
+  those journeys belong in Playwright (Tier A).
+- **Allowed**: mocking **browser-only** boundaries (e.g. `ResizeObserver`), tiny stubs for **non-Kagan**
+  libraries when unavoidable.
 
 ```bash
-pnpm run web:test
+cd packages/web && pnpm exec vitest run
 ```
 
-Playwright conventions:
+### Playwright (Tier A product smoke)
 
-- Tests live in `packages/web/e2e/*.spec.ts`
-- Start the server first (`kagan web`) and run tests against `BASE_URL` (default `http://127.0.0.1:8765`)
-- Focus on high-value flows (board visibility, route transitions, creation actions)
-- Keep E2E suites small and resilient; avoid brittle selectors tied to styling
+- Tests live in [`packages/web/e2e/*.spec.ts`](../../packages/web/e2e/).
+- The config starts **`uv run kagan web`** with a **throwaway DB** and **`KAGAN_FAKE_AGENT=1`** — tests hit a **real**
+  same-origin API (see [`packages/web/playwright.config.ts`](../../packages/web/playwright.config.ts)).
+- When `BASE_URL` is set, the runner skips `webServer`; you must provide isolation.
+- Prefer **`data-testid`** / roles over CSS selectors.
 
 ```bash
-pnpm run web:test:e2e
+cd packages/web && pnpm run build && pnpm exec playwright test
 ```
 
-Relationship to Python tests:
+Relationship to Python:
 
-- Python behavioral suites (`tests/server/`) validate the REST/SSE contract directly
-- Web tests validate browser behavior and UI integration with that contract
-- Both layers are complementary; neither replaces the other
+- [`tests/server/`](../../tests/server/) exercises REST/SSE contracts directly (often with **monkeypatch**
+  today — candidates for slim-down per [`testing-rationalization-matrix.md`](testing-rationalization-matrix.md)).
+- Playwright proves **browser + server + DB + fake agent** integration.
 
-Prioritize web tests in this order: **stores -> components -> E2E smoke flows**.
+Prioritize: **Playwright smoke flows → Vitest for pure UI → thin Python server duplicates**.
+
+______________________________________________________________________
+
+## CLI chat smoke
+
+One-shot orchestrator prompt with **`fake-agent`**:
+
+```bash
+KAGAN_DATA_DIR=/tmp/isolated kagan chat --prompt "ping" --agent fake-agent
+```
+
+Tests register `register_fake_backend()` and set `KAGAN_DATA_DIR` — see
+[`tests/cli/test_chat_oneshot_smoke.py`](../../tests/cli/test_chat_oneshot_smoke.py).
 
 ______________________________________________________________________
 
 ## VS Code Extension Tests
 
-The VS Code extension follows a three-layer split. There should be one obvious way to test each
-kind of behavior:
+Three-layer split ([`docs/internal/architecture/vscode.md`](./architecture/vscode.md)):
 
-1. **Vitest** for pure helpers and small state-free logic
-1. **`@vscode/test-cli` / `@vscode/test-electron`** for extension-host integration
-1. **WDIO + `wdio-vscode-service`** for real VS Code UI smoke flows
+1. Vitest — pure helpers.
+1. `@vscode/test-cli` — extension host.
+1. WDIO — real VS Code smoke.
 
-Directory layout:
-
-```text
-packages/vscode/
-├── src/**/*.test.ts                  # Vitest unit tests
-├── test/integration/**/*.test.ts     # Official extension-host tests
-├── test/e2e/**/*.spec.ts             # WDIO real-VSCode smoke tests
-├── test/helpers/                     # Shared fake Kagan server + fixtures
-├── .vscode-test.mjs                  # Official VS Code test runner config
-├── test/wdio.conf.ts                 # WDIO runner config
-├── tsconfig.test.json                # Integration test compile target
-└── test/tsconfig.json                # WDIO type environment
-```
-
-Use each layer for one job only:
-
-- **Vitest** tests pure functions such as URI builders, launcher normalization, diff slicing, and
-  API-client edge behavior. No VS Code instance, no browser, no real workbench.
-- **Integration tests** run inside the Extension Development Host and assert extension behavior via
-  the real `vscode` API: activation, command registration, virtual documents, SCM content
-  providers, chat-participant attach/detach, and configuration wiring.
-- **WDIO smoke tests** run against a real downloaded VS Code instance and verify the installed
-  extension still works end to end in a dummy editor window.
-
-The fake backend for VS Code tests is a tiny local HTTP/SSE server, not a pile of mocks. That
-keeps the extension honest while keeping tests deterministic.
-
-Commands:
+Fake backend: prefer small **real HTTP** server in [`packages/vscode/test/helpers/`](../../packages/vscode/test/helpers/), not piled mocks.
 
 ```bash
 pnpm run vscode:test:unit
@@ -324,47 +276,24 @@ pnpm run vscode:test:integration
 pnpm run vscode:test:e2e
 ```
 
-Root shortcuts:
-
-```bash
-uv run poe vscode-check
-uv run poe vscode-test-integration
-uv run poe vscode-test-e2e
-```
-
-Conventions:
-
-- Keep **unit tests** in the same namespace as the source file they exercise.
-- Keep **integration tests** behavior-first: pass command arguments, inspect opened documents,
-  assert observable state.
-- Keep **WDIO** small. One or two smoke flows are worth more than a maze of brittle UI selectors.
-- Prefer `browser.executeWorkbench(...)` when the behavior belongs to VS Code itself. Use page
-  objects or raw selectors only when the UI surface is the thing under test.
-- Do not invent a fourth layer. If a test is hard to place, the test is probably badly shaped.
-
-Prioritize VS Code tests in this order: **helpers -> command/provider integration -> one real UI smoke path**.
-
 ______________________________________________________________________
 
 ## Priority
 
 What to test first:
 
-1. **Core lifecycle** — task CRUD, status transitions, managed runs, interactive launches, reviews, workspaces
-1. **Integration** — project/repo management, MCP tool dispatch, settings
-1. **Edge cases** — concurrent starts, merge conflicts, agent crashes, orphan cleanup
-
-Add a test when a bug escapes or a feature ships. Don't add tests "just in case."
+1. **Core lifecycle** — task CRUD, transitions, managed runs, reviews
+1. **Tier A Playwright** — board → workspace → chat send with fake agent
+1. **ACP real-stdio** — `tests/integration/acp_real/`
+1. **Edge cases** — concurrent starts, orphan cleanup (often behavioral Python today)
 
 ______________________________________________________________________
 
 ## Don'ts
 
-- Don't mock services, repos, or adapters — only mock the agent
-- Don't assert on logs, mock call counts, or DB rows — assert on observable state
-- Don't use `monkeypatch` on production code in behavioral integration tests; for CLI
-  surface tests, targeted monkeypatching of process-bound seams (for example TUI launch,
-  startup update hint, or Ctrl-C simulation) is allowed when asserting observable CLI behavior
-- Don't depend on timing — wait for state changes, never `asyncio.sleep`
-- Don't duplicate behaviors — one test per behavior, parametrize variants
-- Don't import from `kagan.core` internals (private modules or legacy paths) in behavioral tests (`tests/core/`, `tests/mcp/`, `tests/tui/`)
+- Don't mock **Kagan** HTTP clients in Playwright product smoke — use real `kagan web`.
+- Don't mock services/repos/adapters in **behavioral** Python tests — fake the **agent** only.
+- Don't assert on logs or mock call counts — assert observable outcomes.
+- Don't use `monkeypatch` in new behavioral tests except **CLI/process seams** (documented in matrix).
+- Don't depend on timing — wait for state changes, never naked `asyncio.sleep` in assertions.
+- Don't import `kagan.core` private modules from **`tests/core/`**, **`tests/mcp/`**, **`tests/tui/`** behavioral tests.

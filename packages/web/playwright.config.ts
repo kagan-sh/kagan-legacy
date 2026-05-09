@@ -53,6 +53,8 @@ export default defineConfig({
           env: {
             KAGAN_E2E_TEMP_DIR: tempDir,
             KAGAN_FAKE_AGENT: '1',
+            // Keep orchestrator turns short in E2E; default 30s delay would exceed test timeouts.
+            KAGAN_FAKE_AGENT_DELAY_MS: '100',
           },
         },
       }),

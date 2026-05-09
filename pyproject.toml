@@ -189,6 +189,7 @@ markers = [
   "integrations: tests scoped to native integration implementations",
   "integration: tests scoped to real agent binary integration",
   "mock_platform_system(name): override platform.system() for the test",
+  "smoke_e2e: Playwright + subprocess CLI smoke (optional nightly job; wired via poe web-e2e)",
 ]
 addopts = "-p no:anyio -x -n auto --dist=loadgroup"
 
@@ -306,6 +307,10 @@ shell = "pnpm --filter kagan-web exec vitest run src/test/a11y.test.tsx"
 [tool.poe.tasks.web-check]
 help = "Run all web package checks (typecheck + test)"
 sequence = ["web-typecheck", "web-test"]
+
+[tool.poe.tasks.web-e2e]
+help = "Build web bundle and run Playwright E2E tests (requires kagan web server; started by playwright.config.ts webServer)"
+sequence = [{ ref = "web-build" }, { shell = "cd packages/web && pnpm exec playwright test" }]
 
 [tool.poe.tasks.vscode-typecheck]
 help = "Run TypeScript type checking on the VS Code extension package"

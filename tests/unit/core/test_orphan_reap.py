@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -112,21 +112,21 @@ def _seed_in_progress_task_with_sessions(
     return _db_sync(engine, op)
 
 
-def test_reap_marks_dead_pid_session_as_failed(tmp_path: Path) -> None:
+def test_reap_marks_dead_pid_session_as_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     engine = _make_engine(tmp_path)
     # Use a PID that is guaranteed to not exist
     dead_pid = 99999999
 
     session_id = _seed_session(engine, status="RUNNING", pid=dead_pid)
 
-    # Patch os.kill to simulate ProcessLookupError for this pid
     def mock_kill(pid: int, sig: int) -> None:
         if pid == dead_pid:
             raise ProcessLookupError(3, "No such process")
-        return None
 
-    with patch("kagan.core._orphan_reap.os.kill", side_effect=mock_kill):
-        reaped = asyncio.run(reap_orphan_sessions(engine))
+    monkeypatch.setattr(os, "kill", mock_kill)
+    reaped = asyncio.run(reap_orphan_sessions(engine))
 
     assert reaped == 1
 
@@ -142,8 +142,6 @@ def test_reap_marks_dead_pid_session_as_failed(tmp_path: Path) -> None:
 
 
 def test_reap_skips_live_pid_session(tmp_path: Path) -> None:
-    import os
-
     engine = _make_engine(tmp_path)
     live_pid = os.getpid()  # current process is alive
 
@@ -190,7 +188,9 @@ def test_reap_treats_none_pid_as_dead(tmp_path: Path) -> None:
 # ── Task cascade tests ────────────────────────────────────────────────────────
 
 
-def test_reap_cascades_in_progress_task_to_backlog(tmp_path: Path) -> None:
+def test_reap_cascades_in_progress_task_to_backlog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """When the reaped session is the last RUNNING session, the owning task
     must move from IN_PROGRESS back to BACKLOG."""
     engine = _make_engine(tmp_path)
@@ -201,8 +201,8 @@ def test_reap_cascades_in_progress_task_to_backlog(tmp_path: Path) -> None:
         if pid == dead_pid:
             raise ProcessLookupError(3, "No such process")
 
-    with patch("kagan.core._orphan_reap.os.kill", side_effect=mock_kill):
-        reaped = asyncio.run(reap_orphan_sessions(engine))
+    monkeypatch.setattr(os, "kill", mock_kill)
+    reaped = asyncio.run(reap_orphan_sessions(engine))
 
     assert reaped == 1
 
@@ -218,11 +218,11 @@ def test_reap_cascades_in_progress_task_to_backlog(tmp_path: Path) -> None:
     engine.dispose()
 
 
-def test_reap_does_not_cascade_task_when_other_running_sessions_exist(tmp_path: Path) -> None:
+def test_reap_does_not_cascade_task_when_other_running_sessions_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """When another RUNNING session for the same task still exists (e.g. pair
     mode), the task must remain IN_PROGRESS after the orphan is reaped."""
-    import os
-
     engine = _make_engine(tmp_path)
     dead_pid = 99999999
     live_pid = os.getpid()
@@ -236,8 +236,8 @@ def test_reap_does_not_cascade_task_when_other_running_sessions_exist(tmp_path: 
             raise ProcessLookupError(3, "No such process")
         # live_pid: do nothing (process exists)
 
-    with patch("kagan.core._orphan_reap.os.kill", side_effect=mock_kill):
-        reaped = asyncio.run(reap_orphan_sessions(engine))
+    monkeypatch.setattr(os, "kill", mock_kill)
+    reaped = asyncio.run(reap_orphan_sessions(engine))
 
     assert reaped == 1
 

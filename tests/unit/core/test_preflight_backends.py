@@ -10,14 +10,7 @@ Covers all three severity paths:
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import TYPE_CHECKING
-from unittest.mock import patch
-
 import pytest
-
-if TYPE_CHECKING:
-    from collections.abc import Generator
 
 from kagan.core._preflight import CheckStatus, check_agent_backends, run_all_checks
 
@@ -38,8 +31,7 @@ def _make_availability(installed: set[str], all_backends: set[str]) -> dict[str,
 _BACKENDS = {"claude-code", "codex", "gemini-cli", "opencode", "goose"}
 
 
-@contextmanager
-def _patch_backends(installed: set[str]) -> Generator[None, None, None]:
+def _patch_backends(monkeypatch: pytest.MonkeyPatch, installed: set[str]) -> None:
     """Patch list_available_backends at the source module.
 
     check_agent_backends() does a local import inside its body, so we must patch
@@ -47,8 +39,10 @@ def _patch_backends(installed: set[str]) -> Generator[None, None, None]:
     kagan.core._preflight.
     """
     availability = _make_availability(installed, _BACKENDS)
-    with patch("kagan.core._agent.list_available_backends", return_value=availability):
-        yield
+    monkeypatch.setattr(
+        "kagan.core._agent.list_available_backends",
+        lambda *a, **kw: availability,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -56,10 +50,10 @@ def _patch_backends(installed: set[str]) -> Generator[None, None, None]:
 # ---------------------------------------------------------------------------
 
 
-def test_rule1_zero_installed_default_is_fail() -> None:
+def test_rule1_zero_installed_default_is_fail(monkeypatch: pytest.MonkeyPatch) -> None:
     """When no backends are installed, the default backend result is FAIL."""
-    with _patch_backends(set()):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, set())
+    results = check_agent_backends("claude-code")
 
     default_result = next(r for r in results if r.name == "agent_backend:claude-code")
     assert default_result.status == CheckStatus.FAIL, (
@@ -68,10 +62,10 @@ def test_rule1_zero_installed_default_is_fail() -> None:
     assert default_result.is_blocking is True
 
 
-def test_rule1_zero_installed_others_are_warn() -> None:
+def test_rule1_zero_installed_others_are_warn(monkeypatch: pytest.MonkeyPatch) -> None:
     """When no backends are installed, non-default backends are WARN."""
-    with _patch_backends(set()):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, set())
+    results = check_agent_backends("claude-code")
 
     non_default = [r for r in results if r.name != "agent_backend:claude-code"]
     assert non_default, "Expected non-default backend results"
@@ -82,10 +76,10 @@ def test_rule1_zero_installed_others_are_warn() -> None:
         )
 
 
-def test_rule1_zero_installed_all_results_emitted() -> None:
+def test_rule1_zero_installed_all_results_emitted(monkeypatch: pytest.MonkeyPatch) -> None:
     """check_agent_backends emits one result per registered backend."""
-    with _patch_backends(set()):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, set())
+    results = check_agent_backends("claude-code")
 
     assert len(results) == len(_BACKENDS), f"Expected {len(_BACKENDS)} results, got {len(results)}"
 
@@ -96,11 +90,13 @@ def test_rule1_zero_installed_all_results_emitted() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_rule2_default_missing_others_installed_default_is_fail() -> None:
+def test_rule2_default_missing_others_installed_default_is_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When default is absent but others are installed, default is FAIL."""
     installed = {"codex", "opencode"}  # claude-code NOT in installed
-    with _patch_backends(installed):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, installed)
+    results = check_agent_backends("claude-code")
 
     default_result = next(r for r in results if r.name == "agent_backend:claude-code")
     assert default_result.status == CheckStatus.FAIL, (
@@ -109,11 +105,13 @@ def test_rule2_default_missing_others_installed_default_is_fail() -> None:
     assert default_result.is_blocking is True
 
 
-def test_rule2_default_missing_installed_others_are_pass() -> None:
+def test_rule2_default_missing_installed_others_are_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When default is absent, installed non-default backends are PASS."""
     installed = {"codex", "opencode"}
-    with _patch_backends(installed):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, installed)
+    results = check_agent_backends("claude-code")
 
     for name in installed:
         result = next(r for r in results if r.name == f"agent_backend:{name}")
@@ -122,11 +120,13 @@ def test_rule2_default_missing_installed_others_are_pass() -> None:
         )
 
 
-def test_rule2_default_missing_uninstalled_others_are_warn() -> None:
+def test_rule2_default_missing_uninstalled_others_are_warn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When default is absent, uninstalled non-default backends are WARN."""
     installed = {"codex"}  # opencode, goose, gemini-cli NOT installed (and not default)
-    with _patch_backends(installed):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, installed)
+    results = check_agent_backends("claude-code")
 
     uninstalled_non_default = {"opencode", "goose", "gemini-cli"}
     for name in uninstalled_non_default:
@@ -142,22 +142,24 @@ def test_rule2_default_missing_uninstalled_others_are_warn() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_rule3_default_installed_is_pass() -> None:
+def test_rule3_default_installed_is_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the default backend is installed, its result is PASS."""
     installed = {"claude-code", "codex"}
-    with _patch_backends(installed):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, installed)
+    results = check_agent_backends("claude-code")
 
     default_result = next(r for r in results if r.name == "agent_backend:claude-code")
     assert default_result.status == CheckStatus.PASS, "Default backend must be PASS when installed"
     assert default_result.is_blocking is False
 
 
-def test_rule3_default_installed_uninstalled_others_are_warn() -> None:
+def test_rule3_default_installed_uninstalled_others_are_warn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When the default is installed, uninstalled non-default backends are WARN."""
     installed = {"claude-code"}  # only default installed
-    with _patch_backends(installed):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, installed)
+    results = check_agent_backends("claude-code")
 
     non_default = [r for r in results if r.name != "agent_backend:claude-code"]
     for result in non_default:
@@ -166,11 +168,13 @@ def test_rule3_default_installed_uninstalled_others_are_warn() -> None:
         )
 
 
-def test_rule3_default_installed_other_installed_are_pass() -> None:
+def test_rule3_default_installed_other_installed_are_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When the default is installed, other installed backends are PASS."""
     installed = {"claude-code", "codex", "opencode"}
-    with _patch_backends(installed):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, installed)
+    results = check_agent_backends("claude-code")
 
     for name in {"codex", "opencode"}:
         result = next(r for r in results if r.name == f"agent_backend:{name}")
@@ -184,10 +188,12 @@ def test_rule3_default_installed_other_installed_are_pass() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_none_default_backend_falls_back_to_claude_code() -> None:
+def test_none_default_backend_falls_back_to_claude_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When default_backend is None, falls back to 'claude-code' as default slot."""
-    with _patch_backends(set()):
-        results = check_agent_backends(None)
+    _patch_backends(monkeypatch, set())
+    results = check_agent_backends(None)
 
     names = {r.name for r in results}
     assert "agent_backend:claude-code" in names, (
@@ -200,10 +206,10 @@ def test_none_default_backend_falls_back_to_claude_code() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_default_backend_result_is_first() -> None:
+def test_default_backend_result_is_first(monkeypatch: pytest.MonkeyPatch) -> None:
     """The default backend result is always the first item in the output."""
-    with _patch_backends({"codex"}):
-        results = check_agent_backends("claude-code")
+    _patch_backends(monkeypatch, {"codex"})
+    results = check_agent_backends("claude-code")
 
     assert results[0].name == "agent_backend:claude-code", (
         "Default backend result must be listed first"
@@ -215,11 +221,13 @@ def test_default_backend_result_is_first() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_all_checks_includes_multi_backend_results(tmp_path) -> None:
+def test_run_all_checks_includes_multi_backend_results(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """run_all_checks always surveys all backends, not just the default."""
     db_path = tmp_path / "test.db"
-    with _patch_backends({"claude-code"}):
-        results = run_all_checks(db_path, agent_backend="claude-code")
+    _patch_backends(monkeypatch, {"claude-code"})
+    results = run_all_checks(db_path, agent_backend="claude-code")
 
     backend_results = [r for r in results if r.name.startswith("agent_backend:")]
     assert len(backend_results) == len(_BACKENDS), (

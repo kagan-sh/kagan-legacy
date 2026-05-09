@@ -1,5 +1,4 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from tests.helpers.async_utils import wait_for
@@ -7,6 +6,23 @@ from tests.helpers.driver import KaganDriver
 from textual.widgets import Input, SelectionList, Static
 
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
+
+
+class _AsyncSpy:
+    """Async callable that records the most-recent call."""
+
+    def __init__(self, return_value=None) -> None:
+        self._return_value = return_value
+        self.await_count = 0
+        self.await_args: SimpleNamespace | None = None
+
+    async def __call__(self, *args, **kwargs) -> object:
+        self.await_count += 1
+        self.await_args = SimpleNamespace(args=args, kwargs=kwargs)
+        return self._return_value
+
+    def assert_awaited_once(self) -> None:
+        assert self.await_count == 1, f"expected 1 call, got {self.await_count}"
 
 
 async def _open_github_import_modal(app) -> None:
@@ -31,74 +47,82 @@ def _issue(number: int, title: str, *, already_synced: bool = False) -> SimpleNa
     )
 
 
-def _preflight_patch():
-    return patch(
-        "kagan.tui.screens.github_import_modal.github_preflight_checks",
-        AsyncMock(return_value=[]),
-    )
-
-
 async def test_github_import_preview_shows_fetched_issues(
     board_with_task: KaganDriver,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
-    preview = AsyncMock(return_value=[_issue(10, "Fix the preview")])
+    preview = _AsyncSpy(return_value=[_issue(10, "Fix the preview")])
 
-    with (
-        _preflight_patch(),
-        patch("kagan.tui.screens.github_import_modal.preview_github_issues", preview),
-    ):
-        async with app.run_test() as pilot:
-            await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
-            await _open_github_import_modal(app)
+    monkeypatch.setattr(
+        "kagan.tui.screens.github_import_modal.github_preflight_checks",
+        _AsyncSpy(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "kagan.tui.screens.github_import_modal.preview_github_issues",
+        preview,
+    )
 
-            app.screen.query_one("#github-import-repo", Input).value = "owner/repo"
-            await pilot.press("enter")
+    async with app.run_test() as pilot:
+        await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
+        await _open_github_import_modal(app)
 
-            await wait_for(
-                lambda: app.screen.query_one("#github-import-selection", SelectionList).display,
-                pump_delay=0.05,
-            )
+        app.screen.query_one("#github-import-repo", Input).value = "owner/repo"
+        await pilot.press("enter")
 
-            selection = app.screen.query_one("#github-import-selection", SelectionList)
-            status = app.screen.query_one("#github-import-status", Static)
-            assert selection.option_count == 1
-            assert list(selection.selected) == [10]
-            assert "1 issue found" in str(status.content)
+        await wait_for(
+            lambda: app.screen.query_one("#github-import-selection", SelectionList).display,
+            pump_delay=0.05,
+        )
+
+        selection = app.screen.query_one("#github-import-selection", SelectionList)
+        status = app.screen.query_one("#github-import-status", Static)
+        assert selection.option_count == 1
+        assert list(selection.selected) == [10]
+        assert "1 issue found" in str(status.content)
 
     preview.assert_awaited_once()
 
 
 async def test_github_import_selected_issues_sync_and_close(
     board_with_task: KaganDriver,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from kagan.core.integrations import ImportResult
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
-    preview = AsyncMock(return_value=[_issue(10, "Fix the preview")])
-    sync = AsyncMock(return_value=ImportResult(created=1))
+    preview = _AsyncSpy(return_value=[_issue(10, "Fix the preview")])
+    sync = _AsyncSpy(return_value=ImportResult(created=1))
 
-    with (
-        _preflight_patch(),
-        patch("kagan.tui.screens.github_import_modal.preview_github_issues", preview),
-        patch("kagan.tui.screens.github_import_modal.sync_github_issues", sync),
-    ):
-        async with app.run_test() as pilot:
-            await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
-            await _open_github_import_modal(app)
+    monkeypatch.setattr(
+        "kagan.tui.screens.github_import_modal.github_preflight_checks",
+        _AsyncSpy(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "kagan.tui.screens.github_import_modal.preview_github_issues",
+        preview,
+    )
+    monkeypatch.setattr(
+        "kagan.tui.screens.github_import_modal.sync_github_issues",
+        sync,
+    )
 
-            app.screen.query_one("#github-import-repo", Input).value = "owner/repo"
-            await pilot.press("enter")
-            await wait_for(
-                lambda: app.screen.query_one("#github-import-selection", SelectionList).display,
-                pump_delay=0.05,
-            )
+    async with app.run_test() as pilot:
+        await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
+        await _open_github_import_modal(app)
 
-            await pilot.press("enter")
-            await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
+        app.screen.query_one("#github-import-repo", Input).value = "owner/repo"
+        await pilot.press("enter")
+        await wait_for(
+            lambda: app.screen.query_one("#github-import-selection", SelectionList).display,
+            pump_delay=0.05,
+        )
+
+        await pilot.press("enter")
+        await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
 
     sync.assert_awaited_once()
     assert sync.await_args.kwargs["repo_slug"] == "owner/repo"

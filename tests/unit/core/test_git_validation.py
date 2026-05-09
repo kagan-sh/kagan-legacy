@@ -1,7 +1,6 @@
 """Unit tests for git reference validation functions in kagan.core.git."""
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -15,50 +14,78 @@ class TestValidateRefName:
     """Tests for validate_ref_name() function."""
 
     @pytest.mark.asyncio
-    async def test_rejects_names_starting_with_dash(self) -> None:
+    async def test_rejects_names_starting_with_dash(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Names starting with '-' should be rejected (option injection prevention)."""
-        with patch("kagan.core.git._run_git") as mock_run_git:
-            # The function should return False before calling _run_git
-            result = await validate_ref_name("-force")
-            assert result is False
-            mock_run_git.assert_not_called()
+        called: list[tuple] = []
+
+        async def _never_called(*args, **kwargs):
+            called.append((args, kwargs))
+            return ("", "")
+
+        monkeypatch.setattr("kagan.core.git._run_git", _never_called)
+        result = await validate_ref_name("-force")
+        assert result is False
+        assert called == [], "_run_git must not be called for dash-prefix names"
 
     @pytest.mark.asyncio
-    async def test_rejects_names_containing_double_dot(self) -> None:
+    async def test_rejects_names_containing_double_dot(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Names containing '..' should be rejected (directory traversal prevention)."""
-        with patch("kagan.core.git._run_git") as mock_run_git:
-            result = await validate_ref_name("feature..branch")
-            assert result is False
-            mock_run_git.assert_not_called()
+        called: list[tuple] = []
+
+        async def _never_called(*args, **kwargs):
+            called.append((args, kwargs))
+            return ("", "")
+
+        monkeypatch.setattr("kagan.core.git._run_git", _never_called)
+        result = await validate_ref_name("feature..branch")
+        assert result is False
+        assert called == [], "_run_git must not be called for double-dot names"
 
     @pytest.mark.asyncio
-    async def test_rejects_names_containing_at_curly(self) -> None:
+    async def test_rejects_names_containing_at_curly(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Names containing '@{' should be rejected (reflog syntax prevention)."""
-        with patch("kagan.core.git._run_git") as mock_run_git:
-            result = await validate_ref_name("branch@{1}")
-            assert result is False
-            mock_run_git.assert_not_called()
+        called: list[tuple] = []
+
+        async def _never_called(*args, **kwargs):
+            called.append((args, kwargs))
+            return ("", "")
+
+        monkeypatch.setattr("kagan.core.git._run_git", _never_called)
+        result = await validate_ref_name("branch@{1}")
+        assert result is False
+        assert called == [], "_run_git must not be called for @{ names"
 
     @pytest.mark.asyncio
-    async def test_rejects_empty_name(self) -> None:
+    async def test_rejects_empty_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Empty string should be rejected."""
-        with patch("kagan.core.git._run_git") as mock_run_git:
-            result = await validate_ref_name("")
-            assert result is False
-            mock_run_git.assert_not_called()
+        called: list[tuple] = []
+
+        async def _never_called(*args, **kwargs):
+            called.append((args, kwargs))
+            return ("", "")
+
+        monkeypatch.setattr("kagan.core.git._run_git", _never_called)
+        result = await validate_ref_name("")
+        assert result is False
+        assert called == [], "_run_git must not be called for empty names"
 
     @pytest.mark.asyncio
-    async def test_rejects_name_with_only_whitespace(self) -> None:
+    async def test_rejects_name_with_only_whitespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Whitespace-only names should pass to git check-ref-format for validation."""
+
         # Note: whitespace names are not rejected by the quick checks,
         # they go to git check-ref-format which will reject them
-        with patch("kagan.core.git._run_git") as mock_run_git:
-            mock_run_git.side_effect = WorktreeError("invalid ref name")
-            result = await validate_ref_name("   ")
-            assert result is False
+        async def _fake_run_git(*args, **kwargs):
+            raise WorktreeError("invalid ref name")
+
+        monkeypatch.setattr("kagan.core.git._run_git", _fake_run_git)
+        result = await validate_ref_name("   ")
+        assert result is False
 
     @pytest.mark.asyncio
-    async def test_accepts_valid_branch_names(self) -> None:
+    async def test_accepts_valid_branch_names(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Valid branch names should be accepted."""
         valid_names = [
             "main",
@@ -73,94 +100,123 @@ class TestValidateRefName:
         ]
 
         for name in valid_names:
-            with patch("kagan.core.git._run_git") as mock_run_git:
-                mock_run_git.return_value = ("", "")  # Success
-                result = await validate_ref_name(name)
-                assert result is True, f"Expected '{name}' to be valid"
-                mock_run_git.assert_called_once_with(
-                    "check-ref-format", "--branch", name, cwd=Path.cwd(), check=True
-                )
+            git_calls: list[tuple] = []
+
+            async def _fake_run_git(*args, _calls=git_calls, **kwargs):
+                _calls.append((args, kwargs))
+                return ("", "")
+
+            monkeypatch.setattr("kagan.core.git._run_git", _fake_run_git)
+            result = await validate_ref_name(name)
+            assert result is True, f"Expected '{name}' to be valid"
+            assert len(git_calls) == 1, f"Expected _run_git called once for '{name}'"
+            assert git_calls[0][0] == ("check-ref-format", "--branch", name)
+            assert git_calls[0][1] == {"cwd": Path.cwd(), "check": True}
 
     @pytest.mark.asyncio
-    async def test_rejects_invalid_branch_names_via_git(self) -> None:
+    async def test_rejects_invalid_branch_names_via_git(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Names that pass quick checks but fail git check-ref-format should be rejected."""
-        with patch("kagan.core.git._run_git") as mock_run_git:
-            mock_run_git.side_effect = WorktreeError("invalid ref name")
-            result = await validate_ref_name("name ending with space ")
-            assert result is False
+
+        async def _fake_run_git(*args, **kwargs):
+            raise WorktreeError("invalid ref name")
+
+        monkeypatch.setattr("kagan.core.git._run_git", _fake_run_git)
+        result = await validate_ref_name("name ending with space ")
+        assert result is False
 
     @pytest.mark.asyncio
-    async def test_handles_git_command_failure(self) -> None:
+    async def test_handles_git_command_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """WorktreeError from _run_git should be caught and return False."""
-        with patch("kagan.core.git._run_git") as mock_run_git:
-            mock_run_git.side_effect = WorktreeError("command failed")
-            result = await validate_ref_name("invalid~name")
-            assert result is False
+
+        async def _fake_run_git(*args, **kwargs):
+            raise WorktreeError("command failed")
+
+        monkeypatch.setattr("kagan.core.git._run_git", _fake_run_git)
+        result = await validate_ref_name("invalid~name")
+        assert result is False
 
 
 class TestWorktreeAddValidation:
     """Tests for worktree_add() validation behavior."""
 
     @pytest.mark.asyncio
-    async def test_raises_worktree_error_for_invalid_branch(self) -> None:
+    async def test_raises_worktree_error_for_invalid_branch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """worktree_add should raise WorktreeError when branch name is invalid."""
-        with patch("kagan.core.git.validate_ref_name") as mock_validate:
-            mock_validate.return_value = False
 
-            with pytest.raises(WorktreeError) as exc_info:
-                await worktree_add(
-                    repo_path="/tmp/repo",
-                    worktree_path="/tmp/wt",
-                    branch="-invalid",
-                    base="main",
-                )
+        async def _fake_validate(name: str) -> bool:
+            return False
 
-            assert "Invalid branch name '-invalid'" in str(exc_info.value)
-            assert "cannot start with '-'" in str(exc_info.value)
+        monkeypatch.setattr("kagan.core.git.validate_ref_name", _fake_validate)
+
+        with pytest.raises(WorktreeError) as exc_info:
+            await worktree_add(
+                repo_path="/tmp/repo",
+                worktree_path="/tmp/wt",
+                branch="-invalid",
+                base="main",
+            )
+
+        assert "Invalid branch name '-invalid'" in str(exc_info.value)
+        assert "cannot start with '-'" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_raises_worktree_error_for_invalid_base(self) -> None:
+    async def test_raises_worktree_error_for_invalid_base(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """worktree_add should raise WorktreeError when base reference is invalid."""
-        with patch("kagan.core.git.validate_ref_name") as mock_validate:
-            # First call (branch) returns True, second call (base) returns False
-            mock_validate.side_effect = [True, False]
+        _results = iter([True, False])
 
-            with pytest.raises(WorktreeError) as exc_info:
-                await worktree_add(
-                    repo_path="/tmp/repo",
-                    worktree_path="/tmp/wt",
-                    branch="feature/test",
-                    base="../malicious",
-                )
+        async def _fake_validate(name: str) -> bool:
+            return next(_results)
 
-            assert "Invalid base reference '../malicious'" in str(exc_info.value)
-            assert "cannot start with '-'" in str(exc_info.value)
+        monkeypatch.setattr("kagan.core.git.validate_ref_name", _fake_validate)
 
-    @pytest.mark.asyncio
-    async def test_calls_worktree_add_when_valid(self) -> None:
-        """worktree_add should proceed when both branch and base are valid."""
-        with (
-            patch("kagan.core.git.validate_ref_name") as mock_validate,
-            patch("kagan.core.git._run_git") as mock_run_git,
-            patch("pathlib.Path.mkdir"),
-        ):
-            mock_validate.return_value = True
-            mock_run_git.return_value = ("", "")
-
+        with pytest.raises(WorktreeError) as exc_info:
             await worktree_add(
                 repo_path="/tmp/repo",
                 worktree_path="/tmp/wt",
                 branch="feature/test",
-                base="main",
+                base="../malicious",
             )
 
-            # validate_ref_name should be called twice (for branch and base)
-            assert mock_validate.call_count == 2
-            # _run_git should be called to create the worktree
-            mock_run_git.assert_called_once()
-            args = mock_run_git.call_args[0]
-            assert args[0] == "worktree"
-            assert args[1] == "add"
+        assert "Invalid base reference '../malicious'" in str(exc_info.value)
+        assert "cannot start with '-'" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_calls_worktree_add_when_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """worktree_add should proceed when both branch and base are valid."""
+        validate_calls: list[str] = []
+        git_calls: list[tuple] = []
+
+        async def _fake_validate(name: str) -> bool:
+            validate_calls.append(name)
+            return True
+
+        async def _fake_run_git(*args, **kwargs):
+            git_calls.append((args, kwargs))
+            return ("", "")
+
+        monkeypatch.setattr("kagan.core.git.validate_ref_name", _fake_validate)
+        monkeypatch.setattr("kagan.core.git._run_git", _fake_run_git)
+        monkeypatch.setattr(Path, "mkdir", lambda *a, **kw: None)
+
+        await worktree_add(
+            repo_path="/tmp/repo",
+            worktree_path="/tmp/wt",
+            branch="feature/test",
+            base="main",
+        )
+
+        # validate_ref_name should be called twice (for branch and base)
+        assert len(validate_calls) == 2
+        # _run_git should be called to create the worktree
+        assert len(git_calls) == 1
+        assert git_calls[0][0][0] == "worktree"
+        assert git_calls[0][0][1] == "add"
 
     @pytest.mark.asyncio
     async def test_validates_branch_with_double_dot(self) -> None:

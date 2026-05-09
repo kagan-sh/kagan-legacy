@@ -214,7 +214,9 @@ class HelpModal(ModalScreen[None]):
             Static(
                 "Task session: Context-aware chat tied to the current task. "
                 "Orchestrator session: General assistant for planning and questions. "
-                "Switch sessions with Ctrl+K. Toggle the AI chat overlay with Ctrl+.",
+                "Switch sessions with Ctrl+K. "
+                "Ctrl+Space toggles the orchestrator overlay globally; "
+                "Ctrl+. opens the sessions overlay from board and workspace contexts.",
                 classes="help-paragraph",
             ),
             Static("Agent Backends", classes="help-section-title"),

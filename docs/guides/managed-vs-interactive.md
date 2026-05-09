@@ -20,7 +20,7 @@ Every task is still just a task. The canonical path is `Create -> Start -> Revie
 
 ## Start a managed run
 
-`n` → create task → `s` to start → follow progress from the task screen or the TUI AI panel → REVIEW → approve/merge.
+`n` → create task → `s` to start → follow progress from the task screen or the TUI orchestrator chat overlay → REVIEW → approve/merge.
 
 This is the default launch mode. The agent runs in the background; use follow-ups, notes, and review to steer iterations after launch.
 

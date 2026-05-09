@@ -108,8 +108,9 @@ active orchestrator, worker/reviewer, or general session from
 `sessionOverlayTargetAtom`; `sessionOverlayLayoutAtom` controls only the docked,
 bottom, and fullscreen layouts.
 
-`Cmd/Ctrl+.` cycles the overlay layout and `Cmd/Ctrl+K` opens the session
-picker. Task streams still deep-link through `/task/:id?lane=worker|reviewer`;
+`Cmd/Ctrl+.` toggles the Sessions overlay (open/close) on board and task routes;
+`Cmd/Ctrl+K` opens the session picker. Docked vs fullscreen layout uses
+`Cmd/Ctrl+Shift+F` while the overlay is open. Task streams still deep-link through `/task/:id?lane=worker|reviewer`;
 orchestrator and general sessions use the workspace/session routes.
 
 ______________________________________________________________________
@@ -163,7 +164,7 @@ ______________________________________________________________________
 - `/settings` -- categorized system configuration
 - `/welcome` -- onboarding/project setup page
 
-Global overlays in app layout include Session Switcher (`Cmd/Ctrl+Shift+K`) and Help (`?`/`F1`).
+Global overlays in app layout include Session Switcher (`Cmd/Ctrl+K` or `Cmd/Ctrl+Shift+K`) and Help (`?`/`F1`).
 
 `Cmd/Ctrl+Shift+W` toggles between `/board` and `/workspace`. On `/workspace`, the route itself is the orchestrator surface, so the app-level AI rail stays hidden.
 

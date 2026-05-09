@@ -19,7 +19,7 @@ ______________________________________________________________________
 - Vim + arrow navigation across cards/columns
 - `Enter` is two-step: first open the inspector for the selected card, then open the full task screen
 - `w` switches from Kanban into the orchestrator-first Workspace screen
-- `Space` cycles AI split overlay, `/` toggles search
+- `Ctrl+.` toggles the **Sessions** overlay (unified orchestrator/session chat), `/` toggles search
 - `p` opens task peek overlay without changing chat layout
 - `x` deletes selected task (with confirm), `s` starts agent, `Shift+S` stops agent
 - `Shift+Left/Right` moves task between workflow columns
@@ -63,7 +63,7 @@ ______________________________________________________________________
 ## 6. Session Overlay
 
 - Two modes: orchestrator and task session
-  - `Ctrl+.` toggles Session Overlay, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
+  - `Ctrl+.` toggles Session Overlay, `Ctrl+F` / `Ctrl+Shift+F` expand and fullscreen the chat surface where bound, `Ctrl+K` Session Switcher, `Esc` close
 - Streaming output appends fragments as they arrive, drains words on a short timer, and follows the newest content without duplicating finalized text
 - `Enter` send, `Shift+Enter` newline, `Tab` accept completion
 - `Ctrl+C` clears input text; `Esc` stops the active agent
@@ -86,8 +86,7 @@ ______________________________________________________________________
 
 ## 7b. Orchestrator Overlay
 
-- `o` (or `Ctrl+Space`) opens `OrchestratorOverlay` from any screen; pressing
-  the chord again re-focuses the overlay's chat input.
+- `Ctrl+Space` opens or closes `OrchestratorOverlay` from any screen (APP binding **Orchestrator (toggle)**); pressing the chord again while the overlay is focused dismisses it.
   *Tests:* `tests/tui/test_orchestrator_overlay.py`.
 - The overlay has two modes: orchestrator (talks to the project orchestrator
   chat session) and session (re-streams a worker / reviewer session from
@@ -103,7 +102,7 @@ ______________________________________________________________________
   set reorders.
 - The overlay footer is mode-aware: when `ChatPanel` runs in `overlay`
   footer mode, hint keys that the parent screen would shadow (for example
-  `Ctrl+.` and `Ctrl+J`) are dropped so the hint advertises only keys that
+  `Ctrl+.`) are dropped so the hint advertises only keys that
   fire inside the overlay.
 - Replay of a finished agent session is rendered instantly — the typewriter
   animation runs only on live tokens. Reattaching to a closed session no
@@ -141,15 +140,15 @@ ______________________________________________________________________
 
 ### Global
 
-| Key                | Action               |
-| ------------------ | -------------------- |
-| `?` / `F1`         | Help                 |
-| `Ctrl+Shift+P`     | Quick Actions        |
-| `Ctrl+O`           | Project selector     |
-| `Ctrl+R`           | Repository selector  |
-| `Ctrl+,`           | Settings             |
-| `Ctrl+Q`           | Quit                 |
-| `o` / `Ctrl+Space` | Orchestrator overlay |
+| Key            | Action                |
+| -------------- | --------------------- |
+| `?` / `F1`     | Help                  |
+| `Ctrl+Shift+P` | Quick Actions         |
+| `Ctrl+O`       | Project selector      |
+| `Ctrl+R`       | Repository selector   |
+| `Ctrl+,`       | Settings              |
+| `Ctrl+Q`       | Quit                  |
+| `Ctrl+Space`   | Orchestrator (toggle) |
 
 ### Kanban
 
@@ -159,8 +158,7 @@ ______________________________________________________________________
 | `Enter`            | Open task flow                                       |
 | `w`                | Switch to workspace                                  |
 | `a`                | Attach interactive run (stops managed run if active) |
-| `Space`            | Cycle AI split                                       |
-| `Ctrl+.`           | Toggle SessionOverlay                                |
+| `Ctrl+.`           | Sessions overlay                                     |
 | `p`                | Peek                                                 |
 | `e`                | Edit                                                 |
 | `x`                | Delete (confirm)                                     |

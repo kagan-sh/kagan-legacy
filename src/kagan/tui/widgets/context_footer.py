@@ -21,7 +21,7 @@ _NAVIGATION_HINTS: dict[str, str] = {
     "kanban": "",
     "kanban_with_card": "",
     "task": "[dim]1/2 tabs · Esc back[/]",
-    "session": "[dim]Ctrl+K sessions · Ctrl+. AI panel[/]",
+    "session": "[dim]Ctrl+K sessions · Ctrl+. sessions[/]",
 }
 
 

@@ -10,7 +10,7 @@ tags:
 
 # Chat & REPL
 
-Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI SessionOverlay** (`Ctrl+.` or global `Ctrl+Space` from Kanban/Task screens). Both share the same slash commands and session persistence.
+Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI SessionOverlay** (`Ctrl+.` from Kanban, Task, or Session Dashboard, or global `Ctrl+Space` from anywhere). Both share the same slash commands and session persistence.
 
 ______________________________________________________________________
 
@@ -86,7 +86,6 @@ ______________________________________________________________________
 | Key                         | Action                  |
 | --------------------------- | ----------------------- |
 | ++ctrl+period++             | Sessions overlay        |
-| ++space++                   | Cycle split layout      |
 | ++ctrl+f++                  | Expand AI (dock)        |
 | ++ctrl+shift+f++            | Fullscreen (in overlay) |
 | ++ctrl+up++ / ++ctrl+down++ | Cycle selected session  |
@@ -95,7 +94,7 @@ ______________________________________________________________________
 
 The SessionOverlay can show orchestrator, task, and general sessions. Orchestrator sessions have access to project tasks via MCP tools; general sessions are raw backend chats without Kagan project tools or task context. Messages are persisted per-session.
 
-In Kanban and Task screens, `Ctrl+.` opens the sessions overlay. Global `Ctrl+Space` toggles the same overlay from anywhere (press again to close). `Space` cycles `vertical -> horizontal -> vertical` while the overlay stays open. Use `Esc` to close it.
+In Kanban and Task screens, `Ctrl+.` toggles the **Sessions** overlay (unified orchestrator and session chat). Global `Ctrl+Space` toggles the same surface as **Orchestrator** from any screen. Use `Esc` or `Ctrl+Space` again while the overlay is focused to close it. Docked split and fullscreen behavior for the chat surface are driven from **AI expand** (`Ctrl+F`) and **AI fullscreen** (`Ctrl+Shift+F`) where those bindings apply (see the [keybindings reference](../reference/keybindings.md#kanban-board)).
 
 `Ctrl+Up` / `Ctrl+Down` step through available sessions by stable session ID rather than list position. The web dashboard exposes the same cycle as `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓`. See [keybindings reference](../reference/keybindings.md#sessionoverlay) for the full table.
 
@@ -193,6 +192,8 @@ ______________________________________________________________________
 
 ## Input behavior
 
+### CLI REPL (`kagan chat`)
+
 | Key             | Action              |
 | --------------- | ------------------- |
 | ++enter++       | Send message        |
@@ -202,6 +203,17 @@ ______________________________________________________________________
 | ++ctrl+c++      | Clear input         |
 | ++esc++         | Stop agent          |
 | ++ctrl+k++      | Session Switcher    |
+
+### TUI SessionOverlay chat input
+
+| Key             | Action            |
+| --------------- | ----------------- |
+| ++enter++       | Send message      |
+| ++shift+enter++ | Insert newline    |
+| ++tab++         | Accept completion |
+| ++ctrl+c++      | Clear input       |
+| ++esc++         | Stop agent        |
+| ++ctrl+k++      | Session Switcher  |
 
 ______________________________________________________________________
 

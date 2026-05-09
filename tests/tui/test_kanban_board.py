@@ -267,8 +267,9 @@ async def test_search_query_replaces_header_with_input(board: KaganDriver) -> No
 
 # Removed: test_ctrl_o_on_selected_detached_task_opens_docked_task_overlay.
 # This tested the old kanban embedded chat panel (docked / vertical layout
-# classes) which was removed in the Unified Sessions Refactor. Ctrl+I now
-# pushes OrchestratorOverlay instead.
+# classes) which was removed in the Unified Sessions Refactor. Ctrl+. now
+# opens the sessions overlay from the board; Ctrl+Space toggles the
+# orchestrator overlay globally.
 
 
 async def test_hjkl_navigation_moves_selection_across_cards(board: KaganDriver) -> None:

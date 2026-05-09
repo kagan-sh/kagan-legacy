@@ -216,8 +216,10 @@ ______________________________________________________________________
 
 `OrchestratorOverlay` (`src/kagan/tui/screens/orchestrator_overlay.py`) is the
 global agent-stream switcher mounted via `app.SCREENS["orchestrator-overlay"]`
-and bound to `o` (and the hidden `Ctrl+Space` chord) on `APP_BINDINGS`. Pushing
-the overlay while it is already active simply re-focuses its input.
+and bound on `APP_BINDINGS` as **`Ctrl+Space`** (**Orchestrator (toggle)**).
+Kanban, Task, and Session Dashboard additionally use **`Ctrl+.`** (`toggle_chat`,
+footer label **Sessions**) to push the same overlay (often with task context).
+When the overlay is already the top screen, `Ctrl+Space` pops it.
 
 Two modes:
 
@@ -242,7 +244,7 @@ rather than list index. Keys are declared on `ORCHESTRATOR_OVERLAY_BINDINGS` /
 `RUNNING_AGENTS_BAR_BINDINGS` in `keybindings.py`.
 
 Because `OrchestratorOverlay` is a `ModalScreen`, parent-screen bindings
-like `Ctrl+.` and `Ctrl+J` are shadowed while the overlay is mounted. The
+like `Ctrl+.` are shadowed while the overlay is mounted. The
 embedded `ChatPanel` runs in `set_footer_mode("overlay")` and rebuilds its
 hint string to advertise only keys that fire inside the overlay — the
 panel-level shortcuts that the parent owns are dropped from the hint.

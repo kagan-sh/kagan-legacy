@@ -29,7 +29,7 @@ These shortcuts apply in the web dashboard (`kagan web`). All Cmd/Ctrl bindings 
 | ---------------------------------- | ----------------------------------------------- |
 | ++cmd+shift+w++ / ++ctrl+shift+w++ | Toggle Board / Workspace view                   |
 | ++cmd+shift+p++ / ++ctrl+shift+p++ | Open Quick Actions                              |
-| ++cmd+period++ / ++ctrl+period++   | Cycle Sessions dock mode on Board / Task routes |
+| ++cmd+period++ / ++ctrl+period++   | Toggle Sessions overlay on Board / Task routes  |
 | ++cmd+shift+f++ / ++ctrl+shift+f++ | Toggle AI panel fullscreen off-workspace        |
 | ++cmd+up++ / ++ctrl+up++           | Cycle attached agent stream — previous          |
 | ++cmd+down++ / ++ctrl+down++       | Cycle attached agent stream — next              |
@@ -47,7 +47,6 @@ The cycle keys walk `[Orchestrator, ...running workers/reviewers]` and match by 
 | ++enter++                        | Open task                 |
 | ++w++                            | Switch to Workspace       |
 | ++a++                            | Attach interactive run    |
-| ++space++                        | Cycle AI split            |
 | ++p++                            | Peek task                 |
 | ++e++                            | Edit task                 |
 | ++x++                            | Delete task               |
@@ -58,14 +57,14 @@ The cycle keys walk `[Orchestrator, ...running workers/reviewers]` and match by 
 | ++slash++                        | Search                    |
 | ++f++                            | Expand description        |
 | ++ctrl+f++                       | Expand AI / sessions dock |
-| ++ctrl+period++                  | Open orchestrator overlay |
+| ++ctrl+period++                  | Sessions overlay          |
 | ++ctrl+k++                       | Session Switcher          |
 | ++esc++                          | Close SessionOverlay      |
 | ++b++                            | Set branch                |
 
 `Enter` is two-step on the TUI board: first press opens the inspector for the selected card; press `Enter` again to open the full task screen.
 
-Press `Ctrl+.` to open/close SessionOverlay, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
+Press `Ctrl+.` to toggle the **Sessions** overlay from the board, task screen, or session dashboard (the same unified chat surface as global `Ctrl+Space` / **Orchestrator**). Use `Ctrl+F` for **AI expand** from Kanban or the task screen, and `Ctrl+Shift+F` inside the overlay for AI fullscreen.
 
 Rare actions like GitHub import, repo sync, and AI review are available via Quick Actions (`Ctrl+Shift+P`).
 
@@ -105,21 +104,21 @@ AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 
 ## Session Dashboard
 
-| Key             | Action                |
-| --------------- | --------------------- |
-| ++enter++       | Start/focus           |
-| ++s++           | Start agent           |
-| ++x++           | Stop agent            |
-| ++r++           | Restart agent         |
-| ++ctrl+period++ | Toggle SessionOverlay |
-| ++ctrl+k++      | Session Switcher      |
-| ++esc++         | Back                  |
+| Key             | Action           |
+| --------------- | ---------------- |
+| ++enter++       | Start/focus      |
+| ++s++           | Start agent      |
+| ++x++           | Stop agent       |
+| ++r++           | Restart agent    |
+| ++ctrl+period++ | Sessions overlay |
+| ++ctrl+k++      | Session Switcher |
+| ++esc++         | Back             |
 
 The Session Dashboard does not own a fullscreen chat binding; use `Ctrl+F` from the Kanban board or the SessionOverlay to fullscreen the chat surface.
 
 ## SessionOverlay
 
-Toggle with global ++ctrl+space++ (same chord closes when the overlay is focused) or with ++ctrl+period++ from Kanban / Session Dashboard / Task screen. The overlay selects the project orchestrator session by default and can switch across orchestrator, task, and general sessions from the session list.
+Open or close from Kanban, Session Dashboard, or Task screen with ++ctrl+period++ (**Sessions** in footer hints). Toggle globally with ++ctrl+space++ (**Orchestrator**); when the overlay is focused, the same chord closes it (along with ++esc++). The overlay selects the project orchestrator session by default and can switch across orchestrator, task, and general sessions from the session list.
 
 | Key            | Action                             |
 | -------------- | ---------------------------------- |
@@ -130,17 +129,16 @@ Toggle with global ++ctrl+space++ (same chord closes when the overlay is focused
 | ++esc++        | Unwind input/list focus or close   |
 | ++ctrl+space++ | Close overlay (same as Esc)        |
 
-Cycle order is matched by stable session ID rather than list position. The footer is mode-aware: keys that the parent screen would handle (for example `Ctrl+.` and `Ctrl+J`) are dropped from the hint while the overlay is active so only keys that fire inside the overlay are advertised.
+Cycle order is matched by stable session ID rather than list position. The footer is mode-aware: keys that the parent screen would handle (for example `Ctrl+.`) are dropped from the hint while the overlay is active so only keys that fire inside the overlay are advertised.
 
-| Key             | Action              |
-| --------------- | ------------------- |
-| ++enter++       | Send message        |
-| ++shift+enter++ | Insert newline      |
-| ++tab++         | Accept completion   |
-| ++ctrl+j++      | Focus latest output |
-| ++ctrl+c++      | Clear input         |
-| ++esc++         | Stop agent          |
-| ++ctrl+k++      | Session Switcher    |
+| Key             | Action            |
+| --------------- | ----------------- |
+| ++enter++       | Send message      |
+| ++shift+enter++ | Insert newline    |
+| ++tab++         | Accept completion |
+| ++ctrl+c++      | Clear input       |
+| ++esc++         | Stop agent        |
+| ++ctrl+k++      | Session Switcher  |
 
 ## Welcome Screen
 

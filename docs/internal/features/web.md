@@ -77,7 +77,7 @@ ______________________________________________________________________
 ## 6. Chat & Sessions
 
 - **Per-session streaming state** — orchestrator/general chat panels use `useChatSession(sessionId)` with hook-local buffers and queues so multiple sessions cannot overwrite each other when overlays and `/chat` mount together.
-- Session Switcher (`Cmd/Ctrl+Shift+K`) provides a global session index across orchestrator and task-linked sessions
+- Session Switcher (`Cmd/Ctrl+K` or `Cmd/Ctrl+Shift+K`) provides a global session index across orchestrator and task-linked sessions
 - `/chat/:id` shows orchestrator conversation history, streaming output, slash commands, and backend metadata
 - task-specific quick-jump entry points open the global SessionOverlay for the selected task session
 - during streaming, the shared animated wave glyph and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift (shape language matches the chat REPL and TUI)

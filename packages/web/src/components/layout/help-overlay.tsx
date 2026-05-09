@@ -25,7 +25,7 @@ const SHORTCUTS: ShortcutSection[] = [
       { keys: ['Cmd/Ctrl', 'Shift', 'P'], description: 'Open Quick Actions' },
       { keys: ['Cmd/Ctrl', 'K'], description: 'Open Session Switcher' },
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
-      { keys: ['Cmd/Ctrl', '.'], description: 'Cycle Sessions dock mode' },
+      { keys: ['Cmd/Ctrl', '.'], description: 'Toggle Sessions' },
       { keys: ['Cmd/Ctrl', 'Shift', 'F'], description: 'Expand overlay' },
       { keys: ['Esc', '(chat input, streaming)'], description: 'Stop & edit last message' },
     ],

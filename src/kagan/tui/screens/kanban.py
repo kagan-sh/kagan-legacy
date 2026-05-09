@@ -540,7 +540,9 @@ class KanbanScreen(Screen[None]):
         ]
         base = rows[:2]
         base.append(("Ctrl+W", "view"))
-        base.append(("Ctrl+K", "palette"))
+        base.append(
+            (get_key_for_action(KANBAN_BINDINGS, "switch_session", default="Ctrl+K"), "sessions")
+        )
         return base
 
     def _mode_label(self) -> str:

@@ -17,11 +17,12 @@ import re
 from typing import TYPE_CHECKING
 
 from textual import on
-from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import ListItem, ListView, Static
+
+from kagan.tui.keybindings import SESSION_LIST_BINDINGS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -89,11 +90,7 @@ class SessionList(Vertical):
         Seconds between DB polls.  Set to ``0`` in tests to disable polling.
     """
 
-    BINDINGS = [
-        Binding("escape", "return_focus", "Back to input", show=False, priority=True),
-        Binding("s", "stop_session", "Stop session", show=False),
-        Binding("x", "close_session", "Close session", show=False),
-    ]
+    BINDINGS = SESSION_LIST_BINDINGS
 
     DEFAULT_CSS = ""
 

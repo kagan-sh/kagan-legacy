@@ -50,8 +50,8 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
 
 
 def _overlay_cycle_agent_hint() -> str:
-    """Footer fragment for overlay mode (session cycling uses ↑/↓ in the input)."""
-    return "↑/↓ switch agent"
+    """Footer fragment for overlay mode (prompt ↑/↓; global Ctrl+Shift+[/])."""
+    return "↑/↓ or Ctrl+Shift+[/] · switch agents"
 
 
 _TUI_SLASH_COMMANDS: Final[frozenset[str]] = frozenset(
@@ -871,7 +871,7 @@ class ChatPanel(Vertical):
             return True
 
         if not self._input_has_focus():
-            return True
+            return False
 
         if event.key == "ctrl+c":
             event.prevent_default()
@@ -894,13 +894,15 @@ class ChatPanel(Vertical):
             if self._cycle_prompt_history(direction="up"):
                 event.prevent_default()
                 event.stop()
-            return True
+                return True
+            return False
 
         if event.key == "down":
             if self._cycle_prompt_history(direction="down"):
                 event.prevent_default()
                 event.stop()
-            return True
+                return True
+            return False
 
         return False
 

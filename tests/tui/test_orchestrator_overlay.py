@@ -32,8 +32,8 @@ async def board(tmp_path):
     await driver.teardown()
 
 
-async def test_o_key_opens_overlay_from_kanban(board: KaganDriver) -> None:
-    """Pressing o on the kanban screen opens the OrchestratorOverlay."""
+async def test_ctrl_space_opens_overlay_from_kanban(board: KaganDriver) -> None:
+    """Ctrl+Space on the kanban screen opens the OrchestratorOverlay."""
     from kagan.tui import KaganApp
     from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 
@@ -43,7 +43,7 @@ async def test_o_key_opens_overlay_from_kanban(board: KaganDriver) -> None:
         await pilot.pause()
         # We should be on the kanban screen
         assert app.screen.id == "kanban-screen"
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
 
@@ -57,7 +57,7 @@ async def test_esc_closes_overlay_when_in_orchestrator_mode(board: KaganDriver) 
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
         await pilot.press("escape")
@@ -76,7 +76,7 @@ async def test_overlay_breadcrumb_shows_orchestrator_by_default(board: KaganDriv
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
         breadcrumb = app.screen.query_one("#orch-breadcrumb", Static)
@@ -93,15 +93,15 @@ async def test_overlay_contains_chat_panel(board: KaganDriver) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
         panel = app.screen.query_one("#chat-panel", ChatPanel)
         assert panel.is_mounted
 
 
-async def test_ctrl_space_also_opens_overlay(board: KaganDriver) -> None:
-    """Ctrl+Space is an alternative binding for opening the overlay."""
+async def test_ctrl_space_toggles_overlay(board: KaganDriver) -> None:
+    """Ctrl+Space opens the overlay from kanban and closes it when pressed again."""
     from kagan.tui import KaganApp
     from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 
@@ -112,6 +112,9 @@ async def test_ctrl_space_also_opens_overlay(board: KaganDriver) -> None:
         await pilot.press("ctrl+space")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
+        await pilot.press("ctrl+space")
+        await pilot.pause()
+        assert app.screen.id == "kanban-screen"
 
 
 # Removed: test_attached_session_replays_recent_events,

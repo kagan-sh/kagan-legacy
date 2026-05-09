@@ -49,7 +49,7 @@ async def test_task_with_no_sessions_opens_overlay_in_orchestrator_mode(
 
 
 async def test_task_screen_renders_chat_hint(board: KaganDriver) -> None:
-    """The task screen now shows a slim 'Press o' hint instead of a chat panel."""
+    """The task screen shows a slim orchestrator hint instead of a chat panel."""
     from textual.widgets import Static
 
     from kagan.tui import KaganApp

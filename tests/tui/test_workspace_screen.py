@@ -28,7 +28,7 @@ async def test_w_toggles_between_kanban_and_workspace(board_with_task: KaganDriv
             == app.orchestrator_sessions.list_items()[0].label
         )
 
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
         assert app.screen.focused is app.screen.query_one("#chat-overlay-input", Input)
         assert "enter send" in str(app.screen.query_one("#workspace-footer", Static).content)

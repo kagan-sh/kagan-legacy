@@ -10,7 +10,7 @@ tags:
 
 # Chat & REPL
 
-Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI SessionOverlay** (`Ctrl+.` in Kanban/Task screens). Both share the same slash commands and session persistence.
+Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI SessionOverlay** (`Ctrl+.` or global `Ctrl+Space` from Kanban/Task screens). Both share the same slash commands and session persistence.
 
 ______________________________________________________________________
 
@@ -83,18 +83,19 @@ ______________________________________________________________________
 
 ## SessionOverlay
 
-| Key                         | Action                 |
-| --------------------------- | ---------------------- |
-| ++f4++ / ++ctrl+i++         | Toggle SessionOverlay  |
-| ++space++                   | Cycle split layout     |
-| ++ctrl+f++                  | Fullscreen chat        |
-| ++ctrl+up++ / ++ctrl+down++ | Cycle selected session |
-| ++ctrl+k++                  | Session Switcher       |
-| ++esc++                     | Close overlay          |
+| Key                         | Action                  |
+| --------------------------- | ----------------------- |
+| ++ctrl+period++             | Sessions overlay        |
+| ++space++                   | Cycle split layout      |
+| ++ctrl+f++                  | Expand AI (dock)        |
+| ++ctrl+shift+f++            | Fullscreen (in overlay) |
+| ++ctrl+up++ / ++ctrl+down++ | Cycle selected session  |
+| ++ctrl+k++                  | Session Switcher        |
+| ++esc++                     | Close overlay           |
 
 The SessionOverlay can show orchestrator, task, and general sessions. Orchestrator sessions have access to project tasks via MCP tools; general sessions are raw backend chats without Kagan project tools or task context. Messages are persisted per-session.
 
-In Kanban and Task screens, `Ctrl+.` opens or closes the overlay. `Space` cycles `vertical -> horizontal -> vertical` while the SessionOverlay stays open. Use `Esc` to close it.
+In Kanban and Task screens, `Ctrl+.` opens the sessions overlay. Global `Ctrl+Space` toggles the same overlay from anywhere (press again to close). `Space` cycles `vertical -> horizontal -> vertical` while the overlay stays open. Use `Esc` to close it.
 
 `Ctrl+Up` / `Ctrl+Down` step through available sessions by stable session ID rather than list position. The web dashboard exposes the same cycle as `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓`. See [keybindings reference](../reference/keybindings.md#sessionoverlay) for the full table.
 

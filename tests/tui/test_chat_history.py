@@ -60,10 +60,16 @@ async def test_up_arrow_cycles_to_most_recent_entry(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         from kagan.tui.widgets.chat import ChatPanel
+
+        monkeypatch.setattr(
+            ChatPanel,
+            "_handle_overlay_cycle_agent",
+            lambda self, event: False,
+        )
 
         panel = app.screen.query_one(ChatPanel)
         panel.set_project_id(project_id)
@@ -111,10 +117,16 @@ async def test_down_arrow_returns_to_working_draft(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         from kagan.tui.widgets.chat import ChatPanel
+
+        monkeypatch.setattr(
+            ChatPanel,
+            "_handle_overlay_cycle_agent",
+            lambda self, event: False,
+        )
 
         panel = app.screen.query_one(ChatPanel)
         panel.set_project_id(project_id)
@@ -166,7 +178,7 @@ async def test_submit_persists_to_history_file(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         from kagan.tui.widgets.chat import ChatPanel
@@ -222,7 +234,7 @@ async def test_history_disabled_when_opt_out_key_false(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         from kagan.tui.widgets.chat import ChatPanel

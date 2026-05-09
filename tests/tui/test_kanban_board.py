@@ -45,7 +45,7 @@ async def test_ctrl_o_opens_chat_on_kanban(board: KaganDriver) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
         chat_panel = app.screen.query_one("#chat-panel")

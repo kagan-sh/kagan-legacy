@@ -307,7 +307,7 @@ class KaganApp(App[None]):
 
     def action_open_orchestrator(self) -> None:
         if isinstance(self.screen, OrchestratorOverlay):
-            self.screen._focus_input()
+            self.pop_screen()
             return
         self.push_screen(OrchestratorOverlay())
 

@@ -73,7 +73,7 @@ async def test_task_screen_shows_overlay_hint_static(board: KaganDriver) -> None
         assert app.screen.id == "task-screen"
         hint = app.screen.query_one("#ts-chat-hint", Static)
         assert hint.display
-        assert str(hint.content) == "Press o · AI Overlay"
+        assert str(hint.content) == "Ctrl+Space · orchestrator · Ctrl+. sessions"
 
 
 async def test_task_action_bar_does_not_advertise_embedded_chat_shortcuts(

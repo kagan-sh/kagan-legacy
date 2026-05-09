@@ -37,7 +37,7 @@ async def test_chat_transcript_handles_assistant_chunk(board: KaganDriver) -> No
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -66,7 +66,7 @@ async def test_chat_input_query_helpers_route_through_subclass(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -96,7 +96,7 @@ async def test_chat_session_menu_owns_selector_and_label(board: KaganDriver) -> 
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)

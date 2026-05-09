@@ -28,6 +28,7 @@ from kagan.core.errors import (
 )
 from kagan.tui.keybindings import TASK_SCREEN_BINDINGS
 from kagan.tui.screens._task_review import _TaskReviewMixin
+from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 from kagan.tui.screens.task_commands import TaskScreenCommandProvider
 from kagan.tui.widgets.diff import DiffFileTree
 from kagan.tui.widgets.header import KaganHeader
@@ -116,7 +117,11 @@ class TaskScreen(_TaskReviewMixin, Screen[None]):
                             classes="ts-detail-criteria-status",
                         )
 
-            yield Static("Press o · AI Overlay", id="ts-chat-hint", classes="ts-chat-hint")
+            yield Static(
+                "Ctrl+Space · orchestrator · Ctrl+. sessions",
+                id="ts-chat-hint",
+                classes="ts-chat-hint",
+            )
 
         yield TaskActionBar(id="ts-actions")
 
@@ -185,6 +190,21 @@ class TaskScreen(_TaskReviewMixin, Screen[None]):
 
     def action_back(self) -> None:
         self.app.pop_screen()
+
+    def _push_orchestrator_overlay(self) -> None:
+        self.app.push_screen(OrchestratorOverlay(task_id=self._task_id))
+
+    def action_toggle_chat(self) -> None:
+        self._push_orchestrator_overlay()
+
+    async def action_switch_session(self) -> None:
+        self._push_orchestrator_overlay()
+
+    async def action_fullscreen_chat(self) -> None:
+        self._push_orchestrator_overlay()
+
+    async def action_expand_chat_overlay(self) -> None:
+        self._push_orchestrator_overlay()
 
     def action_tab_detail(self) -> None:
         self._switch_tab("overview")

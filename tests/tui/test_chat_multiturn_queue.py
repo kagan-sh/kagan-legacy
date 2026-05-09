@@ -54,7 +54,7 @@ async def test_input_remains_enabled_during_streaming(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
@@ -106,7 +106,7 @@ async def test_second_message_queued_and_drained(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
@@ -166,7 +166,7 @@ async def test_escape_clears_pending_queue(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
@@ -227,7 +227,7 @@ async def test_queued_badge_shows_count(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)

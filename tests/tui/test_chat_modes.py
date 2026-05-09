@@ -44,7 +44,7 @@ async def test_orchestrator_returns_no_response_does_not_corrupt_history(
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         overlay = app.screen
         assert isinstance(overlay, OrchestratorOverlay)
@@ -106,7 +106,7 @@ async def test_orchestrator_agent_error_surfaces_as_message_and_keeps_history(
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         overlay = app.screen
         assert isinstance(overlay, OrchestratorOverlay)

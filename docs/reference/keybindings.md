@@ -10,13 +10,16 @@ Press `?` any time to open context-aware help for the current screen.
 
 ## Global
 
-| Key                   | Action                   |
-| --------------------- | ------------------------ |
-| ++question++ / ++f1++ | Open help                |
-| ++ctrl+o++            | Open project selector    |
-| ++ctrl+r++            | Open repository selector |
-| ++ctrl+comma++        | Open settings            |
-| ++ctrl+q++            | Quit                     |
+| Key                       | Action                   |
+| ------------------------- | ------------------------ |
+| ++question++ / ++f1++     | Open help                |
+| ++ctrl+shift+p++ / ++f2++ | Quick Actions            |
+| ++ctrl+o++                | Open project selector    |
+| ++ctrl+r++                | Open repository selector |
+| ++ctrl+comma++            | Open settings            |
+| ++ctrl+q++                | Quit                     |
+| ++ctrl+space++            | Orchestrator (toggle)    |
+| ++ctrl+w++                | Toggle Chat / Board      |
 
 ## Web Dashboard
 
@@ -54,8 +57,8 @@ The cycle keys walk `[Orchestrator, ...running workers/reviewers]` and match by 
 | ++shift+left++ / ++shift+right++ | Move task left/right      |
 | ++slash++                        | Search                    |
 | ++f++                            | Expand description        |
-| ++ctrl+f++                       | Fullscreen AI chat        |
-| ++ctrl+period++                  | Toggle SessionOverlay     |
+| ++ctrl+f++                       | Expand AI / sessions dock |
+| ++ctrl+period++                  | Open orchestrator overlay |
 | ++ctrl+k++                       | Session Switcher          |
 | ++esc++                          | Close SessionOverlay      |
 | ++b++                            | Set branch                |
@@ -83,17 +86,20 @@ The TUI Workspace is orchestrator-first: the left sidebar is the session list, a
 
 ## Task Screen
 
-| Key           | Action         |
-| ------------- | -------------- |
-| ++1++ / ++2++ | Switch tabs    |
-| ++enter++     | Primary action |
-| ++e++         | Edit task      |
-| ++d++         | Delete task    |
-| ++a++         | Approve        |
-| ++x++         | Reject         |
-| ++m++         | Merge          |
-| ++b++         | Rebase         |
-| ++esc++       | Back           |
+| Key             | Action           |
+| --------------- | ---------------- |
+| ++1++ / ++2++   | Switch tabs      |
+| ++enter++       | Primary action   |
+| ++ctrl+period++ | Sessions overlay |
+| ++ctrl+f++      | AI expand        |
+| ++ctrl+k++      | Session switcher |
+| ++e++           | Edit task        |
+| ++d++           | Delete task      |
+| ++a++           | Approve          |
+| ++x++           | Reject           |
+| ++m++           | Merge            |
+| ++b++           | Rebase           |
+| ++esc++         | Back             |
 
 AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 
@@ -113,16 +119,16 @@ The Session Dashboard does not own a fullscreen chat binding; use `Ctrl+F` from 
 
 ## SessionOverlay
 
-Opened with `o` (or `Ctrl+Space`) from any TUI screen. The overlay selects the project orchestrator session by default and can switch across orchestrator, task, and general sessions from the session list.
+Toggle with global ++ctrl+space++ (same chord closes when the overlay is focused) or with ++ctrl+period++ from Kanban / Session Dashboard / Task screen. The overlay selects the project orchestrator session by default and can switch across orchestrator, task, and general sessions from the session list.
 
-| Key            | Action                              |
-| -------------- | ----------------------------------- |
-| ++ctrl+up++    | Cycle selected session — previous   |
-| ++ctrl+down++  | Cycle selected session — next       |
-| ++down++       | Move focus from chat input to list  |
-| ++enter++      | Open highlighted session            |
-| ++esc++        | Unwind input/list focus or close    |
-| ++ctrl+space++ | Re-focus overlay input / mirror Esc |
+| Key            | Action                             |
+| -------------- | ---------------------------------- |
+| ++ctrl+up++    | Cycle selected session — previous  |
+| ++ctrl+down++  | Cycle selected session — next      |
+| ++down++       | Move focus from chat input to list |
+| ++enter++      | Open highlighted session           |
+| ++esc++        | Unwind input/list focus or close   |
+| ++ctrl+space++ | Close overlay (same as Esc)        |
 
 Cycle order is matched by stable session ID rather than list position. The footer is mode-aware: keys that the parent screen would handle (for example `Ctrl+.` and `Ctrl+J`) are dropped from the hint while the overlay is active so only keys that fire inside the overlay are advertised.
 

@@ -1,6 +1,6 @@
 """OrchestratorOverlay — app-level modal overlay for unified session chat.
 
-Bound globally to ``o`` (and ``ctrl+space``).
+Opened or dismissed with global ``Ctrl+Space`` (toggle).
 
 The overlay hosts a ChatPanel and a SessionList.  Any session type can be
 selected:
@@ -222,6 +222,12 @@ class OrchestratorOverlay(ModalScreen[None]):
         panel.set_footer_mode("overlay")
         panel.set_mode_title(_ORCHESTRATOR_TITLE)
         panel.set_session_kind(SessionKind.ORCHESTRATOR)
+        core = self.kagan_app.core
+        project_id = getattr(core, "active_project_id", None)
+        if isinstance(project_id, str) and project_id.strip():
+            panel.set_project_id(project_id.strip())
+        store = self.kagan_app.orchestrator_sessions
+        panel.set_sessions(store.options(), store.active_key())
         panel.hydrate_current_session_history(self._orchestrator_history)
         self._update_breadcrumb(_ORCHESTRATOR_TITLE)
 

@@ -29,6 +29,7 @@ __all__ = [
     "REPO_PICKER_BINDINGS",
     "REVIEW_NO_CRITERIA_BINDINGS",
     "SESSION_DASHBOARD_BINDINGS",
+    "SESSION_LIST_BINDINGS",
     "SESSION_PICKER_BINDINGS",
     "SETTINGS_BINDINGS",
     "SETTINGS_COMMAND_BINDINGS",
@@ -59,32 +60,38 @@ APP_BINDINGS: list[BindingType] = [
     Binding("ctrl+r", "open_repo_selector", "Repos", key_display="Ctrl+R"),
     Binding("ctrl+comma", "open_settings", "Settings", key_display="Ctrl+,"),
     Binding("ctrl+q", "quit", "Quit", key_display="Ctrl+Q"),
-    Binding("o", "open_orchestrator", "AI Overlay", key_display="o"),
-    Binding("ctrl+space", "open_orchestrator", "", show=False),
+    Binding(
+        "ctrl+space",
+        "open_orchestrator",
+        "Orchestrator (toggle)",
+        key_display="Ctrl+Space",
+    ),
     Binding("ctrl+w", "toggle_mode", "Toggle Chat/Board", key_display="Ctrl+W"),
 ]
 
 ORCHESTRATOR_OVERLAY_BINDINGS: list[BindingType] = [
     Binding("escape", "handle_esc", "Back / Close", priority=True),
     Binding("ctrl+space", "handle_esc", "", show=False, priority=True),
+    # Ctrl+↑/↓ are Mission Control / Spaces on macOS — prefer Ctrl+Shift+[/] there;
+    # keep Ctrl+↑/↓ as secondary for Linux/Windows terminals.
     Binding(
-        "ctrl+down",
+        "ctrl+shift+close_square_bracket,ctrl+down",
         "cycle_agent_next",
         "Next agent",
-        key_display="Ctrl+downarrow",
+        key_display="Ctrl+Shift+] / Ctrl+↓",
         priority=True,
     ),
     Binding(
-        "ctrl+up",
+        "ctrl+shift+open_square_bracket,ctrl+up",
         "cycle_agent_prev",
         "Previous agent",
-        key_display="Ctrl+uparrow",
+        key_display="Ctrl+Shift+[ / Ctrl+↑",
         priority=True,
     ),
     Binding(
         "ctrl+shift+f",
         "toggle_fullscreen",
-        "Fullscreen",
+        "AI fullscreen",
         key_display="Ctrl+Shift+F",
         priority=True,
     ),
@@ -116,8 +123,8 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("slash", "search", "Search", key_display="/"),
     Binding("f", "expand_description", "Expand Description"),
     Binding("p", "peek_task", "Peek"),
-    Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "Sessions", key_display="Ctrl+."),
+    Binding("ctrl+f", "expand_chat_overlay", "AI expand", key_display="Ctrl+F"),
+    Binding("ctrl+period", "toggle_chat", "Sessions", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("b", "set_branch", "Branch"),
@@ -141,6 +148,10 @@ TASK_SCREEN_BINDINGS: list[BindingType] = [
     Binding("x", "reject", "Reject"),
     Binding("m", "merge", "Merge"),
     Binding("b", "rebase", "Rebase"),
+    Binding("ctrl+f", "expand_chat_overlay", "AI expand", key_display="Ctrl+F"),
+    Binding("ctrl+period", "toggle_chat", "Sessions", key_display="Ctrl+."),
+    Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
+    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
 ]
 
@@ -149,7 +160,7 @@ SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
     Binding("s", "start_agent", "Start"),
     Binding("x", "stop_agent", "Stop"),
     Binding("r", "restart_agent", "Restart"),
-    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "Sessions", key_display="Ctrl+."),
+    Binding("ctrl+period", "toggle_chat", "Sessions", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
@@ -160,7 +171,7 @@ WORKSPACE_BINDINGS: list[BindingType] = [
     Binding("n", "new_session", "New"),
     Binding("x", "delete_session", "Delete"),
     Binding("slash", "focus_search", "Search", key_display="/"),
-    Binding("ctrl+period,ctrl+i,f4", "focus_chat", "Chat", key_display="Ctrl+."),
+    Binding("ctrl+period", "focus_chat", "Chat", key_display="Ctrl+."),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("w", "toggle_board", "Board"),
     Binding("ctrl+w", "toggle_mode", "Chat/Board", key_display="Ctrl+W"),
@@ -263,6 +274,12 @@ TMUX_GATEWAY_BINDINGS: list[BindingType] = [
 ]
 
 
+SESSION_LIST_BINDINGS: list[BindingType] = [
+    Binding("escape", "return_focus", "Back to input", show=False, priority=True),
+    Binding("s", "stop_session", "Stop session", show=False),
+    Binding("x", "close_session", "Close session", show=False),
+]
+
 SESSION_PICKER_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel", show=False),
     Binding("enter", "select", "Select", show=False, priority=True),
@@ -347,7 +364,7 @@ class FooterBuilder:
     def kanban_with_card() -> list[tuple[str, str]]:
         return [
             ("Enter", "open"),
-            ("Ctrl+.", "AI panel"),
+            ("Ctrl+.", "sessions"),
             ("p", "peek"),
             ("e", "edit"),
             ("x", "delete"),
@@ -364,6 +381,9 @@ class FooterBuilder:
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
+            ("Ctrl+.", "sessions"),
+            ("Ctrl+F", "AI expand"),
+            ("Ctrl+K", "switch session"),
             ("e", "edit"),
             ("d", "delete"),
             ("a", "approve"),
@@ -388,7 +408,7 @@ class FooterBuilder:
             ("s", "start"),
             ("x", "stop"),
             ("r", "restart"),
-            ("Ctrl+.", "AI panel"),
+            ("Ctrl+.", "sessions"),
             ("Esc", "back"),
         ]
 

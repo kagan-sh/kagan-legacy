@@ -113,7 +113,7 @@ async def test_overlay_footer_shows_cycle_agent_hint(board: KaganDriver) -> None
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
 
@@ -132,7 +132,7 @@ async def test_overlay_footer_does_not_contain_ctrl_shift_t(board: KaganDriver) 
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         assert isinstance(app.screen, OrchestratorOverlay)
 
@@ -226,7 +226,7 @@ async def test_ctrl_down_cycles_selected_session(board: KaganDriver) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         overlay = app.screen
         assert isinstance(overlay, OrchestratorOverlay)
@@ -294,7 +294,7 @@ async def test_prompt_arrow_down_cycles_when_input_focused(board: KaganDriver) -
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        await pilot.press("o")
+        await pilot.press("ctrl+space")
         await pilot.pause()
         overlay = app.screen
         assert isinstance(overlay, OrchestratorOverlay)

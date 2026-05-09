@@ -199,10 +199,10 @@ async def test_doctor_modal_fix_hint_shown_for_fail_rows(tmp_path) -> None:
 # ── Startup routing: WARN-only / all-pass / no checks ──────────────────────
 
 
-async def test_warn_only_routes_to_project_picker(tmp_path) -> None:
+async def test_warn_only_routes_to_project_picker(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """WARN-only checks continue without degraded-performance messaging."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
 
     checks = [
@@ -232,11 +232,11 @@ async def test_warn_only_routes_to_project_picker(tmp_path) -> None:
         notified.append(str(message))
         return original_notify(message, *args, **kwargs)
 
-    with patch.object(app, "notify", side_effect=_capture_notify):
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.pause()
-            assert app.screen.id == "setup-flow"
+    monkeypatch.setattr(app, "notify", _capture_notify)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        assert app.screen.id == "setup-flow"
 
     degraded = [m for m in notified if "degraded" in m.lower() or "performance" in m.lower()]
     assert not degraded
@@ -344,10 +344,10 @@ async def test_no_run_fix_button_when_fix_hint_empty(tmp_path) -> None:
 # ── Auto-promote on install success (Wave 3c) ──────────────────────────────
 
 
-async def test_install_rc_nonzero_no_state_change(tmp_path) -> None:
+async def test_install_rc_nonzero_no_state_change(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC2: rc != 0 → no Settings write, no auto-dismiss, row stays fail."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _check_row_id
 
@@ -366,17 +366,16 @@ async def test_install_rc_nonzero_no_state_change(tmp_path) -> None:
 
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
-        # Simulate CommandPane finishing with rc=1
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_checks",
-            return_value=[backend_check],
-        ):
-            from kagan.tui.screens.doctor_modal import _CommandPane
+            lambda: [backend_check],
+        )
+        from kagan.tui.screens.doctor_modal import _CommandPane
 
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=1, check_name=backend_check.name)
-            )
-            await pilot.pause()
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=1, check_name=backend_check.name)
+        )
+        await pilot.pause()
 
         # Row should still be fail-class (not promoted)
         row_id = _check_row_id(backend_check.name)
@@ -393,10 +392,10 @@ async def test_install_rc_nonzero_no_state_change(tmp_path) -> None:
         assert app.screen.id == "doctor-modal"
 
 
-async def test_install_rc_zero_promotes_settings_and_dismisses_modal(tmp_path) -> None:
+async def test_install_rc_zero_promotes_settings_and_dismisses_modal(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC3: rc=0 on a backend check → Settings written, modal auto-dismissed."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _CommandPane
 
@@ -426,15 +425,15 @@ async def test_install_rc_zero_promotes_settings_and_dismisses_modal(tmp_path) -
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
         # Simulate successful install completion — targeted recheck sees PASS
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_check_for_backend",
-            return_value=passing_check,
-        ):
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
-            )
-            # Pump until modal auto-dismisses (all FAILs resolved → dismiss(True))
-            await _wait_for_setup_flow(app)
+            lambda _name: passing_check,
+        )
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
+        )
+        # Pump until modal auto-dismisses (all FAILs resolved → dismiss(True))
+        await _wait_for_setup_flow(app)
 
         # Observable: settings must contain the promoted backend (written before dismiss)
         settings = await app.core.settings.get()
@@ -446,10 +445,10 @@ async def test_install_rc_zero_promotes_settings_and_dismisses_modal(tmp_path) -
         # _wait_for_setup_flow above); if we reach here the modal is gone.
 
 
-async def test_install_rc_zero_non_backend_check_no_settings_write(tmp_path) -> None:
+async def test_install_rc_zero_non_backend_check_no_settings_write(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC3 edge: rc=0 on a non-backend check (e.g. git) must NOT write default_agent_backend."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _CommandPane
 
@@ -477,14 +476,14 @@ async def test_install_rc_zero_non_backend_check_no_settings_write(tmp_path) -> 
 
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_checks",
-            return_value=[passing_git],
-        ):
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=0, check_name=git_check.name)
-            )
-            await _wait_for_setup_flow(app)
+            lambda: [passing_git],
+        )
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=0, check_name=git_check.name)
+        )
+        await _wait_for_setup_flow(app)
 
         # Settings must NOT have default_agent_backend written by the git fix
         settings = await app.core.settings.get()

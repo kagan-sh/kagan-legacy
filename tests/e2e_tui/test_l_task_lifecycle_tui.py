@@ -155,21 +155,56 @@ async def test_keyboard_s_starts_managed_run(tui_driver: Any) -> None:
 
     Navigation: the task is auto-selected (only card on board). Press Enter
     to open the TaskInspector, then 's' to start the agent.
+
+    NOTE: The repo is added first and the task is created with that repo_id
+    so that KanbanScreen._reload_tasks(repo_id=selected_repo_id) shows the card.
     """
     from kagan.core.enums import TaskStatus
     from kagan.tui import KaganApp
     from kagan.tui.screens.kanban import KanbanScreen
+    from kagan.tui.widgets.board import BoardView
+    from kagan.tui.widgets.task_inspector import TaskInspector
     from tests.helpers.fake_agent_backend import FakeCue, FakeScript, director
+    from tests.helpers.git_helpers import init_git_repo
 
-    task = await tui_driver.create_task("Keyboard S Task", agent_backend="fake-agent")
+    # Create repo first so we can pass repo_id to the task.
+    # KanbanScreen filters tasks by selected_repo_id; without this, the card
+    # would not appear when the app has an active repo selected.
+    repo_path = tui_driver.tmp_path / "task_repo"
     try:
-        await tui_driver.provision_workspace_with_repo(task.id)
+        await init_git_repo(repo_path)
     except Exception as exc:
-        pytest.skip(f"Git repo / worktree setup failed: {exc}")
+        pytest.skip(f"Git repo init failed: {exc}")
+        return
+    repo_id = await tui_driver.add_repo(repo_path)
+
+    task = await tui_driver.create_task(
+        "Keyboard S Task", agent_backend="fake-agent", repo_id=repo_id
+    )
+
+    try:
+        await tui_driver.provision_workspace(task.id)
+    except Exception as exc:
+        pytest.skip(f"Worktree provisioning failed: {exc}")
         return
 
-    # Schedule the fake-agent to complete instantly (no wait)
-    await director.schedule(task.id, FakeScript(cues=[FakeCue(done=True)]))
+    # Schedule the fake-agent to write a file + commit + complete.
+    # Without a commit the agent completes back to BACKLOG (no changes), so we
+    # need at least one worktree commit to move the task to REVIEW after completion.
+    await director.schedule(
+        task.id,
+        FakeScript(
+            cues=[
+                FakeCue(
+                    workspace={
+                        "write_file": {"path": "result.txt", "content": "done\n"},
+                        "commit": {"message": "feat: keyboard-s test"},
+                    }
+                ),
+                FakeCue(done=True),
+            ]
+        ),
+    )
 
     app = KaganApp(db_path=tui_driver.tmp_path / "kagan.db")
     async with app.run_test(size=(120, 40)) as pilot:
@@ -177,9 +212,20 @@ async def test_keyboard_s_starts_managed_run(tui_driver: Any) -> None:
         await wait_for_screen(app, KanbanScreen)
         await pilot.pause()
 
+        board = app.screen.query_one(BoardView)
+        # Wait for board to load the task card so _selected_task_id is set
+        await wait_for(lambda: len(list(board.query("TaskCard"))) > 0, tries=80, pump_delay=0.05)
+        await pilot.pause()
+
         # Enter opens the TaskInspector (required before 's' can act)
         await pilot.press("enter")
         await pilot.pause()
+
+        # Wait for inspector to become visible before pressing 's'
+        await wait_for(
+            lambda: app.screen.query_one(TaskInspector).is_open,
+            tries=40,
+        )
 
         await pilot.press("s")
 

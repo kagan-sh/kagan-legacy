@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { ChevronLeft, ChevronRight, Clock, Kanban, MessagesSquare, Moon, PanelLeft, Search, Sun } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Clock, HelpCircle, Kanban, MessagesSquare, Moon, PanelLeft, Search, Sun } from 'lucide-react';
 import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { resolvedThemeAtom, setThemeModeAtom } from '@/lib/atoms/theme';
 import { sidebarCollapsedAtom, spotlightOpenAtom } from '@/lib/atoms/shell';
+import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
 import { useShellPopover } from '@/components/shell/popover';
 import { useActiveProject } from '@/lib/hooks/use-active-project';
 import { apiClient } from '@/lib/api/client';
@@ -32,6 +33,8 @@ export function TitleBar() {
   const activeProject = useActiveProject();
   const [agentCount, setAgentCount] = useState<number | null>(null);
   const activityPopover = useShellPopover('activity', 'right');
+  const projectSwitcherPopover = useShellPopover('project-switcher', 'left');
+  const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
 
   const tab = shellTabFor(location.pathname);
 
@@ -83,17 +86,36 @@ export function TitleBar() {
           <ChevronRight className="size-[15px]" />
         </TitleBarIconButton>
 
-        <div className="ml-1.5 flex items-center gap-2.5 font-code text-[12px] text-[var(--muted-foreground)]">
+        <button
+          type="button"
+          onClick={projectSwitcherPopover.openFromEvent}
+          aria-haspopup="menu"
+          aria-expanded={projectSwitcherPopover.isOpen}
+          aria-label="Switch project"
+          title="Switch project"
+          className={cn(
+            'ml-1.5 flex items-center gap-2 rounded-md px-1.5 py-1 font-code text-[12px] transition-colors',
+            'hover:bg-[var(--surface-2)]',
+            projectSwitcherPopover.isOpen && 'bg-[var(--surface-2)]',
+          )}
+        >
           <span
             className="font-semibold tracking-[-0.04em] text-[14px] text-[var(--primary)]"
             style={{ fontFeatureSettings: '"liga" 0' }}
           >
             {KAGAN_GLYPH}
           </span>
-          <span className="text-[var(--fg-dim)] truncate max-w-[260px]" title={activeProject?.name ?? ''}>
+          <span className="text-[var(--fg-dim)] truncate max-w-[220px]" title={activeProject?.name ?? ''}>
             {activeProject ? `~/${activeProject.name}` : '—'}
           </span>
-        </div>
+          <ChevronDown
+            strokeWidth={1.75}
+            className={cn(
+              'size-[12px] shrink-0 text-[var(--muted-foreground)] transition-transform duration-150',
+              projectSwitcherPopover.isOpen && 'rotate-180',
+            )}
+          />
+        </button>
       </div>
 
       <ShellTabs tab={tab} />
@@ -140,6 +162,14 @@ export function TitleBar() {
         >
           <SettingsGlyph />
         </Link>
+
+        <TitleBarIconButton
+          label="Help"
+          shortcut="?"
+          onClick={() => setHelpOverlayOpen(true)}
+        >
+          <HelpCircle strokeWidth={1.75} className="size-[15px]" />
+        </TitleBarIconButton>
 
         <TitleBarIconButton
           label={resolvedTheme === 'dark' ? 'Switch to light' : 'Switch to dark'}

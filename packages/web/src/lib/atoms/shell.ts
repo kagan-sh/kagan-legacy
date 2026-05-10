@@ -15,7 +15,14 @@ export type ShellPopover =
   | 'filter'
   | 'more'
   | 'advance'
-  | 'agent-cli';
+  | 'agent-cli'
+  | 'project-switcher';
+
+/** Controls the Create Project dialog opened from the project-switcher popover. */
+export const createProjectDialogOpenAtom = atom(false);
+
+/** Controls the Add Repository dialog opened from the project-switcher popover. */
+export const addRepoDialogOpenAtom = atom(false);
 
 export interface PopoverAnchor {
   /** Horizontal anchor — `align: 'left'` uses this as `left`, `'right'` as `right` distance from viewport edge. */

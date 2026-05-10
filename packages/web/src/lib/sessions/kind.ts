@@ -1,4 +1,4 @@
-import type { SessionItemResponse } from '@kagan/shared-api-client';
+import type { SessionItemResponse, TaskSessionResponse } from '@kagan/shared-api-client';
 
 /**
  * Closed union of session kinds the UI knows how to render.
@@ -29,3 +29,28 @@ export const SESSION_KIND_BADGE: Record<SessionKind, string> = {
   general: 'GEN',
   task: 'TASK',
 };
+
+/**
+ * Closed union of lane values the UI can toggle between on the task detail page.
+ *
+ * `TaskSessionResponse.agent_role` is typed as `string | null` from the wire.
+ * Narrow through {@link taskSessionLane} so UI branch logic is safe against
+ * unknown future role strings.
+ */
+export type TaskSessionLane = 'worker' | 'reviewer';
+
+const KNOWN_LANES: ReadonlySet<TaskSessionLane> = new Set(['worker', 'reviewer']);
+
+/**
+ * Narrow a raw `agent_role` string (or null) to a known {@link TaskSessionLane}.
+ *
+ * Returns `null` for `null`, `undefined`, or any unrecognised role string so
+ * callers can skip the session when computing available lanes.
+ */
+export function taskSessionLane(
+  session: Pick<TaskSessionResponse, 'agent_role'>,
+): TaskSessionLane | null {
+  const role = session.agent_role;
+  if (role == null) return null;
+  return (KNOWN_LANES as Set<string>).has(role) ? (role as TaskSessionLane) : null;
+}

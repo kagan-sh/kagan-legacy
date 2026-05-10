@@ -1,15 +1,18 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { Cpu, Kanban, MessageSquarePlus, Plus } from 'lucide-react';
+import { ChevronRight, Cpu, Kanban, MessageSquarePlus, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useActiveProject } from '@/lib/hooks/use-active-project';
 import { useSessionList } from '@/lib/hooks/use-session-list';
 import { boardDialogAtom, tasksAtom } from '@/lib/atoms/board';
 import { sidebarCollapsedAtom, newSessionModalOpenAtom } from '@/lib/atoms/shell';
+import { sessionPickerOpenAtom } from '@/lib/atoms/ui';
 import { useShellPopover } from '@/components/shell/popover';
 import { COLUMN_ORDER, STATUS_LABELS } from '@/lib/utils/constants';
 import { SESSION_KIND_BADGE, sessionKind } from '@/lib/sessions/kind';
-import type { WireTask } from '@kagan/shared-api-client';
+import { apiClient } from '@/lib/api/client';
+import type { SessionItemResponse, WireTask } from '@kagan/shared-api-client';
 import { cn } from '@/lib/utils';
 
 const STATUS_DOT: Record<string, string> = {
@@ -137,17 +140,168 @@ function SidebarButton({ icon, kind, kbd, onClick, children }: ButtonProps) {
   );
 }
 
+const SESSIONS_VISIBLE_CAP = 8;
+
+/** State for a single session row's inline delete confirmation. */
+type DeleteState = 'idle' | 'confirm';
+
+interface SessionRowProps {
+  session: SessionItemResponse;
+  active: boolean;
+  onNavigate: (id: string) => void;
+  onDeleted: () => void;
+}
+
+function SessionRow({ session, active, onNavigate, onDeleted }: SessionRowProps) {
+  const kind = sessionKind(session);
+  const [deleteState, setDeleteState] = useState<DeleteState>('idle');
+  const revertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const orchestrator = kind === 'orchestrator';
+
+  const clearRevertTimer = () => {
+    if (revertTimerRef.current !== null) {
+      clearTimeout(revertTimerRef.current);
+      revertTimerRef.current = null;
+    }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteState('confirm');
+    revertTimerRef.current = setTimeout(() => {
+      setDeleteState('idle');
+    }, 2000);
+  };
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    clearRevertTimer();
+    setDeleteState('idle');
+  };
+
+  const handleConfirmDelete = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      clearRevertTimer();
+      setDeleteState('idle');
+      const targetId = session.chat_session_id ?? session.id;
+      try {
+        await apiClient.closeSession(targetId);
+        onDeleted();
+      } catch {
+        toast.error('Failed to delete session');
+      }
+    },
+    [session, onDeleted],
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => clearRevertTimer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (kind !== 'orchestrator' && kind !== 'general') return null;
+
+  return (
+    <li>
+      <div
+        className={cn(
+          'group relative flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left font-ui text-[12.5px] text-[var(--muted-foreground)] transition-colors',
+          'hover:bg-[var(--surface-2)] hover:text-[var(--fg-2)]',
+          active && 'bg-[var(--surface-2)] text-[var(--foreground)] shadow-[inset_2px_0_0_var(--primary)]',
+        )}
+        data-active={active ? 'true' : 'false'}
+      >
+        {/* Main navigate button */}
+        <button
+          type="button"
+          onClick={() => onNavigate(session.id)}
+          className="flex min-w-0 flex-1 items-center gap-2 bg-transparent border-0 p-0 text-inherit"
+          aria-label={session.title || `Session ${session.id.slice(0, 6)}`}
+        >
+          <span
+            className={cn(
+              'flex-shrink-0 rounded px-1.5 py-px font-code text-[9px] uppercase tracking-[0.08em]',
+              orchestrator
+                ? 'bg-[rgba(212,168,75,0.14)] text-[var(--primary-soft)]'
+                : 'bg-[var(--surface-2)] text-[var(--fg-dim)]',
+            )}
+          >
+            {SESSION_KIND_BADGE[kind]}
+          </span>
+          <span className="flex-1 truncate">{session.title || `Session ${session.id.slice(0, 6)}`}</span>
+        </button>
+
+        {/* Delete controls — revealed on hover/focus-within */}
+        {deleteState === 'idle' ? (
+          <button
+            type="button"
+            aria-label="Delete session"
+            onClick={handleDeleteClick}
+            className={cn(
+              'flex-shrink-0 rounded p-0.5 text-[var(--fg-dim)] transition-colors',
+              'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+              'hover:text-[var(--destructive,#e85535)]',
+            )}
+          >
+            <Trash2 className="size-3.5" strokeWidth={1.75} />
+          </button>
+        ) : (
+          <span className="flex flex-shrink-0 items-center gap-1">
+            <button
+              type="button"
+              aria-label="Confirm delete"
+              onClick={(e) => void handleConfirmDelete(e)}
+              className="rounded px-1.5 py-px font-code text-[9px] text-[var(--destructive,#e85535)] hover:bg-[rgba(232,85,53,0.12)] transition-colors"
+            >
+              Delete?
+            </button>
+            <button
+              type="button"
+              aria-label="Cancel delete"
+              onClick={handleCancelDelete}
+              className="rounded px-1.5 py-px font-code text-[9px] text-[var(--fg-dim)] hover:text-[var(--foreground)] transition-colors"
+            >
+              Cancel
+            </button>
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
 function SessionsSection() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { sessions } = useSessionList();
+  const { sessions, refresh } = useSessionList();
   const setNewSessionOpen = useSetAtom(newSessionModalOpenAtom);
+  const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
+  const [searchQuery, setSearchQuery] = useState('');
 
   if (!sessions.length) return null;
 
   const activeId = location.pathname.startsWith('/chat/')
     ? location.pathname.slice('/chat/'.length)
     : null;
+
+  const showSearch = sessions.length > SESSIONS_VISIBLE_CAP;
+
+  // When search is visible and a term is typed, filter the full list.
+  // When no search (≤ 8 sessions) or search is cleared, cap at SESSIONS_VISIBLE_CAP.
+  const filteredSessions = (() => {
+    if (showSearch && searchQuery.trim()) {
+      const term = searchQuery.toLowerCase();
+      return sessions.filter(
+        (s) =>
+          (s.title ?? '').toLowerCase().includes(term) ||
+          s.id.toLowerCase().includes(term),
+      );
+    }
+    return sessions.slice(0, SESSIONS_VISIBLE_CAP);
+  })();
 
   return (
     <div>
@@ -163,41 +317,52 @@ function SessionsSection() {
           <Plus className="size-3" />
         </button>
       </div>
+
+      {showSearch && (
+        <div className="px-2.5 pb-1">
+          <input
+            type="search"
+            aria-label="Search sessions"
+            placeholder="Filter sessions"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={cn(
+              'w-full rounded border border-[var(--border)] bg-[var(--surface-1)] px-2.5 py-1',
+              'font-code text-[11px] text-[var(--foreground)] placeholder:text-[var(--fg-dim)]',
+              'outline-none focus-visible:border-[var(--primary)] focus-visible:ring-1 focus-visible:ring-[var(--primary)]',
+            )}
+          />
+        </div>
+      )}
+
       <ul role="list" className="px-2.5 pb-1">
-        {sessions.slice(0, 8).map((s) => {
-          const kind = sessionKind(s);
-          if (kind !== 'orchestrator' && kind !== 'general') return null;
-          const active = s.id === activeId;
-          const orchestrator = kind === 'orchestrator';
-          return (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => navigate(`/chat/${s.id}`)}
-                data-active={active ? 'true' : 'false'}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left font-ui text-[12.5px] text-[var(--muted-foreground)] transition-colors',
-                  'hover:bg-[var(--surface-2)] hover:text-[var(--fg-2)]',
-                  active &&
-                    'bg-[var(--surface-2)] text-[var(--foreground)] shadow-[inset_2px_0_0_var(--primary)]',
-                )}
-              >
-                <span
-                  className={cn(
-                    'flex-shrink-0 rounded px-1.5 py-px font-code text-[9px] uppercase tracking-[0.08em]',
-                    orchestrator
-                      ? 'bg-[rgba(212,168,75,0.14)] text-[var(--primary-soft)]'
-                      : 'bg-[var(--surface-2)] text-[var(--fg-dim)]',
-                  )}
-                >
-                  {SESSION_KIND_BADGE[kind]}
-                </span>
-                <span className="flex-1 truncate">{s.title || `Session ${s.id.slice(0, 6)}`}</span>
-              </button>
-            </li>
-          );
-        })}
+        {filteredSessions.map((s) => (
+          <SessionRow
+            key={s.id}
+            session={s}
+            active={s.id === activeId}
+            onNavigate={(id) => navigate(`/chat/${id}`)}
+            onDeleted={() => void refresh()}
+          />
+        ))}
       </ul>
+
+      {sessions.length > 0 && (
+        <div className="px-2.5 pb-1.5">
+          <button
+            type="button"
+            onClick={() => setSessionPickerOpen(true)}
+            className={cn(
+              'flex w-full items-center gap-1 rounded px-2.5 py-1 font-code text-[11px]',
+              'text-[var(--fg-dim)] transition-colors hover:text-[var(--foreground)]',
+            )}
+          >
+            View all sessions
+            <ChevronRight className="size-3" strokeWidth={1.75} />
+          </button>
+        </div>
+      )}
+
       <hr className="mx-4.5 border-t border-[var(--border)]" />
     </div>
   );

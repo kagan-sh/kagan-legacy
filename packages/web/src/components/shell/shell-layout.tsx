@@ -17,7 +17,12 @@ import {
   ConnectedAdvancePopover,
 } from '@/components/shell/popovers/connected';
 import { AgentCliPopover } from '@/components/shell/popovers/agent-cli-popover';
+import { ProjectSwitcherPopover } from '@/components/shell/popovers/project-switcher-popover';
+import { MobileTabs } from '@/components/shell/mobile-tabs';
+import { CreateProjectDialog } from '@/components/layout/create-project-dialog';
+import { AddRepoDialog } from '@/components/layout/add-repo-dialog';
 import { useEventStream } from '@/lib/hooks/use-event-stream';
+import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { apiClient } from '@/lib/api/client';
 import {
   fetchTasksAtom,
@@ -27,22 +32,34 @@ import {
 import {
   spotlightOpenAtom,
   sidebarCollapsedAtom,
+  createProjectDialogOpenAtom,
+  addRepoDialogOpenAtom,
 } from '@/lib/atoms/shell';
 import { integrationImportOpenAtom } from '@/lib/atoms/ui';
+import { useActiveProject } from '@/lib/hooks/use-active-project';
 import { Spinner } from '@/components/ui/spinner';
 
 function ShellLayout() {
   useEventStream();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const setSpotlightOpen = useSetAtom(spotlightOpenAtom);
   const setSidebarCollapsed = useSetAtom(sidebarCollapsedAtom);
   const setBoardDialog = useSetAtom(boardDialogAtom);
   const setProjectVersion = useSetAtom(projectSwitchVersionAtom);
   const fetchTasks = useSetAtom(fetchTasksAtom);
   const [integrationImportOpen, setIntegrationImportOpen] = useAtom(integrationImportOpenAtom);
+  const [createProjectOpen, setCreateProjectOpen] = useAtom(createProjectDialogOpenAtom);
+  const [addRepoOpen, setAddRepoOpen] = useAtom(addRepoDialogOpenAtom);
+  const activeProject = useActiveProject();
   const [projectChecked, setProjectChecked] = useState(false);
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+
+  // Auto-collapse sidebar on mobile breakpoint
+  useEffect(() => {
+    setSidebarCollapsed(isMobile);
+  }, [isMobile, setSidebarCollapsed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +92,12 @@ function ShellLayout() {
 
       const meta = e.metaKey || e.ctrlKey;
 
+      // ⌘⇧P opens spotlight (VS Code muscle-memory alias of ⌘K)
+      if (meta && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setSpotlightOpen(true);
+        return;
+      }
       // ⌘K opens spotlight always
       if (meta && e.key === 'k') {
         e.preventDefault();
@@ -132,13 +155,14 @@ function ShellLayout() {
           <Sidebar />
           <main
             id="main-content"
-            className="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--bg)]"
+            className="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--bg)] pb-14 md:pb-0"
           >
             <Outlet />
           </main>
         </div>
       </div>
 
+      <MobileTabs />
       <Spotlight />
       <NewSessionDialog />
       <SessionPicker />
@@ -154,6 +178,23 @@ function ShellLayout() {
       <ConnectedMorePopover />
       <ConnectedAdvancePopover />
       <AgentCliPopover />
+      <ProjectSwitcherPopover />
+
+      {/* Project management dialogs wired to shell atoms */}
+      <CreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        onCreated={() => setCreateProjectOpen(false)}
+      />
+      <AddRepoDialog
+        open={addRepoOpen}
+        onOpenChange={setAddRepoOpen}
+        projectId={activeProject?.id}
+        onAdded={() => {
+          setAddRepoOpen(false);
+          setProjectVersion((v) => v + 1);
+        }}
+      />
     </>
   );
 }

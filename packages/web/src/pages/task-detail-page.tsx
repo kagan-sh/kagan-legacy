@@ -19,7 +19,10 @@ import type {
     ReviewVerdictResponse,
     TaskStatus,
     WireTask,
+    WireTaskSession,
 } from "@kagan/shared-api-client";
+import { taskSessionLane, type TaskSessionLane } from "@/lib/sessions/kind";
+import { cn } from "@/lib/utils";
 import { fetchTasksAtom } from "@/lib/atoms/board";
 import { shellTabAtom } from "@/lib/atoms/shell";
 import {
@@ -84,7 +87,7 @@ function shortId(id: string): string {
 export function Component() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const fetchTasks = useSetAtom(fetchTasksAtom);
     const shellTab = useAtomValue(shellTabAtom);
     const overlay = useSessionOverlay();
@@ -94,6 +97,7 @@ export function Component() {
 
     const [worktreePath, setWorktreePath] = useState<string | null>(null);
     const [attachedLauncher, setAttachedLauncher] = useState<string | null>(null);
+    const [taskSessions, setTaskSessions] = useState<WireTaskSession[]>([]);
 
     const { task, loading, runningSince } = useTaskEvents(id, {
         initialLimit: 80,
@@ -145,6 +149,43 @@ export function Component() {
 
         return () => { cancelled = true; };
     }, [id, task?.active_session?.launcher]);
+
+    // Fetch task sessions once on mount (or when the task id changes) to determine
+    // available lanes for the segmented control in the header.
+    useEffect(() => {
+        if (!id) return;
+        const controller = new AbortController();
+        void apiClient.getTaskSessions(id).then(
+            (sessions) => {
+                if (!controller.signal.aborted) setTaskSessions(sessions);
+            },
+            () => {
+                if (!controller.signal.aborted) setTaskSessions([]);
+            },
+        );
+        return () => { controller.abort(); };
+    }, [id]);
+
+    // Derive available lanes from fetched sessions.
+    const availableLanes = new Set(
+        taskSessions.map(taskSessionLane).filter((l): l is TaskSessionLane => l !== null),
+    );
+    const hasMultipleLanes = availableLanes.has("worker") && availableLanes.has("reviewer");
+
+    // Read the active lane from the URL search param.
+    const activeLane = ((): TaskSessionLane | null => {
+        const raw = searchParams.get("lane");
+        if (raw === "worker" || raw === "reviewer") return raw;
+        return null;
+    })();
+
+    const handleLaneSelect = (lane: TaskSessionLane) => {
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set("lane", lane);
+            return next;
+        });
+    };
 
     const handleTransition = async (status: TaskStatus) => {
         if (!id) return;
@@ -312,6 +353,14 @@ export function Component() {
                 >
                     {STATUS_LABELS[task.status] ?? task.status}
                 </span>
+
+                {/* Lane segmented control — only when both worker + reviewer sessions exist */}
+                {hasMultipleLanes ? (
+                    <LaneControl
+                        activeLane={activeLane}
+                        onSelect={handleLaneSelect}
+                    />
+                ) : null}
 
                 {/* Edit chip button */}
                 <button
@@ -494,6 +543,54 @@ export function Component() {
 // ──────────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Segmented control for switching between Worker and Reviewer session lanes.
+ * Mirrors the Board/List toggle in `board-toolbar.tsx` — mono font, uppercase,
+ * hairline outer border, no border between segments, background fill for active.
+ *
+ * Exported for focused unit tests.
+ */
+export function LaneControl({
+    activeLane,
+    onSelect,
+}: {
+    activeLane: TaskSessionLane | null;
+    onSelect: (lane: TaskSessionLane) => void;
+}) {
+    const lanes: TaskSessionLane[] = ["worker", "reviewer"];
+    return (
+        <div
+            role="group"
+            aria-label="Session lane"
+            className="inline-flex shrink-0 overflow-hidden rounded-[5px] border"
+            style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+        >
+            {lanes.map((lane) => {
+                const isActive = activeLane === lane;
+                return (
+                    <button
+                        key={lane}
+                        type="button"
+                        aria-pressed={isActive}
+                        aria-label={lane === "worker" ? "Worker session" : "Reviewer session"}
+                        onClick={() => onSelect(lane)}
+                        className={cn(
+                            "cursor-pointer border-0 font-mono text-[10.5px] uppercase tracking-[0.18em]",
+                        )}
+                        style={{
+                            padding: "4px 10px",
+                            background: isActive ? "var(--surface-3)" : "transparent",
+                            color: isActive ? "var(--foreground)" : "var(--muted-foreground)",
+                        }}
+                    >
+                        {lane === "worker" ? "Worker" : "Reviewer"}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
 
 function TvTab({
     label,

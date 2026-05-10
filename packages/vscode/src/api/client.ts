@@ -5,7 +5,7 @@ import {
   type BackendStats,
   type ChatMessageDetailResponse,
   type TurnStatusResponse,
-  type ChatWatchEvent,
+  type ChatWatchEvent as LiveChatEvent,
   type DoctorReportResponse,
   type Mention,
   type SearchMentionsInput,
@@ -25,12 +25,19 @@ export interface KaganClientConfig {
  * VS Code KaganClient — extends the shared KaganApiClient.
  *
  * Inherits all HTTP plumbing (auth headers, envelope unwrapping, URL
- * normalisation) from the shared class. This subclass adds:
- *   - chatStream() with 409 TURN_IN_PROGRESS special handling
- *   - watchChatSession() with reconnection and catch-up logic
- *   - VS Code-specific endpoints (analytics, mentions, doctor, github)
- *   - streamRequest() — raw fetch helper for SSE paths that must bypass
- *     envelope unwrapping (streaming SSE, /health raw status)
+ * normalisation, session/task/project/analytics CRUD) from the shared class.
+ * `streamRequest()` is also inherited — it is a base-class helper for raw SSE
+ * paths that bypass envelope unwrapping.
+ *
+ * This subclass adds only VS Code-specific behaviour:
+ *   - chatStream() override — 409 TURN_IN_PROGRESS detection before the base
+ *     class error path, using streamRequest() for auth-aware raw fetch
+ *   - followChatSession() — per-session SSE subscription with auto-reconnect
+ *     and catch-up via getChatMessages() after a disconnect
+ *   - ping() override — forwards auth headers via streamRequest() (the base
+ *     implementation issues a no-auth GET /health)
+ *   - GitHub integration endpoints (preflight, detect-repo, preview, sync)
+ *   - getDoctor() convenience alias for getDoctorReport()
  */
 export class KaganClient extends KaganApiClient {
   constructor(
@@ -107,14 +114,14 @@ export class KaganClient extends KaganApiClient {
   }
 
   /**
-   * Subscribe to the per-session SSE watch stream.
+   * Subscribe to the per-session SSE stream for live orchestrator chat.
    * Returns a dispose function; call it to unsubscribe and close the stream.
    * On unexpected disconnects, waits 3 s then reconnects automatically.
    * After reconnect, catches up via GET /messages?after_id=lastSeenId.
    */
-  watchChatSession(
+  followChatSession(
     sessionId: string,
-    onEvent: (event: ChatWatchEvent) => void,
+    onEvent: (event: LiveChatEvent) => void,
     onError?: (err: Error) => void,
   ): () => void {
     let disposed = false;
@@ -134,12 +141,12 @@ export class KaganClient extends KaganApiClient {
 
     const reconnect = async () => {
       if (disposed) return;
-      // Catch up on missed messages before resuming the watch stream
+      // Catch up on missed messages before resuming the live chat stream.
       try {
         const missed = await this.getChatMessages(sessionId, lastSeenId);
         for (const msg of missed) {
           lastSeenId = Math.max(lastSeenId, msg.id);
-          const event: ChatWatchEvent = msg.role === "user"
+          const event: LiveChatEvent = msg.role === "user"
             ? { t: "CHAT_USER_MESSAGE", message_id: msg.id, content: msg.content }
             : {
                 t: "CHAT_ASSISTANT_MESSAGE",
@@ -152,10 +159,10 @@ export class KaganClient extends KaganApiClient {
       } catch {
         // Best-effort — don't block reconnect on catch-up failure
       }
-      if (!disposed) void startWatch();
+      if (!disposed) void startLiveStream();
     };
 
-    const startWatch = async () => {
+    const startLiveStream = async () => {
       if (disposed) return;
       controller = new AbortController();
       const { signal } = controller;
@@ -168,7 +175,7 @@ export class KaganClient extends KaganApiClient {
         );
 
         if (!response.ok || !response.body) {
-          throw new Error(`Watch stream failed: ${response.status}`);
+          throw new Error(`Live chat stream failed: ${response.status}`);
         }
 
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -187,7 +194,7 @@ export class KaganClient extends KaganApiClient {
               const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
               if (!dataLine) continue;
               try {
-                const event = JSON.parse(dataLine.slice(6)) as ChatWatchEvent;
+                const event = JSON.parse(dataLine.slice(6)) as LiveChatEvent;
                 if ("id" in event && typeof (event as Record<string, unknown>).id === "number") {
                   lastSeenId = Math.max(lastSeenId, (event as Record<string, unknown>).id as number);
                 }
@@ -211,7 +218,7 @@ export class KaganClient extends KaganApiClient {
       scheduleReconnect();
     };
 
-    void startWatch();
+    void startLiveStream();
 
     return () => {
       disposed = true;
@@ -307,16 +314,4 @@ export class KaganClient extends KaganApiClient {
     return this.get<DoctorReportResponse>("/api/doctor");
   }
 
-  // ── Private ────────────────────────────────────────────────────────────
-
-  /**
-   * Raw fetch with auth headers appended — for streaming paths (SSE, /health)
-   * that must bypass the envelope-unwrapping request() pipeline.
-   */
-  private async streamRequest(url: string, init?: RequestInit): Promise<Response> {
-    return this._fetchImpl(url, {
-      ...init,
-      headers: { ...init?.headers, ...this.getAuthHeaders() },
-    });
-  }
 }

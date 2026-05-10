@@ -58,7 +58,7 @@ export class MentionCompletionProvider implements vscode.CompletionItemProvider 
         mention.id,
         vscode.CompletionItemKind.Reference,
       );
-      const sourceLabel = mention.source === "kagan" ? "◆ kagan" : "🐙 github";
+      const sourceLabel = mention.source === "kagan" ? "◆ kagan" : "◇ github";
       item.detail = `${sourceLabel} — ${mention.title.slice(0, 60)}`;
       item.documentation = new vscode.MarkdownString(
         mention.state ? `**${mention.title}** (${mention.state})` : `**${mention.title}**`,

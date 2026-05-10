@@ -2,6 +2,7 @@
 // "Readability counts." — async generator, no callbacks, no event bus.
 
 import * as vscode from "vscode";
+import type { KaganClient } from "./client.js";
 import type { SSEMessage } from "@kagan/shared-api-client";
 
 export class SSEStream implements vscode.Disposable {
@@ -10,8 +11,6 @@ export class SSEStream implements vscode.Disposable {
   private reconnectDelay = 1000;
   private disposed = false;
   private connected = false;
-  private protocol: "http" | "https" = "http";
-  private token: string | undefined;
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
   private pollingCallback: (() => void) | null = null;
   private readonly clientId = globalThis.crypto?.randomUUID?.() ?? `vscode-${Date.now().toString(36)}`;
@@ -22,28 +21,7 @@ export class SSEStream implements vscode.Disposable {
   private readonly _onConnected = new vscode.EventEmitter<boolean>();
   readonly onConnected = this._onConnected.event;
 
-  constructor(private baseUrl: string) {}
-
-  setBaseUrl(url: string): void {
-    this.baseUrl = url.replace(/\/+$/, "");
-  }
-
-  setProtocol(protocol: "http" | "https"): void {
-    this.protocol = protocol;
-  }
-
-  setToken(token: string | undefined): void {
-    this.token = token;
-  }
-
-  private getFullUrl(path: string): string {
-    return `${this.protocol}://${this.baseUrl}${path}`;
-  }
-
-  private getAuthHeaders(): Record<string, string> {
-    if (!this.token) return {};
-    return { Authorization: `Bearer ${this.token}` };
-  }
+  constructor(private readonly client: KaganClient) {}
 
   start(): void {
     if (this.controller) return;
@@ -103,13 +81,13 @@ export class SSEStream implements vscode.Disposable {
         client_type: "vscode",
         client_id: this.clientId,
       });
-      const response = await fetch(this.getFullUrl(`/api/events/stream?${query.toString()}`), {
-        headers: {
-          Accept: "text/event-stream",
-          ...this.getAuthHeaders(),
+      const response = await this.client.streamRequest(
+        this.client.getFullUrl(`/api/events/stream?${query.toString()}`),
+        {
+          headers: { Accept: "text/event-stream" },
+          signal,
         },
-        signal,
-      });
+      );
 
       if (!response.ok || !response.body) {
         throw new Error(`SSE failed: ${response.status}`);

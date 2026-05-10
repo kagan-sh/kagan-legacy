@@ -7,6 +7,9 @@ Verifies:
 - The fake agent emits ACP updates that flow through the on_session_update
   callback (verified by checking the Session becomes RUNNING, which requires
   the spawn path to complete without error).
+- The /api/e2e/fake-agent/* HTTP routes are registered by create_api_server
+  when fake_agent=True and absent when fake_agent=False (regression guard for
+  the serve_http opts-reconstruction bug that dropped fake_agent=True).
 
 We use a real KaganCore instance backed by on-disk SQLite and a real git
 worktree so the full session-start path is exercised.  The only fake piece is
@@ -23,6 +26,8 @@ import pytest
 
 from kagan.core import KaganCore
 from kagan.core.enums import SessionStatus
+from kagan.server.mcp.server import ServerOptions
+from kagan.server.server import ApiServerOptions, create_api_server
 from tests.helpers.fake_agent_backend import (
     FAKE_AGENT_BACKEND_NAME,
     ensure_fake_agent_backend_registered,
@@ -190,3 +195,39 @@ async def test_fake_agent_session_completes_without_error(
         )
     finally:
         await core.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Route-registration smoke tests
+# ---------------------------------------------------------------------------
+
+_FAKE_AGENT_PATHS = {
+    "/api/e2e/fake-agent/schedule",
+    "/api/e2e/fake-agent/clear",
+    "/api/e2e/fake-agent/director",
+}
+
+
+def _registered_paths(mcp: Any) -> set[str]:
+    """Return the set of custom-route paths registered on *mcp*."""
+    return {route.path for route in mcp._custom_starlette_routes}
+
+
+def test_fake_agent_routes_registered_when_flag_is_true() -> None:
+    """create_api_server registers /api/e2e/fake-agent/* when fake_agent=True.
+
+    Regression guard for the serve_http opts-reconstruction bug that silently
+    dropped fake_agent=True, causing the routes to never be mounted at runtime.
+    """
+    mcp = create_api_server(ApiServerOptions(mcp_opts=ServerOptions(), fake_agent=True))
+    paths = _registered_paths(mcp)
+    for path in _FAKE_AGENT_PATHS:
+        assert path in paths, f"Expected route {path!r} to be registered but got: {sorted(paths)}"
+
+
+def test_fake_agent_routes_absent_when_flag_is_false() -> None:
+    """create_api_server does NOT register /api/e2e/fake-agent/* when fake_agent=False."""
+    mcp = create_api_server(ApiServerOptions(mcp_opts=ServerOptions(), fake_agent=False))
+    paths = _registered_paths(mcp)
+    for path in _FAKE_AGENT_PATHS:
+        assert path not in paths, f"Route {path!r} should not be registered without --fake-agent"

@@ -174,6 +174,7 @@ async def serve_http(
         enable_tls=opts.enable_tls,
         web_ui=opts.web_ui,
         dev_mode=opts.dev_mode,
+        fake_agent=opts.fake_agent,
     )
     mcp = create_api_server(opts)
 

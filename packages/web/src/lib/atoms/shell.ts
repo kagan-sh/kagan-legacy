@@ -15,16 +15,19 @@ export type ShellPopover =
   | 'filter'
   | 'more'
   | 'advance'
-  | 'permissions'
-  | 'model'
-  | 'locality'
-  | 'branch'
-  | 'access';
+  | 'agent-cli';
 
 export interface PopoverAnchor {
+  /** Horizontal anchor — `align: 'left'` uses this as `left`, `'right'` as `right` distance from viewport edge. */
   x: number;
+  /** Preferred top — used when there is room below the trigger. */
   y: number;
   align: 'left' | 'right';
+  /**
+   * Optional fallback used when the panel does not fit below the trigger:
+   * the panel pins its bottom edge to this value (so it opens upward).
+   */
+  triggerTop?: number;
 }
 
 interface ShellPopoverState {
@@ -49,16 +52,11 @@ export type BoardViewMode = 'board' | 'list';
 /** Persists the Kanban view toggle (Board / List) across re-renders. */
 export const boardViewModeAtom = atom<BoardViewMode>('board');
 
-/** Composer context chips — shared between chat-input-bar and future popovers. */
-export type ComposerAccess = 'full' | 'workspace' | 'readonly';
-export type ComposerLocality = 'local' | 'remote';
-
-export const composerAccessAtom = atom<ComposerAccess>('full');
-export const composerLocalityAtom = atom<ComposerLocality>('local');
-export const currentModelAtom = atom<string | null>(null);
-
 /**
- * Branch selected by the user in the branch popover.
- * null means "use the active task's base_branch or fall back to 'main'".
+ * Active Agent CLI — the local CLI program (claude-code, codex, gemini-cli,
+ * goose, opencode, copilot, …) that drives the agent loop.
+ *
+ * `null` falls back to the server's default backend. The label "Agent CLI"
+ * (not "Model") is canonical: in Kagan we pick the CLI program, not the LLM.
  */
-export const composerBranchAtom = atom<string | null>(null);
+export const currentAgentCliAtom = atom<string | null>(null);

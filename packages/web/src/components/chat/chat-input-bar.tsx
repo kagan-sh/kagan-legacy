@@ -7,16 +7,13 @@ import {
   type KeyboardEvent,
   type ClipboardEvent,
 } from 'react';
-import { Send, Paperclip, Mic, ShieldCheck, MapPin, GitBranch, Cpu, X, Image } from 'lucide-react';
+import { Send, Paperclip, Mic, Cpu, X, Image } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { PENDING_QUEUE_MAX, type PendingMessage, type PendingMessageInput } from '@/lib/atoms/chat';
 import {
   shellPopoverAtom,
-  composerAccessAtom,
-  composerLocalityAtom,
-  composerBranchAtom,
-  currentModelAtom,
+  currentAgentCliAtom,
   type ShellPopover,
 } from '@/lib/atoms/shell';
 import { cn } from '@/lib/utils';
@@ -42,18 +39,6 @@ const SLASH_COMMANDS = [
   { command: '/flow', description: 'Guided Plan → Execute → Orchestrate flow' },
   { command: '/exit', description: 'Exit the chat session' },
 ];
-
-/** Access label shown on the Permissions chip. */
-function accessLabel(access: 'full' | 'workspace' | 'readonly'): string {
-  if (access === 'full') return 'Full access';
-  if (access === 'workspace') return 'Workspace';
-  return 'Read-only';
-}
-
-/** Locality label shown on the Locality chip. */
-function localityLabel(locality: 'local' | 'remote'): string {
-  return locality === 'local' ? 'Local' : 'Remote';
-}
 
 // ── Chip ─────────────────────────────────────────────────────────────────────
 
@@ -92,8 +77,6 @@ export interface ChatInputBarProps {
   disableSend?: boolean;
   placeholder?: string;
   className?: string;
-  /** Active task branch. When null/undefined the Branch chip shows `main`. */
-  activeBranch?: string | null;
   externalPrefill?: string;
   onPrefillConsumed?: () => void;
   projectId?: string;
@@ -113,7 +96,6 @@ export function ChatInputBar({
   disableSend,
   placeholder,
   className,
-  activeBranch,
   externalPrefill,
   onPrefillConsumed,
   projectId,
@@ -136,10 +118,7 @@ export function ChatInputBar({
 
   // ── Atoms ──────────────────────────────────────────────────────────────────
 
-  const [access] = useAtom(composerAccessAtom);
-  const locality = useAtomValue(composerLocalityAtom);
-  const model = useAtomValue(currentModelAtom);
-  const selectedBranch = useAtomValue(composerBranchAtom);
+  const agentCli = useAtomValue(currentAgentCliAtom);
   const setPopover = useSetAtom(shellPopoverAtom);
 
   // ── History ────────────────────────────────────────────────────────────────
@@ -372,9 +351,6 @@ export function ChatInputBar({
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  // composerBranchAtom overrides activeBranch when the user has picked explicitly.
-  const branch = selectedBranch ?? activeBranch ?? 'main';
-
   return (
     <div className={cn('border-t border-[var(--border)] bg-[var(--bg)] px-8 py-3.5', className)}>
       <div className="relative mx-auto max-w-[760px]">
@@ -481,37 +457,12 @@ export function ChatInputBar({
               <Paperclip className="size-3.5" strokeWidth={1.8} />
             </button>
 
-            {/* Permissions chip */}
-            <Chip
-              icon={<ShieldCheck strokeWidth={1.8} />}
-              label={accessLabel(access)}
-              onClick={openPopover('permissions')}
-              data-testid="composer-permissions-chip"
-              className="text-[var(--rail-review)] border-[rgba(194,124,78,0.22)] bg-[rgba(194,124,78,0.08)] hover:bg-[rgba(194,124,78,0.14)]"
-            />
-
-            {/* Locality chip */}
-            <Chip
-              icon={<MapPin strokeWidth={1.8} />}
-              label={localityLabel(locality)}
-              onClick={openPopover('locality')}
-              data-testid="composer-locality-chip"
-            />
-
-            {/* Branch chip */}
-            <Chip
-              icon={<GitBranch strokeWidth={1.8} />}
-              label={branch}
-              onClick={openPopover('branch')}
-              data-testid="composer-branch-chip"
-            />
-
-            {/* Model chip */}
+            {/* Agent CLI chip — selects which CLI program runs the model */}
             <Chip
               icon={<Cpu strokeWidth={1.8} />}
-              label={model ?? 'Model'}
-              onClick={openPopover('model')}
-              data-testid="composer-model-chip"
+              label={agentCli ?? 'Agent CLI'}
+              onClick={openPopover('agent-cli')}
+              data-testid="composer-agent-cli-chip"
             />
 
             <div className="flex-1" />
@@ -584,7 +535,7 @@ export function ChatInputBar({
               <span className="text-[10px] uppercase tracking-[0.16em]">streaming</span>
             </span>
           ) : (
-            <span className="text-[var(--fg-dim)]">{model ? `model · ${model}` : 'model'}</span>
+            <span className="text-[var(--fg-dim)]">{agentCli ? `agent cli · ${agentCli}` : 'agent cli'}</span>
           )}
         </div>
       </div>

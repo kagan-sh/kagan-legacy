@@ -12,10 +12,12 @@
  * consumers should use.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useAtom } from 'jotai';
 import { cn } from '@/lib/utils';
 import { shellPopoverAtom, type ShellPopover, type PopoverAnchor } from '@/lib/atoms/shell';
+
+const VIEWPORT_MARGIN = 16;
 
 // ---------------------------------------------------------------------------
 // Public hook
@@ -47,6 +49,9 @@ export function useShellPopover(
         x: align === 'left' ? rect.left : rect.right,
         y: rect.bottom + 6,
         align,
+        // triggerTop lets the panel flip above the trigger when there is no
+        // room below (e.g. composer chips near the viewport bottom).
+        triggerTop: rect.top - 6,
       };
       setState((prev) =>
         prev.kind === kind ? { kind: null, anchor: null } : { kind, anchor },
@@ -97,6 +102,7 @@ interface PopoverPanelProps {
 export function PopoverPanel({ kind, minWidth = 220, className, children }: PopoverPanelProps) {
   const [state, setState] = useAtom(shellPopoverAtom);
   const ref = useRef<HTMLDivElement>(null);
+  const [flipUp, setFlipUp] = useState(false);
 
   const isOpen = state.kind === kind;
   const anchor = isOpen ? state.anchor : null;
@@ -104,6 +110,20 @@ export function PopoverPanel({ kind, minWidth = 220, className, children }: Popo
   const close = useCallback(() => {
     setState((prev) => (prev.kind === kind ? { kind: null, anchor: null } : prev));
   }, [kind, setState]);
+
+  // After the panel mounts, decide whether to flip it above the trigger.
+  // The check runs once per open so the panel doesn't jitter on hover.
+  useLayoutEffect(() => {
+    if (!isOpen || !anchor || !ref.current) {
+      setFlipUp(false);
+      return;
+    }
+    const panelHeight = ref.current.offsetHeight;
+    const spaceBelow = window.innerHeight - anchor.y;
+    const wouldOverflow = panelHeight + VIEWPORT_MARGIN > spaceBelow;
+    const canFlip = anchor.triggerTop !== undefined && anchor.triggerTop > panelHeight;
+    setFlipUp(wouldOverflow && canFlip);
+  }, [isOpen, anchor]);
 
   // Close on Escape
   useEffect(() => {
@@ -133,14 +153,25 @@ export function PopoverPanel({ kind, minWidth = 220, className, children }: Popo
 
   if (!isOpen || !anchor) return null;
 
+  // Panel can never exceed the viewport. When pinned below, leave room above
+  // the bottom edge; when flipped above, leave room above the title bar.
+  const maxHeight =
+    flipUp && anchor.triggerTop !== undefined
+      ? `${Math.max(120, anchor.triggerTop - VIEWPORT_MARGIN)}px`
+      : `calc(100vh - ${anchor.y + VIEWPORT_MARGIN}px)`;
+
   const style: React.CSSProperties = {
     position: 'fixed',
-    top: anchor.y,
     zIndex: 200,
     minWidth,
+    maxHeight,
+    overflowY: 'auto',
     ...(anchor.align === 'left'
       ? { left: anchor.x }
       : { right: `calc(100vw - ${anchor.x}px)` }),
+    ...(flipUp && anchor.triggerTop !== undefined
+      ? { bottom: `calc(100vh - ${anchor.triggerTop}px)` }
+      : { top: anchor.y }),
   };
 
   return (

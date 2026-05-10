@@ -3,27 +3,25 @@ import { fireEvent, screen } from '@testing-library/react';
 import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
 import { ChatInputBar } from './chat-input-bar';
-import {
-  shellPopoverAtom,
-  composerAccessAtom,
-  composerLocalityAtom,
-  composerBranchAtom,
-  currentModelAtom,
-} from '@/lib/atoms/shell';
+import { shellPopoverAtom, currentAgentCliAtom } from '@/lib/atoms/shell';
 
 const noop = () => {};
 
 describe('ChatInputBar chip row', () => {
-
-  it('renders all chip-row buttons', () => {
+  it('renders attach button, agent CLI chip, voice button, and send button', () => {
     renderWithProviders(<ChatInputBar onSend={noop} />);
     expect(screen.getByTestId('composer-attach-btn')).toBeInTheDocument();
-    expect(screen.getByTestId('composer-permissions-chip')).toBeInTheDocument();
-    expect(screen.getByTestId('composer-locality-chip')).toBeInTheDocument();
-    expect(screen.getByTestId('composer-branch-chip')).toBeInTheDocument();
-    expect(screen.getByTestId('composer-model-chip')).toBeInTheDocument();
+    expect(screen.getByTestId('composer-agent-cli-chip')).toBeInTheDocument();
     expect(screen.getByTestId('composer-voice-btn')).toBeInTheDocument();
     expect(screen.getByTestId('composer-send-btn')).toBeInTheDocument();
+  });
+
+  it('does not render the dropped chips (locality / permissions / branch)', () => {
+    renderWithProviders(<ChatInputBar onSend={noop} />);
+    expect(screen.queryByTestId('composer-locality-chip')).toBeNull();
+    expect(screen.queryByTestId('composer-permissions-chip')).toBeNull();
+    expect(screen.queryByTestId('composer-branch-chip')).toBeNull();
+    expect(screen.queryByTestId('composer-model-chip')).toBeNull();
   });
 
   it('send button is disabled when input is empty', () => {
@@ -38,83 +36,26 @@ describe('ChatInputBar chip row', () => {
     expect(screen.getByTestId('composer-send-btn')).not.toBeDisabled();
   });
 
-  it('permissions chip opens permissions popover via shellPopoverAtom', () => {
+  it('agent-cli chip opens agent-cli popover via shellPopoverAtom', () => {
     const store = createStore();
     renderWithProviders(<ChatInputBar onSend={noop} />, { store });
 
-    fireEvent.click(screen.getByTestId('composer-permissions-chip'));
+    fireEvent.click(screen.getByTestId('composer-agent-cli-chip'));
 
     const popover = store.get(shellPopoverAtom);
-    expect(popover.kind).toBe('permissions');
+    expect(popover.kind).toBe('agent-cli');
   });
 
-  it('locality chip opens locality popover via shellPopoverAtom', () => {
+  it('agent-cli chip label reflects currentAgentCliAtom', () => {
     const store = createStore();
+    store.set(currentAgentCliAtom, 'claude-code');
     renderWithProviders(<ChatInputBar onSend={noop} />, { store });
-
-    fireEvent.click(screen.getByTestId('composer-locality-chip'));
-
-    const popover = store.get(shellPopoverAtom);
-    expect(popover.kind).toBe('locality');
+    expect(screen.getByTestId('composer-agent-cli-chip')).toHaveTextContent('claude-code');
   });
 
-  it('model chip opens model popover via shellPopoverAtom', () => {
-    const store = createStore();
-    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
-
-    fireEvent.click(screen.getByTestId('composer-model-chip'));
-
-    const popover = store.get(shellPopoverAtom);
-    expect(popover.kind).toBe('model');
-  });
-
-  it('branch chip opens branch popover via shellPopoverAtom', () => {
-    const store = createStore();
-    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
-
-    fireEvent.click(screen.getByTestId('composer-branch-chip'));
-
-    const popover = store.get(shellPopoverAtom);
-    expect(popover.kind).toBe('branch');
-  });
-
-  it('branch chip label reflects composerBranchAtom when set', () => {
-    const store = createStore();
-    store.set(composerBranchAtom, 'feat/my-feature');
-    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
-    expect(screen.getByTestId('composer-branch-chip')).toHaveTextContent('feat/my-feature');
-  });
-
-  it('branch chip label falls back to activeBranch prop when composerBranchAtom is null', () => {
-    const store = createStore();
-    renderWithProviders(<ChatInputBar onSend={noop} activeBranch="feat/task-branch" />, { store });
-    expect(screen.getByTestId('composer-branch-chip')).toHaveTextContent('feat/task-branch');
-  });
-
-  it('branch chip label falls back to main when neither composerBranchAtom nor activeBranch is set', () => {
+  it('agent-cli chip falls back to "Agent CLI" when atom is null', () => {
     renderWithProviders(<ChatInputBar onSend={noop} />);
-    expect(screen.getByTestId('composer-branch-chip')).toHaveTextContent('main');
-  });
-
-  it('permissions chip label reflects composerAccessAtom', () => {
-    const store = createStore();
-    store.set(composerAccessAtom, 'readonly');
-    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
-    expect(screen.getByTestId('composer-permissions-chip')).toHaveTextContent('Read-only');
-  });
-
-  it('locality chip label reflects composerLocalityAtom', () => {
-    const store = createStore();
-    store.set(composerLocalityAtom, 'remote');
-    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
-    expect(screen.getByTestId('composer-locality-chip')).toHaveTextContent('Remote');
-  });
-
-  it('model chip label reflects currentModelAtom', () => {
-    const store = createStore();
-    store.set(currentModelAtom, 'claude-code');
-    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
-    expect(screen.getByTestId('composer-model-chip')).toHaveTextContent('claude-code');
+    expect(screen.getByTestId('composer-agent-cli-chip')).toHaveTextContent('Agent CLI');
   });
 
   it('calls onSend when send button clicked with content', () => {

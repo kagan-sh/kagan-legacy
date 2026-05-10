@@ -16,10 +16,7 @@ import {
   ConnectedMorePopover,
   ConnectedAdvancePopover,
 } from '@/components/shell/popovers/connected';
-import { PermissionsPopover } from '@/components/shell/popovers/permissions-popover';
-import { ModelPopover } from '@/components/shell/popovers/model-popover';
-import { LocalityPopover } from '@/components/shell/popovers/locality-popover';
-import { BranchPopover } from '@/components/shell/popovers/branch-popover';
+import { AgentCliPopover } from '@/components/shell/popovers/agent-cli-popover';
 import { useEventStream } from '@/lib/hooks/use-event-stream';
 import { apiClient } from '@/lib/api/client';
 import {
@@ -156,10 +153,7 @@ function ShellLayout() {
       <FilterPopover />
       <ConnectedMorePopover />
       <ConnectedAdvancePopover />
-      <PermissionsPopover />
-      <ModelPopover />
-      <LocalityPopover />
-      <BranchPopover />
+      <AgentCliPopover />
     </>
   );
 }

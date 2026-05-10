@@ -13,7 +13,7 @@ import { ExternalLink, MoreHorizontal, MessageSquareText } from 'lucide-react';
 import { tasksAtom } from '@/lib/atoms/board';
 import { popoverTaskIdAtom, shellPopoverAtom } from '@/lib/atoms/shell';
 import { useSessionList } from '@/lib/hooks/use-session-list';
-import { sessionKind } from '@/lib/sessions/kind';
+import { sessionKind, SESSION_KIND_BADGE } from '@/lib/sessions/kind';
 import { OrchestratorSessionBody } from '@/components/session/OrchestratorSessionBody';
 import { useSetAtom } from 'jotai';
 import type { SessionItemResponse } from '@kagan/shared-api-client';
@@ -41,7 +41,7 @@ const STATUS_PILL: Record<CanonicalStatus, { label: string; data: string; classN
   },
   'In Progress': {
     label: 'In Progress',
-    data: 'RUN',
+    data: 'IN_PROGRESS',
     className: 'text-[var(--kagan-rail-running)] bg-[rgba(63,181,142,0.10)] border-[rgba(63,181,142,0.22)]',
   },
   'Review': {
@@ -74,12 +74,7 @@ function WsHead({ session, task }: WsHeadProps) {
   const pill = STATUS_PILL[status];
   const isRunning = status === 'In Progress';
 
-  const agentBadge = (() => {
-    if (kind === 'orchestrator') return 'ORCH';
-    if (kind === 'general') return 'GEN';
-    if (kind === 'task') return 'TASK';
-    return null;
-  })();
+  const agentBadge = kind ? SESSION_KIND_BADGE[kind] : null;
 
   const taskShortId = task?.id ? task.id.slice(0, 7).toUpperCase() : null;
 

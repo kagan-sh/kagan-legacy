@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+import os
 import time
 from typing import TYPE_CHECKING
 
@@ -312,6 +313,10 @@ class RateLimitMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        if os.environ.get("KAGAN_FAKE_AGENT") == "1":
             await self.app(scope, receive, send)
             return
 

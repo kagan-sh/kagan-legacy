@@ -72,10 +72,10 @@ _RAIL_IDLE = "#B5AC9F"  # muted idle
 _RAIL_ERROR = "#e85535"  # danger red
 
 # Supplemental colours used in the REPL but not in the token table
-_PLAN_BLUE = "#60a5fa"  # plan mode prompt — cool blue
-_META = "#9ca3af"  # completion meta text
-_META_CURRENT = "#7dd3fc"  # completion meta current
-_THINKING = "#fbbf24"  # thinking animation — warm yellow
+_PLAN_AMBER = "#b89154"  # plan mode prompt — primary-soft amber
+_META = "#B5AC9F"  # completion meta text — --fg-dim (dark CRT)
+_META_CURRENT = "#e0be6e"  # completion meta current — --primary-bright
+_THINKING = "#d4a84b"  # thinking animation — canonical --primary amber
 _ACCENT_SOFT_BG = "#1D3A31"  # completion menu current background
 
 
@@ -118,8 +118,8 @@ class _Palette:
 
     # ── Prompt / UI chrome ────────────────────────────────────────────────────
     prompt_glyph: Style  # $ and > in amber bold
-    plan_glyph: Style  # ◇ in plan mode — cool blue
-    thinking: Style  # streaming indicator — warm yellow
+    plan_glyph: Style  # ◇ in plan mode — primary-soft amber
+    thinking: Style  # streaming indicator — primary amber
 
     # ── Completion menu ───────────────────────────────────────────────────────
     completion_bg: Style
@@ -150,7 +150,7 @@ def _build_truecolor_palette() -> _Palette:
         mode_general=Style(color=_RAIL_RUNNING, bold=True),
         mode_task=Style(color=_FG_MUTED, bold=True),
         prompt_glyph=Style(color=_PRIMARY, bold=True),
-        plan_glyph=Style(color=_PLAN_BLUE, bold=True),
+        plan_glyph=Style(color=_PLAN_AMBER, bold=True),
         thinking=Style(color=_THINKING, bold=True),
         completion_bg=Style(bgcolor=_SURFACE_1, color=_FG_MUTED),
         completion_fg=Style(bgcolor=_SURFACE_1, color=_FG_MUTED),
@@ -186,7 +186,7 @@ def _build_ansi_palette() -> _Palette:
         mode_general=Style(color="green", bold=True),
         mode_task=Style(dim=True, bold=True),
         prompt_glyph=Style(color="yellow", bold=True),
-        plan_glyph=Style(color="blue", bold=True),
+        plan_glyph=Style(color="yellow", bold=True),
         thinking=Style(color="yellow", bold=True),
         completion_bg=Style(),
         completion_fg=Style(),
@@ -222,7 +222,7 @@ PROMPT_COLORS: dict[str, str] = {
     "accent_soft": _ACCENT_SOFT_BG,
     "primary": _PRIMARY,
     "separator": _SURFACE_3,
-    "plan": _PLAN_BLUE,
+    "plan": _PLAN_AMBER,
     "meta": _META,
     "meta_current": _META_CURRENT,
     "thinking": _THINKING,

@@ -156,7 +156,7 @@ class StatusBar(Horizontal):
 
         def _symbol_label() -> str | None:
             if status in WORKING_STATES:
-                sym = f"[#fbbf24]{WAVE_FRAMES[self._frame_index]}[/]"
+                sym = f"[#d4a84b]{WAVE_FRAMES[self._frame_index]}[/]"
                 elapsed = (
                     f"{label} · {_format_elapsed(monotonic() - self._work_started_at)}"
                     if self._work_started_at is not None
@@ -169,7 +169,7 @@ class StatusBar(Horizontal):
         def _access_mode() -> str | None:
             if not self.access_mode:
                 return None
-            mode_color = "#fbbf24" if self.access_mode == "Full" else ""
+            mode_color = "#d4a84b" if self.access_mode == "Full" else ""
             mode_start = f"[{mode_color}]" if mode_color else ""
             mode_end = "[/]" if mode_color else ""
             return f"{mode_start}[{self.access_mode} ▾]{mode_end}"

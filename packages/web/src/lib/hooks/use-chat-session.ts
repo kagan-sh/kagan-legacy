@@ -134,10 +134,21 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     });
   }, []);
 
-  const addToolCall = useCallback((payload: { toolCallId: string; name: string }) => {
+  const addToolCall = useCallback((payload: { toolCallId: string; name: string; args: string | null }) => {
+    let parsedArgs: Record<string, unknown> | null = null;
+    if (payload.args) {
+      try {
+        const parsed = JSON.parse(payload.args) as unknown;
+        parsedArgs = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : null;
+      } catch {
+        // args not valid JSON — leave null
+      }
+    }
     setStreamEntries((entries) => [
       ...entries,
-      { kind: 'tool' as const, id: payload.toolCallId, name: payload.name, status: 'running' as const },
+      { kind: 'tool' as const, id: payload.toolCallId, name: payload.name, status: 'running' as const, args: parsedArgs, startedAt: Date.now() },
     ]);
   }, []);
 
@@ -362,7 +373,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           }
           case 'tool_call': {
             setIsStreaming(true);
-            addToolCall({ toolCallId: engineEvent.tool_call_id, name: engineEvent.name });
+            addToolCall({ toolCallId: engineEvent.tool_call_id, name: engineEvent.name, args: engineEvent.args });
             break;
           }
           case 'tool_call_update': {

@@ -45,6 +45,7 @@ from kagan.core.events import (
     Event,
     ThinkingChunk,
     ToolCall,
+    ToolCallResult,
     ToolCallUpdate,
     TurnEnd,
     TurnStart,
@@ -136,6 +137,9 @@ def apply_chat_event_to_panel(panel: ChatPanel, event: Event | PermissionRequest
                 event.progress or "running",
                 result=event.content,
             )
+        case ToolCallResult():
+            status = "failed" if event.is_error else "completed"
+            panel.update_tool_call(event.tool_call_id, status, result=event.output)
         case UsageUpdate():
             panel.set_runtime_status("thinking")
         case AssistantMessagePersisted():

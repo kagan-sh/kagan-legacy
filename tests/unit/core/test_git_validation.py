@@ -198,7 +198,9 @@ class TestWorktreeAddValidation:
 
         async def _fake_run_git(*args, **kwargs):
             git_calls.append((args, kwargs))
-            return ("", "")
+            # Non-empty stdout for rev-parse so _has_local_branch returns True;
+            # the worktree-create path skips the empty-repo seeding branch.
+            return ("abc123", "")
 
         monkeypatch.setattr("kagan.core.git.validate_ref_name", _fake_validate)
         monkeypatch.setattr("kagan.core.git._run_git", _fake_run_git)
@@ -211,12 +213,12 @@ class TestWorktreeAddValidation:
             base="main",
         )
 
-        # validate_ref_name should be called twice (for branch and base)
+        # validate_ref_name called twice (branch + base).
         assert len(validate_calls) == 2
-        # _run_git should be called to create the worktree
-        assert len(git_calls) == 1
-        assert git_calls[0][0][0] == "worktree"
-        assert git_calls[0][0][1] == "add"
+        # Two git calls when base exists: _has_local_branch lookup, then worktree add.
+        assert len(git_calls) == 2
+        assert git_calls[-1][0][0] == "worktree"
+        assert git_calls[-1][0][1] == "add"
 
     @pytest.mark.asyncio
     async def test_validates_branch_with_double_dot(self) -> None:

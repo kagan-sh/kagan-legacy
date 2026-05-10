@@ -91,7 +91,7 @@ def print_via_terminal(fn: Callable[[], None]) -> None:
 class _GroupedToolDisplay:
     """Accumulate parallel tool calls and render them as grouped status lines.
 
-    Groups calls by tool name.  Shows: ``tool_name x N -- done D/N . Xs``.
+    Groups calls by tool name.  Shows: ``▸ tool_name x N -- done D/N · Xms``.
     """
 
     def __init__(self) -> None:
@@ -124,15 +124,15 @@ class _GroupedToolDisplay:
             done = sum(1 for e in entries if e["status"] in ("completed", "failed"))
             error = sum(1 for e in entries if e["status"] == "failed")
             elapsed = max((now - e["started"]) for e in entries if e["started"] is not None)
-            elapsed_text = f"{elapsed:.1f}s"
+            elapsed_text = _format_elapsed(elapsed)
 
             if total == 1:
                 entry = entries[0]
                 if entry["status"] == "running":
-                    icon = "●"
+                    icon = "▸"
                     style = "dim"
                 elif entry["status"] == "completed":
-                    icon = "✓"
+                    icon = "▸"
                     style = "green"
                 else:
                     icon = "✗"
@@ -148,7 +148,7 @@ class _GroupedToolDisplay:
                 else:
                     status_text = f"done {done}/{total} · {elapsed_text}"
                     style = "dim"
-                icon = "✓" if done == total and error == 0 else "●"
+                icon = "▸"
                 line = f"  [{style}]{icon} {_rich_escape(name)} x{total} -- {status_text}[/{style}]"
             lines.append(line)
         return lines
@@ -159,35 +159,24 @@ class _GroupedToolDisplay:
 
 
 # ---------------------------------------------------------------------------
-# CLIRenderer
+# Elapsed-time formatting
 # ---------------------------------------------------------------------------
 
 
-def _make_done_printer(
-    console: Console,
-    title: str,
-    key_arg: str | None,
-    status: str,
-    started_at: float,
-    ended_at: float,
-) -> Callable[[], None]:
-    def _print() -> None:
-        arg_part = f" [dim]({_rich_escape(key_arg)})[/dim]" if key_arg else ""
-        elapsed = max(0.0, ended_at - started_at)
-        duration = f" [dim]{elapsed:.1f}s[/dim]" if elapsed >= 0.1 else ""
-        name = _rich_escape(title)
-        if status == "completed":
-            console.print(
-                f"  [green]●[/green] [dim]Used[/dim] [bold]{name}[/bold]{arg_part}{duration}",
-                highlight=False,
-            )
-        else:
-            console.print(
-                f"  [red]●[/red] [dim]Used[/dim] [bold]{name}[/bold]{arg_part} [red]failed[/red]",
-                highlight=False,
-            )
+def _format_elapsed(seconds: float) -> str:
+    """Return a compact elapsed-time string.
 
-    return _print
+    Sub-second durations render as ``Xms``; one second and above as ``X.Xs``.
+    """
+    ms = max(0.0, seconds) * 1000
+    if ms < 1000:
+        return f"{ms:.0f}ms"
+    return f"{seconds:.1f}s"
+
+
+# ---------------------------------------------------------------------------
+# CLIRenderer
+# ---------------------------------------------------------------------------
 
 
 class CLIRenderer:
@@ -265,7 +254,7 @@ class CLIRenderer:
         def _print_start() -> None:
             arg_part = f" [dim]({_rich_escape(key_arg)})[/dim]" if key_arg else ""
             self._console.print(
-                f"\n  [dim]●[/dim] [dim]Using[/dim] [bold]{_rich_escape(title)}[/bold]{arg_part}",
+                f"  [dim]▸[/dim] [bold]{_rich_escape(title)}[/bold]{arg_part}",
                 highlight=False,
             )
 
@@ -308,9 +297,26 @@ class CLIRenderer:
         run.status = status
         run.ended_at = run.ended_at or time.monotonic()
         self._grouped_tools.complete(tool_key, status, run.ended_at)
-        print_via_terminal(
-            _make_done_printer(self._console, title, key_arg, status, run.started_at, run.ended_at)
-        )
+
+        elapsed = max(0.0, run.ended_at - run.started_at)
+        duration = _format_elapsed(elapsed)
+        name = _rich_escape(title)
+        arg_part = f" [dim]({_rich_escape(key_arg)})[/dim]" if key_arg else ""
+
+        def _print_result() -> None:
+            if status == "completed":
+                self._console.print(
+                    f"  [green]▸[/green] [bold]{name}[/bold]{arg_part} [dim]{duration}[/dim]",
+                    highlight=False,
+                )
+            else:
+                self._console.print(
+                    f"  [red]✗[/red] [bold]{name}[/bold]{arg_part}"
+                    f" [red]failed[/red] [dim]{duration}[/dim]",
+                    highlight=False,
+                )
+
+        print_via_terminal(_print_result)
 
     def on_usage_update(self, update: Any) -> None:
         self.last_usage = update
@@ -347,7 +353,7 @@ class CLIRenderer:
 __all__ = [
     "CLIRenderer",
     "_GroupedToolDisplay",
-    "_make_done_printer",
+    "_format_elapsed",
     "_modal_active",
     "_modal_depth",
     "print_via_terminal",

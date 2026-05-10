@@ -195,6 +195,7 @@ markers = [
   "mock_platform_system(name): override platform.system() for the test",
   "smoke_e2e: Playwright + subprocess CLI smoke (optional nightly job; wired via poe web-e2e)",
   "e2e_chat: surface-aware chat-flow tests against scripted FakeAgentDirector",
+  "e2e_tui: surface-aware TUI-flow tests via KaganDriver + Pilot",
 ]
 addopts = "-p no:anyio -x -n auto --dist=loadgroup"
 
@@ -216,6 +217,8 @@ dev = "python -m textual run --dev src/kagan/tui/app.py"
 test = "pytest tests/"
 e2e-chat = "pytest tests/e2e_chat -v -n0"
 e2e-chat-update = "pytest tests/e2e_chat -v -n0 --inline-snapshot=create"
+e2e-tui = "pytest tests/e2e_tui -v -n0"
+e2e-tui-update = "pytest tests/e2e_tui -v -n0 --inline-snapshot=create"
 lint = "ruff check src/"
 check-loc = "python scripts/check_python_loc_budget.py --max-lines 2500"
 check-complexity = "ruff check src/ --select C90"

@@ -68,6 +68,8 @@ export default defineConfig({
             KAGAN_FAKE_AGENT: '1',
             // Keep orchestrator turns short in E2E; default 30s delay would exceed test timeouts.
             KAGAN_FAKE_AGENT_DELAY_MS: '100',
+            // Pass through coverage flag so vite-plugin-istanbul instruments the build.
+            E2E_COVERAGE: process.env.E2E_COVERAGE ?? '0',
           },
         },
       }),

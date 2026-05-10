@@ -2,15 +2,28 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
+import istanbul from 'vite-plugin-istanbul';
 import path from 'path';
 
 // Default backend URL for development (Vite proxy target)
 const DEV_BACKEND_URL = process.env.KAGAN_DEV_BACKEND_URL ?? 'http://127.0.0.1:8765';
+const E2E_COVERAGE = process.env.E2E_COVERAGE === '1';
 
 export default defineConfig({
   plugins: [
     tailwindcss(),
     react(),
+    ...(E2E_COVERAGE
+      ? [
+          istanbul({
+            include: 'src/**/*',
+            exclude: ['node_modules', 'src/test/', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
+            extension: ['.ts', '.tsx'],
+            requireEnv: false,
+            forceBuildInstrument: true,
+          }),
+        ]
+      : []),
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
@@ -51,6 +64,9 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    sourcemap: E2E_COVERAGE,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

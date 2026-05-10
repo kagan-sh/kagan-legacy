@@ -261,3 +261,6 @@ packages/web/.svelte-kit/
 /board-deep.yml
 /board-full.yml
 /diff-in-board.png
+
+# Playwright E2E coverage raw data
+.nyc_output/

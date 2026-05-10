@@ -3,7 +3,9 @@ name: Prompt Evaluation
 on:
   pull_request:
     paths:
-      - "src/kagan/core/_prompts.py"
+      - "src/kagan/core/_prompts/**"
+      - "src/kagan/core/_session_helpers.py"
+      - "src/kagan/server/mcp/prompts.py"
       - "evals/**"
 
 concurrency:

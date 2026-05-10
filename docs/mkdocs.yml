@@ -3,8 +3,8 @@
 site_name: KAGAN
 site_description: Kanban TUI for AI coding agents with a structural human review gate
 site_url: https://docs.kagan.sh
-docs_dir: docs
-site_dir: site
+docs_dir: .
+site_dir: ../site
 
 repo_url: https://github.com/kagan-sh/kagan
 repo_name: kagan-sh/kagan
@@ -12,7 +12,7 @@ edit_uri: edit/main/docs/
 
 theme:
     name: material
-    custom_dir: docs/overrides
+    custom_dir: overrides
 
     # Dark mode only - no toggle
     palette:

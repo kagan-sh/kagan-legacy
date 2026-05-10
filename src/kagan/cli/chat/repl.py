@@ -156,10 +156,10 @@ _REPL_COLORS: Final[dict[str, str]] = {
     "accent_soft": "#1D3A31",
     "primary": "#d4a84b",
     "separator": "#2A251F",
-    "plan": "#60a5fa",
-    "meta": "#9ca3af",
-    "meta_current": "#7dd3fc",
-    "thinking": "#fbbf24",
+    "plan": "#b89154",
+    "meta": "#B5AC9F",
+    "meta_current": "#e0be6e",
+    "thinking": "#d4a84b",
 }
 
 _ANSI_REPL_COLORS: Final[dict[str, str]] = {
@@ -234,7 +234,7 @@ def _build_prompt_style_rules() -> dict[str, str]:
         "bottom-toolbar.tip": "fg:ansibrightblack italic",
         "bottom-toolbar.thinking": "fg:ansiyellow bold",
         "bottom-toolbar.idle-dot": "fg:ansibrightblack",
-        "bottom-toolbar.plan": "fg:ansiblue bold",
+        "bottom-toolbar.plan": "fg:ansiyellow bold",
         "completion-menu": "bg:default fg:default",
         "completion-menu.completion": "bg:default fg:default",
         "completion-menu.completion.current": "noreverse bg:ansigreen fg:ansiblack bold",
@@ -859,7 +859,7 @@ def _build_prompt_message() -> FormattedText:
         plan = _REPL_COLORS["plan"]
     else:
         accent = _ANSI_REPL_COLORS["accent"]
-        plan = "ansiblue"
+        plan = "ansiyellow"
 
     if not truecolor:
         return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_FALLBACK)])

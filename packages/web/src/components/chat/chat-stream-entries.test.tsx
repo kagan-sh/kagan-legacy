@@ -13,8 +13,8 @@ describe('StreamThoughtBlock', () => {
         entries={[{ kind: 'thought', content, startedAt: Date.now() }]}
       />,
     );
-    expect(screen.getByText(/Thinking/)).toBeVisible();
-    expect(screen.getByText(/10 tokens/)).toBeVisible();
+    expect(screen.getByText(/thinking…/)).toBeVisible();
+    expect(screen.getByText(/10 tok/)).toBeVisible();
   });
 
   it('elapsed timer increments after 100ms', async () => {

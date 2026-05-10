@@ -178,8 +178,13 @@ class MarkdownStreamingRegion:
         self._thought_announced: bool = False
         self._thought_start: float = 0.0
         self._thought_buffer: str = ""
+        self._thought_chars: int = 0
         # Live turn indicator
         self._live_state: _TurnLiveState | None = None
+
+    def set_show_thoughts(self, value: bool) -> None:
+        """Toggle streaming-reasoning display at runtime."""
+        self._show_thoughts = value
 
     # ------------------------------------------------------------------
     # Public API
@@ -224,6 +229,7 @@ class MarkdownStreamingRegion:
             self._in_thought = False
             self._thought_announced = False
             self._thought_buffer = ""
+            self._thought_chars = 0
 
     @property
     def is_active(self) -> bool:
@@ -239,9 +245,7 @@ class MarkdownStreamingRegion:
             self._thought_start = time.monotonic()
             self._thought_announced = True
             self._in_thought = True
-            if not self._live_state:
-                self._console.print("[dim italic]Thinking…[/dim italic]", highlight=False)
-                self._console.file.flush()
+        self._thought_chars += len(text)
         if self._live_state:
             self._live_state.set_phase("thinking")
             self._live_state.add_text(text)
@@ -252,20 +256,29 @@ class MarkdownStreamingRegion:
         if not self._in_thought:
             return
         self._in_thought = False
+        elapsed = time.monotonic() - self._thought_start
+        tok = max(1, self._thought_chars // 4)
         if self._live_state:
             self._live_state.set_phase("composing")
             self._live_state.set_tail("")
         if self._show_thoughts and self._thought_buffer.strip():
-            elapsed = time.monotonic() - self._thought_start
             self._console.print(
-                f"[dim italic]— thought for {elapsed:.1f}s —[/dim italic]",
+                f"[dim italic]— thought for {elapsed:.1f}s · {tok} tok —[/dim italic]",
                 highlight=False,
             )
             self._console.print(
                 Markdown(self._thought_buffer.strip(), style="dim italic"),
                 highlight=False,
             )
+        else:
+            # Collapsed summary (always printed, regardless of show_thoughts)
+            self._console.print(
+                f"[dim italic]thinking… {elapsed:.1f}s · {tok} tok[/dim italic]",
+                highlight=False,
+            )
+            self._console.file.flush()
         self._thought_buffer = ""
+        self._thought_chars = 0
 
     def _append_composing(self, text: str) -> None:
         self._buffer += text

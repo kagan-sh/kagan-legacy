@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { useChatSession } from '@/lib/hooks/use-chat-session';
 import { ChatView } from '@/components/chat/chat-view';
 import { ChatOverlayEmptyState } from '@/components/session/chat-overlay-empty-state';
+import { apiClient } from '@/lib/api/client';
 
 interface OrchestratorSessionBodyProps {
   chatSessionId: string;
@@ -8,6 +10,16 @@ interface OrchestratorSessionBodyProps {
 
 export function OrchestratorSessionBody({ chatSessionId }: OrchestratorSessionBodyProps) {
   const session = useChatSession(chatSessionId);
+  const [showReasoning, setShowReasoning] = useState(false);
+  useEffect(() => {
+    apiClient
+      .getSettings()
+      .then((s) => {
+        const raw = (s as Record<string, string | undefined>)['chat.show_reasoning'];
+        setShowReasoning(raw === 'true');
+      })
+      .catch(() => {});
+  }, []);
 
   if (session.loading) {
     return (
@@ -35,6 +47,7 @@ export function OrchestratorSessionBody({ chatSessionId }: OrchestratorSessionBo
       pendingQueue={session.pendingQueue}
       onEnqueue={session.onEnqueue}
       onClearQueue={session.onClearQueue}
+      showReasoning={showReasoning}
     />
   );
 }

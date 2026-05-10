@@ -61,6 +61,7 @@ class SlashAction(Enum):
     SWITCH_SESSION = "switch_session"
     STOP_SESSION = "stop_session"
     CLOSE_SESSION = "close_session"
+    TOGGLE_REASONING = "toggle_reasoning"
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +90,7 @@ class SlashCommandOutcome:
     switch_session_id: str | None = None
     stop_session: bool = False
     close_session: bool = False
+    reasoning_mode: str | None = None  # "on" | "off" | "toggle"
 
 
 @dataclass(frozen=True, slots=True)

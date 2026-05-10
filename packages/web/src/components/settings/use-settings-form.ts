@@ -26,6 +26,7 @@ export type SettingsFormState = {
   planning_depth: string;
   auto_confirm_single_tasks: boolean;
   use_recommended_backend: boolean;
+  chat_show_reasoning: boolean;
 };
 
 export const DEFAULT_FORM: SettingsFormState = {
@@ -50,6 +51,7 @@ export const DEFAULT_FORM: SettingsFormState = {
   planning_depth: 'always',
   auto_confirm_single_tasks: false,
   use_recommended_backend: false,
+  chat_show_reasoning: false,
 };
 
 export interface UseSettingsFormResult {
@@ -154,6 +156,10 @@ export function useSettingsForm(): UseSettingsFormResult {
           use_recommended_backend: asBool(
             settings.use_recommended_backend,
             DEFAULT_FORM.use_recommended_backend,
+          ),
+          chat_show_reasoning: asBool(
+            (settings as Record<string, string | undefined>)['chat.show_reasoning'],
+            DEFAULT_FORM.chat_show_reasoning,
           ),
         };
         setForm(loaded);

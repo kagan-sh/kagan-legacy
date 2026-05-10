@@ -8,13 +8,17 @@ import { StreamingGlyph } from '@/components/chat/streaming-glyph';
 
 interface ChatStreamEntriesProps {
   entries: ChatStreamEntry[];
+  showReasoning?: boolean;
 }
 
 /**
  * Renders real-time streaming entries — text, thinking, tool calls, errors.
  * Uses flat-timeline layout consistent with ChatMessage.
+ *
+ * `showReasoning` (default false) controls whether thought blocks render
+ * expanded with full content.  When false only a collapsed one-liner is shown.
  */
-export function ChatStreamEntries({ entries }: ChatStreamEntriesProps) {
+export function ChatStreamEntries({ entries, showReasoning = false }: ChatStreamEntriesProps) {
   if (entries.length === 0) return null;
 
   return (
@@ -25,7 +29,14 @@ export function ChatStreamEntries({ entries }: ChatStreamEntriesProps) {
           case 'text':
             return <StreamTextBlock key={key} content={entry.content} />;
           case 'thought':
-            return <StreamThoughtBlock key={key} content={entry.content} startedAt={entry.startedAt} />;
+            return (
+              <StreamThoughtBlock
+                key={key}
+                content={entry.content}
+                startedAt={entry.startedAt}
+                showReasoning={showReasoning}
+              />
+            );
           case 'tool':
             return (
               <StreamToolCard
@@ -73,8 +84,17 @@ function StreamTextBlock({ content }: { content: string }) {
 
 // ── Thinking block ───────────────────────────────────────────────────────────
 
-function StreamThoughtBlock({ content, startedAt }: { content: string; startedAt: number }) {
+function StreamThoughtBlock({
+  content,
+  startedAt,
+  showReasoning,
+}: {
+  content: string;
+  startedAt: number;
+  showReasoning: boolean;
+}) {
   const [elapsed, setElapsed] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     const id = setInterval(
       () => setElapsed(Math.round((Date.now() - startedAt) / 100) / 10),
@@ -83,23 +103,41 @@ function StreamThoughtBlock({ content, startedAt }: { content: string; startedAt
     return () => clearInterval(id);
   }, [startedAt]);
   const tokens = Math.round(content.length / 4);
+  const isExpanded = showReasoning || expanded;
+
   return (
-    <div className="flex gap-3 py-3 opacity-70">
+    <div className="flex gap-3 py-3 opacity-70" data-testid="chat-stream-thought">
       <Avatar className="mt-0.5 size-6 shrink-0">
         <AvatarFallback className="bg-fuchsia-500/15">
           <BrainCircuit className="size-3.5 text-fuchsia-400" />
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
-        <div className="mb-1">
+        <div className="mb-1 flex items-center gap-2">
           <span className="text-[11px] font-semibold text-fuchsia-400">
-            Thinking&nbsp;&nbsp;{elapsed}s&nbsp;·&nbsp;{tokens} tokens
+            thinking…&nbsp;{elapsed}s&nbsp;·&nbsp;{tokens}&nbsp;tok
           </span>
+          {/* Per-block toggle — only shown when global showReasoning is off */}
+          {!showReasoning && content.trim().length > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="text-[10px] text-fuchsia-400/60 hover:text-fuchsia-400 transition-colors"
+              aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
+              aria-expanded={expanded}
+            >
+              <ChevronRight
+                className={cn('size-3 transition-transform duration-150', expanded && 'rotate-90')}
+              />
+            </button>
+          )}
         </div>
-        <MarkdownContent
-          content={content}
-          className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-fuchsia-400 prose-pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
-        />
+        {isExpanded && content.trim().length > 0 && (
+          <MarkdownContent
+            content={content}
+            className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-fuchsia-400 prose-pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
+          />
+        )}
       </div>
     </div>
   );

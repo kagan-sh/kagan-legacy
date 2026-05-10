@@ -50,6 +50,8 @@ export interface ChatViewProps {
   onEnqueue?: (input: string | PendingMessageInput) => boolean;
   /** Clear the entire pending queue. */
   onClearQueue?: () => void;
+  /** When true, stream thinking tokens fully expanded. Default false (collapsed). */
+  showReasoning?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +95,7 @@ export function ChatView({
   pendingQueue,
   onEnqueue,
   onClearQueue,
+  showReasoning = false,
 }: ChatViewProps) {
   const { visibleMessages, hasEarlierMessages } = useMemo(() => {
     if (visibleCount === undefined) {
@@ -158,7 +161,7 @@ export function ChatView({
 
             {streamEntries.length > 0 ? (
               <div className="pt-0">
-                <ChatStreamEntries entries={streamEntries} />
+                <ChatStreamEntries entries={streamEntries} showReasoning={showReasoning} />
               </div>
             ) : null}
           </div>

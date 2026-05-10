@@ -458,6 +458,7 @@ class StreamingOutput(Vertical):
         id: str | None = None,
         classes: str | None = None,
         github_repo_slug: str | None = None,
+        show_reasoning: bool = False,
     ) -> None:
         super().__init__(id=id, classes=classes)
         self._github_repo_slug: str | None = github_repo_slug
@@ -471,6 +472,14 @@ class StreamingOutput(Vertical):
         self._last_chunk_line_key: str | None = None
         self._scroll_scheduled = False
         self.word_delay_seconds = _DEFAULT_WORD_DELAY_SECONDS
+        # Reasoning visibility: off by default (opt-in)
+        self._show_reasoning: bool = show_reasoning
+        # Thinking accumulator for collapsed one-liner widget
+        self._thought_chars: int = 0
+        self._thought_start: float = 0.0
+        self._thought_announced: bool = False
+        self._thinking_widget: Static | None = None
+        self._thinking_tick_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(
@@ -593,7 +602,102 @@ class StreamingOutput(Vertical):
         return self.append_chunk(text, kind="user")
 
     def post_thought(self, text: str) -> Widget:
-        return self.append_chunk(text, kind="thought")
+        """Append a thinking fragment, gated by show_reasoning setting.
+
+        When show_reasoning=False (default): accumulate char count and update
+        a collapsed one-liner widget showing ``thinking… {elapsed}s · {tok} tok``.
+        When show_reasoning=True: stream the reasoning text into a full OutputChunk.
+        """
+        self._thought_chars += len(text)
+        if not self._thought_announced:
+            self._thought_start = time.monotonic()
+            self._thought_announced = True
+
+        if self._show_reasoning:
+            return self.append_chunk(text, kind="thought", merge=True)
+
+        # Collapsed mode: show/update a single Static one-liner.
+        self._update_thinking_widget()
+        return self._thinking_widget or self  # type: ignore[return-value]
+
+    def finish_thought(self) -> None:
+        """Finalise the thinking phase: stop ticker, print final one-liner or full chunk."""
+        if self._thinking_tick_timer is not None:
+            self._thinking_tick_timer.stop()
+            self._thinking_tick_timer = None
+        if not self._thought_announced:
+            return
+        elapsed = time.monotonic() - self._thought_start
+        tok = max(1, self._thought_chars // 4)
+        label = f"thinking… {elapsed:.1f}s · {tok} tok"
+        # Final update of collapsed widget (if present)
+        if self._thinking_widget is not None:
+            with contextlib.suppress(Exception):
+                self._thinking_widget.update(f"[dim italic]{label}[/dim italic]")
+        # Reset accumulator for next turn
+        self._thought_chars = 0
+        self._thought_announced = False
+        self._thinking_widget = None
+
+    def _update_thinking_widget(self) -> None:
+        """Create or update the collapsed thinking one-liner."""
+        elapsed = time.monotonic() - self._thought_start
+        tok = max(1, self._thought_chars // 4)
+        label = f"thinking… {elapsed:.1f}s · {tok} tok"
+        if self._thinking_widget is None:
+            self._thinking_widget = Static(
+                f"[dim italic]{label}[/dim italic]",
+                classes="agent-chunk agent-thought-collapsed",
+            )
+            self._append_widget(self._thinking_widget)
+            # Start a 1Hz tick to update elapsed time while streaming
+            if self._thinking_tick_timer is None:
+                self._thinking_tick_timer = self.set_interval(1.0, self._tick_thinking)
+        else:
+            with contextlib.suppress(Exception):
+                self._thinking_widget.update(f"[dim italic]{label}[/dim italic]")
+
+    def _tick_thinking(self) -> None:
+        """1Hz timer callback to refresh elapsed time in collapsed thinking widget."""
+        if not self._thought_announced or self._thinking_widget is None:
+            self._thinking_tick_timer and self._thinking_tick_timer.stop()
+            self._thinking_tick_timer = None
+            return
+        elapsed = time.monotonic() - self._thought_start
+        tok = max(1, self._thought_chars // 4)
+        label = f"thinking… {elapsed:.1f}s · {tok} tok"
+        with contextlib.suppress(Exception):
+            self._thinking_widget.update(f"[dim italic]{label}[/dim italic]")
+
+    def set_show_reasoning(self, value: bool) -> None:
+        """Update reasoning visibility; called from ChatPanel or settings load."""
+        self._show_reasoning = value
+
+    def action_toggle_reasoning(self) -> None:
+        """Ctrl+T: toggle streaming reasoning preview on/off."""
+        self._show_reasoning = not self._show_reasoning
+        label = "on" if self._show_reasoning else "off"
+        self.post_note(f"Reasoning preview: {label}")
+        # Persist asynchronously — best-effort, no crash on failure
+        self._persist_reasoning_setting(self._show_reasoning)
+
+    def _persist_reasoning_setting(self, value: bool) -> None:
+        """Persist chat.show_reasoning to DB settings (best-effort)."""
+        from kagan.tui.app import KaganApp
+
+        app = self.app
+        if not isinstance(app, KaganApp):
+            return
+        core = getattr(app, "core", None)
+        if core is None:
+            return
+        import asyncio
+
+        async def _save() -> None:
+            with contextlib.suppress(Exception):
+                await core.settings.set({"chat.show_reasoning": "true" if value else "false"})
+
+        asyncio.create_task(_save())
 
     def upsert_tool_call(
         self,
@@ -671,6 +775,7 @@ class StreamingOutput(Vertical):
         self._tool_calls.clear()
         self._counter = 0
         self._reset_chunk_tracking()
+        self._reset_thinking_state()
         self.live_follow = True
         self.unread_count = 0
         self.hide_load_more_bar()
@@ -884,3 +989,11 @@ class StreamingOutput(Vertical):
         self._last_chunk = None
         self._last_chunk_kind = None
         self._last_chunk_line_key = None
+
+    def _reset_thinking_state(self) -> None:
+        if self._thinking_tick_timer is not None:
+            self._thinking_tick_timer.stop()
+            self._thinking_tick_timer = None
+        self._thought_chars = 0
+        self._thought_announced = False
+        self._thinking_widget = None

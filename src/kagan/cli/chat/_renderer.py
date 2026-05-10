@@ -318,6 +318,14 @@ class CLIRenderer:
 
         print_via_terminal(_print_result)
 
+    def set_show_thoughts(self, value: bool) -> None:
+        """Toggle streaming-reasoning display at runtime."""
+        self._md_region.set_show_thoughts(value)
+
+    @property
+    def show_thoughts(self) -> bool:
+        return self._md_region._show_thoughts
+
     def on_usage_update(self, update: Any) -> None:
         self.last_usage = update
 

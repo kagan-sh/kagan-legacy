@@ -1192,11 +1192,14 @@ async def run_chat_async(
         if not backend:
             backend = resolve_default_agent_backend(settings)
 
+        _raw_reasoning = settings.get("chat.show_reasoning", "").strip().lower()
+        show_reasoning = _raw_reasoning not in {"", "0", "false", "no", "off"}
         controller = ChatController(
             client,
             agent_backend=backend,
             mcp_session_id=session_id,
             prefer_session_backend=agent is None,
+            show_reasoning=show_reasoning,
         )
 
         if not await controller.ensure_project():

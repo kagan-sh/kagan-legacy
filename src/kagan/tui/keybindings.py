@@ -341,6 +341,7 @@ STREAMING_TIMELINE_BINDINGS: list[BindingType] = [
     Binding("l,right", "expand_entry", "Expand", show=False),
     Binding("g,home", "focus_first_entry", "First", show=False),
     Binding("G,end", "jump_to_latest", "Latest", key_display="Shift+G", show=False),
+    Binding("ctrl+t", "toggle_reasoning", "Reasoning", key_display="Ctrl+T", show=False),
 ]
 
 USER_INPUT_BINDINGS: list[BindingType] = [

@@ -173,6 +173,7 @@ class ChatController:
         agent_backend: str = "claude-code",
         mcp_session_id: str | None = None,
         prefer_session_backend: bool = True,
+        show_reasoning: bool = False,
     ) -> None:
         self.client = client
         self.agent_backend = agent_backend
@@ -194,7 +195,10 @@ class ChatController:
         self._selected_session_type: str | None = None
         self._watcher = DBWatcher(client)
 
-        show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
+        # DB setting takes precedence; env flag is the legacy fallback.
+        show_thoughts = show_reasoning or _env_flag_enabled(
+            "KAGAN_CHAT_SHOW_THOUGHTS", default=False
+        )
         self._renderer = CLIRenderer(_console, show_thoughts=show_thoughts)
         self._permission_ui = PermissionUI(renderer=self._renderer, engine=client.chat)
         self._factory: LongLivedACPFactory | None = None
@@ -222,6 +226,7 @@ class ChatController:
             SlashAction.STOP_SESSION: self._handle_slash_stop_session,
             SlashAction.CLOSE_SESSION: self._handle_slash_close_session,
             SlashAction.CLOSE: self._handle_slash_close,
+            SlashAction.TOGGLE_REASONING: self._handle_slash_toggle_reasoning,
         }
 
     # ------------------------------------------------------------------
@@ -1321,6 +1326,22 @@ class ChatController:
     async def _handle_slash_close(self, result: SlashCommandOutcome) -> bool:
         del result
         return True
+
+    async def _handle_slash_toggle_reasoning(self, result: SlashCommandOutcome) -> bool:
+        mode = result.reasoning_mode or "toggle"
+        current = self._renderer.show_thoughts
+        if mode == "on":
+            new_val = True
+        elif mode == "off":
+            new_val = False
+        else:
+            new_val = not current
+        self._renderer.set_show_thoughts(new_val)
+        with contextlib.suppress(Exception):
+            await self.client.settings.set({"chat.show_reasoning": "true" if new_val else "false"})
+        label = "on" if new_val else "off"
+        _console.print(f"[dim]Reasoning preview: {label}[/dim]", highlight=False)
+        return False
 
     async def _handle_session_switch(self, action: Any) -> bool:
         """Run a session-changing slash action; detach engine state if it triggers a restart."""

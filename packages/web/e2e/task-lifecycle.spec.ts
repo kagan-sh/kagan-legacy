@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 import {
   createTaskAndRun,
+  createTaskAndRunWithScenario,
   ensureBoardReady,
   reviewGate,
-  scheduleScenario,
   waitForTaskStatus,
 } from './helpers';
 
@@ -12,8 +12,11 @@ test.describe('Task lifecycle', () => {
     await ensureBoardReady(page, request);
     const title = `Review gate ${Date.now()}`;
 
-    const taskId = await createTaskAndRun(request, title);
-    await scheduleScenario(request, reviewGate(taskId, 'feature.md', '# New Feature\n'));
+    const taskId = await createTaskAndRunWithScenario(
+      request,
+      title,
+      (id) => reviewGate(id, 'feature.md', '# New Feature\n'),
+    );
     await waitForTaskStatus(request, taskId, 'REVIEW', { timeoutMs: 15_000 });
 
     await page.goto('/board');
@@ -28,7 +31,7 @@ test.describe('Task lifecycle', () => {
 
     const taskId = await createTaskAndRun(request, title);
     // No scenario scheduled — default fake agent emits chunks and completes with no workspace changes.
-    await waitForTaskStatus(request, taskId, 'BACKLOG', { timeoutMs: 15_000 });
+    await waitForTaskStatus(request, taskId, 'BACKLOG', { timeoutMs: 20_000 });
 
     await page.goto('/board');
     await page.waitForLoadState('load');

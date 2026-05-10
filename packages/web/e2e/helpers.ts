@@ -261,6 +261,30 @@ export async function createTaskAndRun(
   return taskId;
 }
 
+/**
+ * Create a task, schedule a fake-agent scenario, then start the run.
+ *
+ * This avoids the race condition where `createTaskAndRun` starts the agent
+ * before the scenario is scheduled, causing the agent to use its default
+ * behaviour instead of the custom script.
+ */
+export async function createTaskAndRunWithScenario(
+  request: APIRequestContext,
+  title: string,
+  scenarioOrFn: FakeScenario | ((taskId: string) => FakeScenario),
+): Promise<string> {
+  const taskId = await createTaskViaApi(request, title);
+  const scenario = typeof scenarioOrFn === 'function' ? scenarioOrFn(taskId) : scenarioOrFn;
+  await scheduleScenario(request, scenario);
+
+  const runResp = await request.post(`/api/tasks/${taskId}/run`, {
+    data: { agent_backend: 'fake-agent' },
+  });
+  await expectOk(runResp, 'run task with fake-agent');
+
+  return taskId;
+}
+
 // ---------------------------------------------------------------------------
 // Scenario DSL — declarative fake-agent scripts
 // ---------------------------------------------------------------------------

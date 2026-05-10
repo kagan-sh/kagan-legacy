@@ -159,6 +159,19 @@ export function Component() {
         }
     }, [id, task, overlay]);
 
+    // Auto-open session overlay when ?lane=worker or ?lane=review is present
+    const laneAutoOpenedRef = useRef(false);
+    useEffect(() => {
+        if (!task || !id) return;
+        if (laneAutoOpenedRef.current) return;
+        const lane = searchParams.get('lane');
+        if (!lane || (lane !== 'worker' && lane !== 'review')) return;
+        if (task.active_session?.id) {
+            laneAutoOpenedRef.current = true;
+            void handleOpenSession();
+        }
+    }, [id, task, searchParams, handleOpenSession]);
+
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (editOpen || deleteOpen || hasOpenOverlay()) {

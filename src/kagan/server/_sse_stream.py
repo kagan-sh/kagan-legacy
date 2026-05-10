@@ -121,13 +121,17 @@ async def _unified_sse_stream(
 
         settings = await ctx.client.settings.get()
         project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
-        factory = make_spawn_per_turn_acp_factory(
-            client=ctx.client,
-            default_agent_backend=backend,
-            cwd=project_cwd,
-            attachments=attachment_dicts,
-            raw=not is_orchestrator,
-        )
+
+        if backend == "fake-agent":
+            factory = _make_fake_chat_factory()
+        else:
+            factory = make_spawn_per_turn_acp_factory(
+                client=ctx.client,
+                default_agent_backend=backend,
+                cwd=project_cwd,
+                attachments=attachment_dicts,
+                raw=not is_orchestrator,
+            )
 
         if is_orchestrator:
             from kagan.cli.chat.prompt import build_orchestrator_prompt
@@ -190,3 +194,52 @@ async def _unified_sse_stream(
                     session_id,
                     {"t": "CHAT_SESSION_UPDATED", "session": session_summary(refreshed)},
                 )
+
+
+# ---------------------------------------------------------------------------
+# Fake-agent chat factory (E2E testing only)
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_chat_factory() -> Any:
+    """Return an ACP factory that drives the in-process fake agent for chat turns."""
+    from kagan.core._fake_agent import director, run_fake_acp_session
+    from kagan.core.chat.acp import ACPTurnResult
+
+    class _FakeChatFactory:
+        async def prompt(
+            self,
+            *,
+            session_id: str,
+            prompt_blocks: list[Any],
+            on_update: Any,
+            cancel_event: asyncio.Event,
+            agent_backend: str | None = None,
+            permission_resolver: Any = None,
+        ) -> ACPTurnResult:
+            del prompt_blocks, agent_backend, permission_resolver
+            script = await director.get(session_id)
+            full_response: list[str] = []
+
+            async def _adapted_on_update(_sess_id: str, chunk: Any) -> None:
+                text = getattr(chunk, "text", None)
+                if isinstance(text, str):
+                    full_response.append(text)
+                await on_update(chunk)
+
+            try:
+                await run_fake_acp_session(
+                    session_id=session_id,
+                    task_id=session_id,
+                    on_session_update=_adapted_on_update,
+                    script=script,
+                )
+            except asyncio.CancelledError:
+                return ACPTurnResult(full_response="".join(full_response), cancelled=True)
+
+            if cancel_event.is_set():
+                return ACPTurnResult(full_response="".join(full_response), cancelled=True)
+
+            return ACPTurnResult(full_response="".join(full_response), cancelled=False)
+
+    return _FakeChatFactory()

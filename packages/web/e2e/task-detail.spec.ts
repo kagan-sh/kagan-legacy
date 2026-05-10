@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createTaskViaApi, ensureBoardReady, createTaskAndRun, waitForTaskSessions, reviewGate, scheduleScenario, waitForTaskStatus } from './helpers';
+import { createTaskViaApi, ensureBoardReady, createTaskAndRun, createTaskAndRunWithScenario, waitForTaskSessions, reviewGate, waitForTaskStatus } from './helpers';
 
 test.describe('Task detail', () => {
   test('escape returns to board', async ({ page, request }) => {
@@ -40,8 +40,7 @@ test.describe('Task detail', () => {
   test('adapts default tab to Review when task has workspace', async ({ page, request }) => {
     await ensureBoardReady(page, request);
     const title = `Adaptive ${Date.now()}`;
-    const taskId = await createTaskAndRun(request, title);
-    await scheduleScenario(request, reviewGate(taskId, 'feat.md', '# Hello'));
+    const taskId = await createTaskAndRunWithScenario(request, title, (id) => reviewGate(id, 'feat.md', '# Hello'));
     await waitForTaskStatus(request, taskId, 'REVIEW', { timeoutMs: 15_000 });
 
     await page.goto(`/task/${taskId}`);

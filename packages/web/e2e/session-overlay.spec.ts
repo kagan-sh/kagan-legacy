@@ -40,7 +40,7 @@ test.describe('Session overlay', () => {
     const overlay = page.getByRole('dialog', { name: 'Session overlay' });
     await expect(overlay).toBeVisible({ timeout: 10_000 });
 
-    await page.getByRole('button', { name: 'Fullscreen' }).click();
+    await page.getByTestId('session-overlay-layout-toggle').click();
     await expect(page.getByRole('button', { name: 'Dock' })).toBeVisible();
   });
 });

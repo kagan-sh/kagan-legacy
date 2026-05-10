@@ -41,6 +41,7 @@ export function SessionOverlay() {
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
+      data-testid="session-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Session overlay"
@@ -111,6 +112,7 @@ export function SessionOverlay() {
                 )}
                 <button
                   type="button"
+                  data-testid="session-overlay-layout-toggle"
                   onClick={() => setLayout(isDocked ? 'fullscreen' : 'docked')}
                   className="rounded p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
                   aria-label={isDocked ? 'Fullscreen' : 'Dock'}

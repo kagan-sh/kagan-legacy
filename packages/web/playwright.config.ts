@@ -18,6 +18,19 @@ import { defineConfig, devices } from '@playwright/test';
  */
 
 const useExternalServer = Boolean(process.env.BASE_URL);
+
+// Guard: running against an external server requires explicit opt-in so that
+// developers do not accidentally hit a production / shared DB.
+if (useExternalServer && !process.env.KAGAN_E2E_ISOLATED) {
+  throw new Error(
+    'BASE_URL is set but KAGAN_E2E_ISOLATED is missing.\n' +
+      'When using an external server you MUST ensure it is isolated ' +
+      '(e.g. started with --db /tmp/kagan-e2e-XXXX/kagan.db).\n' +
+      'To opt-in, set KAGAN_E2E_ISOLATED=1 along with BASE_URL.\n' +
+      'To use the auto-managed isolated server, unset BASE_URL.'
+  );
+}
+
 const E2E_PORT = 8766;
 const E2E_BASE = `http://127.0.0.1:${E2E_PORT}`;
 const tempDir = useExternalServer ? '' : mkdtempSync(join(tmpdir(), 'kagan-e2e-'));

@@ -1,4 +1,4 @@
-"""Contract tests for kagan.server.mcp.toolsets._edit_diff helpers.
+"""Contract tests for kagan.core._edit_diff helpers.
 
 Covers:
 - detect_bom: UTF-8-BOM, UTF-16-LE/BE, UTF-32-LE/BE, no-BOM.
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from kagan.server.mcp.toolsets._edit_diff import (
+from kagan.core._edit_diff import (
     Edit,
     EditConflict,
     LineEdit,

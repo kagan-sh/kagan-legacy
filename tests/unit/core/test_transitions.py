@@ -1,4 +1,4 @@
-"""Unit tests for kagan.core.transitions — exhaustive (from, to) matrix.
+"""Unit tests for kagan.core.transitions — task and session (from, to) matrix.
 
 Coverage:
 - Every (TaskStatus x TaskStatus) pair across the 4-value enum.
@@ -10,25 +10,28 @@ Coverage:
 - Same-status no-op rejected for both task and session.
 - TOCTOU guard: IllegalTransition raised when status drifts before the write.
 
-Design note: task transition tests drive against a real KaganCore (in-memory
-SQLite) per testing.md "real everything, fake agent".  Session transition tests
-mock _db_async because there is no ``sessions.create`` shortcut that bypasses
-the session state machine — patching _db_async is the minimal seam.
+Design note: task and session matrix tests use a real KaganCore (SQLite on
+``tmp_path``) with rows inserted via ``_db_async``, matching testing.md
+"real everything, fake agent".  TOCTOU cases replace ``transition*``'s
+``_db_async`` binding via ``monkeypatch`` to inject a concurrent status drift.
 """
 
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
 from kagan.core import KaganCore
+from kagan.core import transitions as transitions_mod
 from kagan.core.enums import SessionStatus, TaskStatus
 from kagan.core.errors import InvalidTransitionError
-from kagan.core.models import AcceptanceCriterion, ReviewVerdict
+from kagan.core.models import AcceptanceCriterion, ReviewVerdict, Session
 from kagan.core.transitions import IllegalTransition, transition_session, transition_task
 
 pytestmark = [pytest.mark.unit]
@@ -88,6 +91,38 @@ async def _add_pass_verdicts(core: KaganCore, task_id: str) -> None:
     await _db_async(core.engine, _op)
 
 
+async def _seed_session(core: KaganCore, *, status: SessionStatus) -> str:
+    """Attach a Session row to a fresh task at *status* (direct DB insert)."""
+    from kagan.core._db_helpers import _db_async
+
+    task_id = await _seed_task(core, status=TaskStatus.IN_PROGRESS)
+    sid = uuid4().hex[:16]
+
+    def _add(s) -> None:
+        row = Session(
+            id=sid,
+            task_id=task_id,
+            agent_backend="claude-code",
+            status=status,
+        )
+        s.add(row)
+        s.commit()
+
+    await _db_async(core.engine, _add)
+    return sid
+
+
+async def _session_status(core: KaganCore, session_id: str) -> SessionStatus:
+    from kagan.core._db_helpers import _db_async
+
+    def _get(s) -> SessionStatus:
+        obj = s.get(Session, session_id)
+        assert obj is not None
+        return obj.status
+
+    return await _db_async(core.engine, _get)
+
+
 # ---------------------------------------------------------------------------
 # Task transition matrix
 # ---------------------------------------------------------------------------
@@ -102,7 +137,7 @@ _TASK_LEGAL: list[tuple[TaskStatus, TaskStatus]] = [
     # REVIEW → DONE is guarded; tested separately below.
 ]
 
-# Illegal (from, to) pairs (every other cell in the 4x4 matrix):
+# Illegal (from, to) pairs:
 _TASK_ILLEGAL: list[tuple[TaskStatus, TaskStatus]] = [
     # Same-status no-ops
     (TaskStatus.BACKLOG, TaskStatus.BACKLOG),
@@ -182,37 +217,30 @@ async def test_transition_task_propagates_actor_label(core: KaganCore) -> None:
 
 
 @pytest.mark.asyncio
-async def test_transition_task_toctou_guard(core: KaganCore) -> None:
+async def test_transition_task_toctou_guard(
+    core: KaganCore, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """TOCTOU guard: if status drifts between the read and the write, raise.
 
-    We patch _db_async to intercept only the write callback (the one issued
-    inside transition_task after the match block).  Before forwarding to the
-    real DB, we flip the task's status via _set_status so the write callback
-    sees a status that no longer matches the originally-read ``src``.
+    We wrap ``transitions._db_async`` so the single write round-trip runs after
+    another task flips the row — simulating a concurrent caller winning the race.
     """
     task_id = await _seed_task(core, status=TaskStatus.BACKLOG)
 
     from kagan.core._db_helpers import _db_async as _real_db_async
 
-    # transition_task calls _db_async exactly once (for the write).
-    # tasks.get() uses a different code path (Tasks.get → _db_async within Tasks).
-    # We intercept the transition-level _db_async call to inject the drift.
     intercepted = False
 
     async def _patched_db_async(engine: Any, fn: Any, **kwargs: Any) -> Any:
         nonlocal intercepted
         if not intercepted:
             intercepted = True
-            # Flip the task to IN_PROGRESS in the DB before the write runs.
-            # This simulates a concurrent caller winning the race.
             await asyncio.to_thread(core.tasks._set_status, task_id, TaskStatus.IN_PROGRESS)
         return await _real_db_async(engine, fn, **kwargs)
 
-    with patch("kagan.core.transitions._db_async", side_effect=_patched_db_async):
-        with pytest.raises(IllegalTransition):
-            # We try BACKLOG → IN_PROGRESS, but by the time the write runs the
-            # DB already shows IN_PROGRESS, so the TOCTOU guard fires.
-            await transition_task(core, task_id, TaskStatus.IN_PROGRESS)
+    monkeypatch.setattr(transitions_mod, "_db_async", _patched_db_async)
+    with pytest.raises(IllegalTransition):
+        await transition_task(core, task_id, TaskStatus.IN_PROGRESS)
 
 
 # ---------------------------------------------------------------------------
@@ -255,129 +283,61 @@ _SESSION_ILLEGAL: list[tuple[SessionStatus, SessionStatus]] = [
 ]
 
 
-def _make_session_mock(status: SessionStatus) -> Any:
-    """Return a minimal mock object that looks like a Session model."""
-    m = MagicMock()
-    m.id = "session-001"
-    m.status = status
-    return m
-
-
 @pytest.mark.parametrize("frm,to", _SESSION_LEGAL)
 @pytest.mark.asyncio
-async def test_transition_session_legal(frm: SessionStatus, to: SessionStatus) -> None:
+async def test_transition_session_legal(
+    frm: SessionStatus, to: SessionStatus, core: KaganCore
+) -> None:
     """Legal session transitions complete without raising."""
-    session_mock = _make_session_mock(frm)
-    client = MagicMock()
-    client.engine = MagicMock()
-
-    read_session = MagicMock()
-    read_session.get = MagicMock(return_value=session_mock)
-
-    write_session = MagicMock()
-    write_session.get = MagicMock(return_value=session_mock)
-    write_session.add = MagicMock()
-    write_session.commit = MagicMock()
-    write_session.refresh = MagicMock()
-
-    call_count = 0
-
-    async def _db_async_side_effect(engine: Any, op: Any, **kwargs: Any) -> Any:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return op(read_session)
-        return op(write_session)
-
-    with patch("kagan.core.transitions._db_async", side_effect=_db_async_side_effect):
-        result = await transition_session(client, "session-001", to)
+    sid = await _seed_session(core, status=frm)
+    result = await transition_session(core, sid, to)
     assert result.status == to
 
 
 @pytest.mark.parametrize("frm,to", _SESSION_ILLEGAL)
 @pytest.mark.asyncio
-async def test_transition_session_illegal(frm: SessionStatus, to: SessionStatus) -> None:
+async def test_transition_session_illegal(
+    frm: SessionStatus, to: SessionStatus, core: KaganCore
+) -> None:
     """Illegal session transitions raise IllegalTransition."""
-    session_mock = _make_session_mock(frm)
-    client = MagicMock()
-    client.engine = MagicMock()
-
-    read_session = MagicMock()
-    read_session.get = MagicMock(return_value=session_mock)
-
-    async def _db_async_side_effect(engine: Any, op: Any, **kwargs: Any) -> Any:
-        return op(read_session)
-
-    with patch("kagan.core.transitions._db_async", side_effect=_db_async_side_effect):
-        with pytest.raises(IllegalTransition):
-            await transition_session(client, "session-001", to)
+    sid = await _seed_session(core, status=frm)
+    with pytest.raises(IllegalTransition):
+        await transition_session(core, sid, to)
+    assert await _session_status(core, sid) == frm
 
 
 @pytest.mark.asyncio
-async def test_transition_session_propagates_actor_label() -> None:
+async def test_transition_session_propagates_actor_label(core: KaganCore) -> None:
     """The *by* keyword is accepted without error for session transitions."""
-    session_mock = _make_session_mock(SessionStatus.PENDING)
-    client = MagicMock()
-    client.engine = MagicMock()
-
-    read_session = MagicMock()
-    read_session.get = MagicMock(return_value=session_mock)
-
-    write_session = MagicMock()
-    write_session.get = MagicMock(return_value=session_mock)
-    write_session.add = MagicMock()
-    write_session.commit = MagicMock()
-    write_session.refresh = MagicMock()
-
-    call_count = 0
-
-    async def _db_async_side_effect(engine: Any, op: Any, **kwargs: Any) -> Any:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return op(read_session)
-        return op(write_session)
-
-    with patch("kagan.core.transitions._db_async", side_effect=_db_async_side_effect):
-        result = await transition_session(
-            client, "session-001", SessionStatus.RUNNING, by="reviewer"
-        )
+    sid = await _seed_session(core, status=SessionStatus.PENDING)
+    result = await transition_session(core, sid, SessionStatus.RUNNING, by="reviewer")
     assert result.status == SessionStatus.RUNNING
 
 
 @pytest.mark.asyncio
-async def test_transition_session_toctou_guard() -> None:
+async def test_transition_session_toctou_guard(
+    core: KaganCore, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """TOCTOU guard: IllegalTransition raised when status drifts before the write."""
-    # The read sees PENDING; the write callback sees RUNNING (drift).
-    read_session_mock = _make_session_mock(SessionStatus.PENDING)
-    drifted_session_mock = _make_session_mock(SessionStatus.RUNNING)
+    sid = await _seed_session(core, status=SessionStatus.PENDING)
 
-    client = MagicMock()
-    client.engine = MagicMock()
+    from kagan.core._db_helpers import _db_async as _real_db_async
 
-    read_session = MagicMock()
-    read_session.get = MagicMock(return_value=read_session_mock)
+    def _flip_to_running(s) -> None:
+        obj = s.get(Session, sid)
+        assert obj is not None
+        obj.status = SessionStatus.RUNNING
+        s.add(obj)
+        s.commit()
 
-    write_session = MagicMock()
-    # The write callback reads the drifted status from the DB.
-    write_session.get = MagicMock(return_value=drifted_session_mock)
-    write_session.add = MagicMock()
-    write_session.commit = MagicMock()
-    write_session.refresh = MagicMock()
+    async def _wrap(engine: Any, fn: Any, **kwargs: Any) -> Any:
+        if getattr(fn, "__name__", None) == "_write":
+            await _real_db_async(engine, _flip_to_running)
+        return await _real_db_async(engine, fn, **kwargs)
 
-    call_count = 0
-
-    async def _db_async_side_effect(engine: Any, op: Any, **kwargs: Any) -> Any:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return op(read_session)
-        return op(write_session)
-
-    with patch("kagan.core.transitions._db_async", side_effect=_db_async_side_effect):
-        with pytest.raises(IllegalTransition):
-            # We try PENDING → CANCELLED, but the DB now shows RUNNING.
-            await transition_session(client, "session-001", SessionStatus.CANCELLED)
+    monkeypatch.setattr(transitions_mod, "_db_async", _wrap)
+    with pytest.raises(IllegalTransition):
+        await transition_session(core, sid, SessionStatus.CANCELLED)
 
 
 # ---------------------------------------------------------------------------

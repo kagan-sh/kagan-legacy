@@ -25,8 +25,9 @@ from prompt_toolkit.application.run_in_terminal import run_in_terminal
 from rich.markup import escape as _rich_escape
 
 from kagan.cli.chat._streaming import (
+    MarkdownStreamingRegion,
     ResponseChunkBuffer,
-    StreamingMarkdownRegion,
+    _TurnLiveState,
 )
 from kagan.cli.chat.tool_runs import ToolRunTracker
 
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
-    from kagan.core.chat.events import ChatEvent
+    from kagan.core.events import Event as ChatEvent
 
 # Approval modals (transient prompt_toolkit Applications) need to coexist with
 # the long-lived REPL prompt session. While a modal owns the screen, prints
@@ -90,7 +91,7 @@ def print_via_terminal(fn: Callable[[], None]) -> None:
 class _GroupedToolDisplay:
     """Accumulate parallel tool calls and render them as grouped status lines.
 
-    Groups calls by tool name.  Shows: ``tool_name x N -- done D/N . Xs``.
+    Groups calls by tool name.  Shows: ``▸ tool_name x N -- done D/N · Xms``.
     """
 
     def __init__(self) -> None:
@@ -123,15 +124,15 @@ class _GroupedToolDisplay:
             done = sum(1 for e in entries if e["status"] in ("completed", "failed"))
             error = sum(1 for e in entries if e["status"] == "failed")
             elapsed = max((now - e["started"]) for e in entries if e["started"] is not None)
-            elapsed_text = f"{elapsed:.1f}s"
+            elapsed_text = _format_elapsed(elapsed)
 
             if total == 1:
                 entry = entries[0]
                 if entry["status"] == "running":
-                    icon = "●"
+                    icon = "▸"
                     style = "dim"
                 elif entry["status"] == "completed":
-                    icon = "✓"
+                    icon = "▸"
                     style = "green"
                 else:
                     icon = "✗"
@@ -147,7 +148,7 @@ class _GroupedToolDisplay:
                 else:
                     status_text = f"done {done}/{total} · {elapsed_text}"
                     style = "dim"
-                icon = "✓" if done == total and error == 0 else "●"
+                icon = "▸"
                 line = f"  [{style}]{icon} {_rich_escape(name)} x{total} -- {status_text}[/{style}]"
             lines.append(line)
         return lines
@@ -158,34 +159,24 @@ class _GroupedToolDisplay:
 
 
 # ---------------------------------------------------------------------------
-# CLIRenderer
+# Elapsed-time formatting
 # ---------------------------------------------------------------------------
 
 
-def _make_done_printer(
-    console: Console,
-    title: str,
-    key_arg: str | None,
-    status: str,
-    started_at: float,
-    ended_at: float,
-) -> Callable[[], None]:
-    def _print() -> None:
-        arg_suffix = f"({key_arg})" if key_arg else ""
-        elapsed = max(0.0, ended_at - started_at)
-        duration = f" [dim]{elapsed:.1f}s[/dim]" if elapsed >= 0.1 else ""
-        if status == "completed":
-            console.print(
-                f"  [green]● {title}{arg_suffix}[/green]{duration}",
-                highlight=False,
-            )
-        else:
-            console.print(
-                f"  [red]● {title}{arg_suffix} failed[/red]",
-                highlight=False,
-            )
+def _format_elapsed(seconds: float) -> str:
+    """Return a compact elapsed-time string.
 
-    return _print
+    Sub-second durations render as ``Xms``; one second and above as ``X.Xs``.
+    """
+    ms = max(0.0, seconds) * 1000
+    if ms < 1000:
+        return f"{ms:.0f}ms"
+    return f"{seconds:.1f}s"
+
+
+# ---------------------------------------------------------------------------
+# CLIRenderer
+# ---------------------------------------------------------------------------
 
 
 class CLIRenderer:
@@ -200,19 +191,19 @@ class CLIRenderer:
 
     def __init__(self, console: Console, *, show_thoughts: bool = False) -> None:
         self._console = console
-        self._show_thoughts = show_thoughts
         self._tool_runs = ToolRunTracker()
         self._grouped_tools = _GroupedToolDisplay()
         self._response_chunks = ResponseChunkBuffer()
-        self._md_region = StreamingMarkdownRegion(console)
+        self._md_region = MarkdownStreamingRegion(console, show_thoughts=show_thoughts)
         self.last_usage: Any = None
 
     # ------------------------------------------------------------------
     # Turn lifecycle
     # ------------------------------------------------------------------
 
-    def start_turn(self) -> None:
+    def start_turn(self, live_state: _TurnLiveState | None = None) -> None:
         self._md_region.discard()
+        self._md_region.set_live_state(live_state)
         self._response_chunks.clear()
         self._tool_runs.start_turn()
         self._grouped_tools.clear()
@@ -239,19 +230,13 @@ class CLIRenderer:
     def on_assistant_chunk(self, text: str, *, thought: bool = False) -> None:
         if not text:
             return
-        if thought:
-            if not self._show_thoughts:
-                return
-            self._md_region.finalize()
+        if not thought:
+            self._response_chunks.append(text)
 
-            def _print_thought() -> None:
-                self._console.print(f"[dim]{_rich_escape(text)}[/dim]", end="", highlight=False)
-                self._console.file.flush()
+        def _do_append() -> None:
+            self._md_region.append(text, thought=thought)
 
-            print_via_terminal(_print_thought)
-            return
-        self._response_chunks.append(text)
-        self._md_region.append(text)
+        print_via_terminal(_do_append)
 
     def on_tool_call_start(self, update: Any) -> None:
         self._md_region.finalize()
@@ -267,19 +252,26 @@ class CLIRenderer:
         self._grouped_tools.start(tool_key, title, run.started_at)
 
         def _print_start() -> None:
-            arg_suffix = f"({key_arg})" if key_arg else ""
-            self._console.print(f"\n  [dim]● {title}{arg_suffix}[/dim]", highlight=False)
+            arg_part = f" [dim]({_rich_escape(key_arg)})[/dim]" if key_arg else ""
+            self._console.print(
+                f"  [dim]▸[/dim] [bold]{_rich_escape(title)}[/bold]{arg_part}",
+                highlight=False,
+            )
 
         print_via_terminal(_print_start)
 
     def on_tool_call_progress(self, update: Any) -> None:
         self._md_region.finalize()
         status = getattr(update, "status", None)
-        title = getattr(update, "title", None) or "tool"
         tool_key = self._tool_runs.tool_key(update)
         if status and self._tool_runs.status_for(tool_key) == status:
             return
-        key_arg = self._tool_runs.extract_tool_key_arg(update)
+        # ToolCallProgress carries no title/args — fall back to what was stored at start
+        existing = self._tool_runs.get_run(tool_key)
+        title = getattr(update, "title", None) or (existing.title if existing else None) or "tool"
+        key_arg = self._tool_runs.extract_tool_key_arg(update) or (
+            existing.key_arg if existing else None
+        )
         run = self._tool_runs.ensure_tool_run(update=update, title=title, key_arg=key_arg)
         if status:
             run.status = str(status)
@@ -289,44 +281,118 @@ class CLIRenderer:
         result = self._tool_runs.serialize_payload(self._tool_runs.extract_tool_result(update))
         if result:
             run.result = result
-        if status not in ("completed", "failed"):
-            return
+
+    def on_tool_call_result(self, result: Any) -> None:
+        self._md_region.finalize()
+        tool_key = self._tool_runs.tool_key(result)
+        existing = self._tool_runs.get_run(tool_key)
+        title = (existing.title if existing else None) or "tool"
+        key_arg = existing.key_arg if existing else None
+        run = self._tool_runs.ensure_tool_run(update=result, title=title, key_arg=key_arg)
+        output = getattr(result, "output", None)
+        if output:
+            run.result = self._tool_runs.serialize_payload(output)
+        status = "failed" if getattr(result, "is_error", False) else "completed"
         self._tool_runs.set_status(tool_key, status)
+        run.status = status
         run.ended_at = run.ended_at or time.monotonic()
         self._grouped_tools.complete(tool_key, status, run.ended_at)
-        print_via_terminal(
-            _make_done_printer(self._console, title, key_arg, status, run.started_at, run.ended_at)
-        )
+
+        elapsed = max(0.0, run.ended_at - run.started_at)
+        duration = _format_elapsed(elapsed)
+        name = _rich_escape(title)
+        arg_part = f" [dim]({_rich_escape(key_arg)})[/dim]" if key_arg else ""
+
+        def _print_result() -> None:
+            if status == "completed":
+                self._console.print(
+                    f"  [green]▸[/green] [bold]{name}[/bold]{arg_part} [dim]{duration}[/dim]",
+                    highlight=False,
+                )
+            else:
+                self._console.print(
+                    f"  [red]✗[/red] [bold]{name}[/bold]{arg_part}"
+                    f" [red]failed[/red] [dim]{duration}[/dim]",
+                    highlight=False,
+                )
+
+        print_via_terminal(_print_result)
+
+    def set_show_thoughts(self, value: bool) -> None:
+        """Toggle streaming-reasoning display at runtime."""
+        self._md_region.set_show_thoughts(value)
+
+    @property
+    def show_thoughts(self) -> bool:
+        return self._md_region._show_thoughts
 
     def on_usage_update(self, update: Any) -> None:
         self.last_usage = update
+
+    # ------------------------------------------------------------------
+    # Agent lifecycle notification
+    # ------------------------------------------------------------------
+
+    def on_agent_lifecycle(self, event: ChatEvent) -> None:
+        """Print a dim one-line banner for a background-task agent lifecycle event."""
+        from kagan.core.events import AgentLifecycle
+
+        if not isinstance(event, AgentLifecycle):
+            return
+
+        _GLYPH: dict[str, str] = {
+            "started": "▸",
+            "finished": "✓",
+            "stopped": "◯",
+            "failed": "✗",
+        }
+        glyph = _GLYPH.get(event.kind, "·")
+        task_ref = f"#{event.task_id[:8]}" if event.task_id else "task"
+
+        if event.kind == "failed":
+            detail_suffix = f": {event.detail}" if event.detail else ""
+            label = f"failed{detail_suffix}"
+        elif event.kind == "finished":
+            label = "finished"
+        elif event.kind == "stopped":
+            label = "stopped"
+        else:
+            label = event.kind
+
+        line = f"  [dim]{glyph} {task_ref} {label}[/dim]"
+
+        def _print() -> None:
+            self._console.print(line, highlight=False)
+
+        print_via_terminal(_print)
 
     # ------------------------------------------------------------------
     # ChatEvent dispatcher (phase 5c entry point)
     # ------------------------------------------------------------------
 
     def on_event(self, event: ChatEvent) -> None:
-        """Dispatch a typed ChatEvent through the granular hooks.
-
-        Phase 5b: not yet wired. Phase 5c will route engine.stream_assistant()
-        through this. Kept here so the seam is visible and so phase 5c is a
-        small wiring change rather than a rewrite.
-        """
-        match event.kind:
+        """Dispatch a typed Event through the granular hooks."""
+        match event.type:
             case "assistant_chunk":
-                self.on_assistant_chunk(event.text, thought=event.thought)
-            case "tool_call_start":
+                self.on_assistant_chunk(event.delta, thought=False)  # type: ignore[union-attr]
+            case "thinking_chunk":
+                self.on_assistant_chunk(event.delta, thought=True)  # type: ignore[union-attr]
+            case "tool_call":
                 self.on_tool_call_start(event)
-            case "tool_call_progress":
+            case "tool_call_update":
                 self.on_tool_call_progress(event)
-            case "usage":
+            case "tool_call_result":
+                self.on_tool_call_result(event)
+            case "usage_update":
                 self.on_usage_update(event)
-            case "done":
+            case "turn_end":
                 # finish_turn() is the controller's responsibility; here we just
                 # ensure pending Markdown is flushed.
                 self.finalize_pending_markdown()
-            case "turn_cancelled" | "error" | "assistant_message":
+            case "error" | "assistant_message":
                 self.finalize_pending_markdown()
+            case "agent_lifecycle":
+                self.on_agent_lifecycle(event)
             case _:
                 pass
 
@@ -334,7 +400,7 @@ class CLIRenderer:
 __all__ = [
     "CLIRenderer",
     "_GroupedToolDisplay",
-    "_make_done_printer",
+    "_format_elapsed",
     "_modal_active",
     "_modal_depth",
     "print_via_terminal",

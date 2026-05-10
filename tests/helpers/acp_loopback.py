@@ -33,18 +33,14 @@ class AcpLoopback:
     async def __aenter__(self) -> AcpLoopback:
         ready = asyncio.Event()
 
-        async def handle(
-            reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-        ) -> None:
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             self._server_reader = reader
             self._server_writer = writer
             ready.set()
 
         self._server = await asyncio.start_server(handle, host="127.0.0.1", port=0)
         host, port = self._server.sockets[0].getsockname()[:2]
-        self._client_reader, self._client_writer = await asyncio.open_connection(
-            host, port
-        )
+        self._client_reader, self._client_writer = await asyncio.open_connection(host, port)
         await asyncio.wait_for(ready.wait(), timeout=2.0)
         return self
 

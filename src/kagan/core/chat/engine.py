@@ -37,17 +37,16 @@ from kagan.core.chat.acp import (
     PermissionRequestPayload,
     acp_update_to_chat_event,
 )
-from kagan.core.chat.events import (
+from kagan.core.errors import KaganError, ValidationError
+from kagan.core.events import (
     AssistantChunk,
     AssistantMessagePersisted,
-    ChatEvent,
-    PermissionRequest,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnStarted,
+    Error,
+    Event,
+    TurnEnd,
+    TurnStart,
 )
-from kagan.core.errors import KaganError, ValidationError
+from kagan.core.permission import PermissionRequest
 
 if TYPE_CHECKING:
     import builtins
@@ -154,8 +153,6 @@ class ChatEngine:
         """
         del attachments  # threaded into stream_assistant by callers
         cleaned = text.strip()
-        if not cleaned:
-            raise ValueError("user message text is required")
 
         scan = scan_text_for_injection(cleaned)
         risk = scan.get("risk_level", "SAFE")
@@ -198,8 +195,13 @@ class ChatEngine:
         prompt_blocks: list[Any],
         agent_backend: str | None = None,
         acp_factory: ACPSessionFactory | None = None,
-    ) -> AsyncIterator[ChatEvent]:
-        """Run a single assistant turn and yield :class:`ChatEvent` items.
+    ) -> AsyncIterator[Event | PermissionRequest]:
+        """Run a single assistant turn and yield :class:`Event` items.
+
+        Also yields :class:`~kagan.core.permission.PermissionRequest` objects
+        on the same iterator when the agent requests user permission. These are
+        NOT part of the ``Event`` union; consumers should check
+        ``isinstance(item, PermissionRequest)`` to handle them separately.
 
         Raises :class:`TurnInProgressError` if a turn is already in flight for
         ``session_id``. ``acp_factory`` overrides the engine's default factory
@@ -349,7 +351,7 @@ class ChatEngine:
     @staticmethod
     async def _resolve_via_queue(
         state: _TurnState,
-        queue: asyncio.Queue[ChatEvent | None],
+        queue: asyncio.Queue[Any],
         payload: PermissionRequestPayload,
     ) -> PermissionDecision:
         """Register a pending permission, emit the request, await the answer."""
@@ -377,15 +379,18 @@ class ChatEngine:
         is_first_turn: bool,
         agent_backend: str | None,
         factory: ACPSessionFactory,
-    ) -> AsyncGenerator[ChatEvent, None]:
-        queue: asyncio.Queue[ChatEvent | None] = asyncio.Queue()
+    ) -> AsyncGenerator[Event | PermissionRequest, None]:
+        # Queue holds Event variants and PermissionRequest (sidechannel).
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        # Stable IDs for TurnStart / chunk messages within this run.
+        turn_id = uuid.uuid4().hex
 
         async def _on_update(update: Any) -> None:
-            event = acp_update_to_chat_event(update)
+            event = acp_update_to_chat_event(update, turn_id=turn_id, session_id=session_id)
             if event is None:
                 return
-            if isinstance(event, AssistantChunk) and not event.thought:
-                state.partial.append(event.text)
+            if isinstance(event, AssistantChunk):
+                state.partial.append(event.delta)
             await queue.put(event)
 
         async def _permission_resolver(
@@ -410,7 +415,7 @@ class ChatEngine:
             # The drain task's only job is to wait for the run to finish (or
             # be cancelled) and then close the queue. Lifecycle / error
             # reporting is owned by the outer engine coroutine — emitting a
-            # ``TurnError`` from here would race with the outer ``except`` and
+            # ``Error`` from here would race with the outer ``except`` and
             # produce duplicate events.
             try:
                 await run_task
@@ -430,7 +435,11 @@ class ChatEngine:
             # cancel-and-cleanup branch. Otherwise ``GeneratorExit`` escapes
             # without setting ``cancel_event`` and ``run_task`` / ``drain_task``
             # leak. (Greptile P2 fix.)
-            yield TurnStarted(at=state.started_at or datetime.now(UTC))
+            yield TurnStart(
+                turn_id=turn_id,
+                session_id=session_id,
+                agent_id=agent_backend or "",
+            )
 
             while True:
                 item = await queue.get()
@@ -462,10 +471,11 @@ class ChatEngine:
                     content=partial_text,
                     terminated=True,
                 )
-            yield TurnCancelled(reason="user")
+            yield TurnEnd(turn_id=turn_id, reason="cancelled")
             return
         except Exception as exc:
-            yield TurnError(message=str(exc))
+            yield Error(turn_id=turn_id, code="turn_failed", message=str(exc), fatal=True)
+            yield TurnEnd(turn_id=turn_id, reason="error")
             return
 
         if result.cancelled:
@@ -479,7 +489,7 @@ class ChatEngine:
                     content=partial_text,
                     terminated=True,
                 )
-            yield TurnCancelled(reason="user")
+            yield TurnEnd(turn_id=turn_id, reason="cancelled")
             return
 
         full_response = result.full_response or "".join(state.partial)
@@ -499,7 +509,7 @@ class ChatEngine:
                 # Fire-and-forget — title generation must not block the stream.
                 asyncio.create_task(self._maybe_rename(session_id, first_user_text, full_response))
 
-        yield TurnDone(full_response=full_response)
+        yield TurnEnd(turn_id=turn_id, reason="done")
 
     async def _maybe_rename(self, session_id: str, user_text: str, reply: str) -> None:
         if self._title_generator is None:

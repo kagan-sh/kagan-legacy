@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+import os
+import sys
+import tempfile
+from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from starlette.responses import Response
 
+import kagan.core.integrations.github  # noqa: F401  (side-effect: registers module in sys.modules)
+from kagan.core import KaganCore
 from kagan.server.mcp.server import ServerOptions
+from tests.helpers.github_cli_fake import make_fake_gh_bin
+from tests.helpers.helpers import make_git_repo
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
+
+_gh_module = sys.modules["kagan.core.integrations.github"]
 
 pytestmark = [pytest.mark.smoke]
 
@@ -90,13 +99,9 @@ async def test_list_integrations_returns_github() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
-@patch("kagan.core.integrations.github.subprocess")
 @pytest.mark.asyncio
-async def test_integration_preflight_github_ok(_mock_subprocess, _mock_gh_path) -> None:
-    _mock_subprocess.run.return_value.returncode = 0
-    _mock_subprocess.run.return_value.stdout = "gho_fake_token"
-    _mock_subprocess.TimeoutExpired = TimeoutError
+async def test_integration_preflight_github_ok(tmp_path, monkeypatch) -> None:
+    make_fake_gh_bin(tmp_path, monkeypatch)
 
     mcp = make_api_server()
     _make_server_with_ctx(mcp)
@@ -131,25 +136,28 @@ async def test_integration_preflight_unknown_returns_404() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated",
-    new_callable=AsyncMock,
-    return_value=True,
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 @pytest.mark.asyncio
-async def test_integration_preview_returns_items(_mock_path, _mock_auth, mock_fetch) -> None:
-    mock_fetch.return_value = [
-        {
-            "number": 1,
-            "title": "Fix bug",
-            "body": "Details",
-            "labels": [{"name": "bug"}],
-            "state": "OPEN",
-            "url": "https://github.com/octocat/hello-world/issues/1",
-        }
-    ]
+async def test_integration_preview_returns_items(monkeypatch) -> None:
+    monkeypatch.setattr(_gh_module, "_gh_path", lambda: "/usr/bin/gh")
+
+    async def _always_authed() -> bool:
+        return True
+
+    monkeypatch.setattr(_gh_module, "_gh_is_authenticated", _always_authed)
+
+    async def _fake_fetch(_config):
+        return [
+            {
+                "number": 1,
+                "title": "Fix bug",
+                "body": "Details",
+                "labels": [{"name": "bug"}],
+                "state": "OPEN",
+                "url": "https://github.com/octocat/hello-world/issues/1",
+            }
+        ]
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     mcp = make_api_server()
     _make_server_with_ctx(mcp)
@@ -191,32 +199,28 @@ async def test_integration_preview_missing_project_id() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated",
-    new_callable=AsyncMock,
-    return_value=True,
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 @pytest.mark.asyncio
-async def test_integration_sync_returns_counts(_mock_path, _mock_auth, mock_fetch) -> None:
-    mock_fetch.return_value = [
-        {
-            "number": 5,
-            "title": "New task",
-            "body": "",
-            "labels": [],
-            "state": "OPEN",
-            "url": "https://github.com/octocat/hello-world/issues/5",
-        }
-    ]
+async def test_integration_sync_returns_counts(monkeypatch) -> None:
+    monkeypatch.setattr(_gh_module, "_gh_path", lambda: "/usr/bin/gh")
 
-    import os
-    import tempfile
-    from pathlib import Path
+    async def _always_authed() -> bool:
+        return True
 
-    from kagan.core import KaganCore
-    from tests.helpers.helpers import make_git_repo
+    monkeypatch.setattr(_gh_module, "_gh_is_authenticated", _always_authed)
+
+    async def _fake_fetch(_config):
+        return [
+            {
+                "number": 5,
+                "title": "New task",
+                "body": "",
+                "labels": [],
+                "state": "OPEN",
+                "url": "https://github.com/octocat/hello-world/issues/5",
+            }
+        ]
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     tmp = tempfile.mkdtemp()
     real_client = KaganCore(db_path=os.path.join(tmp, "test.db"))

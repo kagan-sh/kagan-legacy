@@ -11,10 +11,11 @@ These tests verify:
 import base64
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from typing import Any
 
 import pytest
 
+import kagan.core._persona as _persona_mod
 from kagan.core._persona import (
     PersonaPresetOps,
     TrustAssessment,
@@ -28,6 +29,99 @@ from kagan.core._persona import (
 )
 
 pytestmark = [pytest.mark.unit]
+
+
+# =============================================================================
+# Minimal typed fakes (replace unittest.mock)
+# =============================================================================
+
+
+class _AsyncSpy:
+    """Async callable that records every invocation and returns a fixed value."""
+
+    def __init__(self, return_value: Any = None) -> None:
+        self._return_value = return_value
+        self._calls: list[tuple[tuple, dict]] = []
+
+    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        self._calls.append((args, kwargs))
+        return self._return_value
+
+    def assert_not_called(self) -> None:
+        assert not self._calls, f"Expected no calls but got: {self._calls}"
+
+    def assert_called_once_with(self, *args: Any, **kwargs: Any) -> None:
+        assert len(self._calls) == 1, (
+            f"Expected exactly 1 call, got {len(self._calls)}: {self._calls}"
+        )
+        got_args, got_kwargs = self._calls[0]
+        assert got_args == args, f"Positional arg mismatch: {got_args!r} != {args!r}"
+        assert got_kwargs == kwargs, f"Keyword arg mismatch: {got_kwargs!r} != {kwargs!r}"
+
+
+class _FakeSettingsOps:
+    """Typed stand-in for SettingsOps — only the subset PersonaPresetOps uses."""
+
+    def __init__(self) -> None:
+        self.set = _AsyncSpy()
+
+    async def get(self) -> dict:
+        return {}
+
+
+class _FakeAuditOps:
+    """Typed stand-in for AuditOps — only the subset PersonaPresetOps uses."""
+
+    def __init__(self) -> None:
+        self.record = _AsyncSpy()
+
+
+# =============================================================================
+# Shared module-level fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def fake_settings() -> _FakeSettingsOps:
+    return _FakeSettingsOps()
+
+
+@pytest.fixture
+def fake_audit() -> _FakeAuditOps:
+    return _FakeAuditOps()
+
+
+@pytest.fixture
+def ops(fake_settings: _FakeSettingsOps, fake_audit: _FakeAuditOps) -> PersonaPresetOps:
+    """PersonaPresetOps wired with typed fakes."""
+    return PersonaPresetOps(fake_settings, fake_audit)
+
+
+@pytest.fixture
+def sample_repo_meta() -> dict:
+    """Sample GitHub repo metadata."""
+    now = datetime.now(UTC)
+    return {
+        "html_url": "https://github.com/owner/repo",
+        "stargazers_count": 150,
+        "archived": False,
+        "private": False,
+        "created_at": (now - timedelta(days=200)).isoformat().replace("+00:00", "Z"),
+        "pushed_at": now.isoformat().replace("+00:00", "Z"),
+        "default_branch": "main",
+    }
+
+
+@pytest.fixture
+def sample_personas() -> dict:
+    """Sample personas data."""
+    return {
+        "helper": {
+            "name": "Helper",
+            "description": "A helpful assistant",
+            "prompt": "You are a helpful coding assistant.",
+        }
+    }
 
 
 # =============================================================================
@@ -601,49 +695,10 @@ class TestDecodePersonaPayload:
 class TestPersonaPresetOpsAudit:
     """Tests for PersonaPresetOps.audit_repo() method."""
 
-    @pytest.fixture
-    def mock_settings(self) -> MagicMock:
-        """Create mock settings ops."""
-        return MagicMock()
-
-    @pytest.fixture
-    def mock_audit(self) -> MagicMock:
-        """Create mock audit ops."""
-        return MagicMock()
-
-    @pytest.fixture
-    def ops(self, mock_settings: MagicMock, mock_audit: MagicMock) -> PersonaPresetOps:
-        """Create PersonaPresetOps instance with mocked dependencies."""
-        return PersonaPresetOps(mock_settings, mock_audit)
-
-    @pytest.fixture
-    def sample_repo_meta(self) -> dict:
-        """Sample GitHub repo metadata."""
-        now = datetime.now(UTC)
-        return {
-            "html_url": "https://github.com/owner/repo",
-            "stargazers_count": 150,
-            "archived": False,
-            "private": False,
-            "created_at": (now - timedelta(days=200)).isoformat().replace("+00:00", "Z"),
-            "pushed_at": now.isoformat().replace("+00:00", "Z"),
-            "default_branch": "main",
-        }
-
-    @pytest.fixture
-    def sample_personas(self) -> dict:
-        """Sample personas data."""
-        return {
-            "helper": {
-                "name": "Helper",
-                "description": "A helpful assistant",
-                "prompt": "You are a helpful coding assistant.",
-            }
-        }
-
     @pytest.mark.asyncio
     async def test_audit_repo_returns_expected_structure(
         self,
+        monkeypatch: pytest.MonkeyPatch,
         ops: PersonaPresetOps,
         sample_repo_meta: dict,
         sample_personas: dict,
@@ -652,63 +707,54 @@ class TestPersonaPresetOpsAudit:
         encoded_content = base64.b64encode(json.dumps(sample_personas).encode()).decode()
         file_payload = {"content": encoded_content}
 
-        with (
-            patch("kagan.core._persona._ensure_gh_ready") as mock_ensure,
-            patch("kagan.core._persona._gh_api_json") as mock_api,
-            patch("kagan.core._persona._gh_fetch_content") as mock_fetch,
-        ):
-            mock_ensure.return_value = None
-            mock_api.return_value = sample_repo_meta
-            mock_fetch.return_value = file_payload
+        monkeypatch.setattr(_persona_mod, "_ensure_gh_ready", _AsyncSpy())
+        monkeypatch.setattr(_persona_mod, "_gh_api_json", _AsyncSpy(return_value=sample_repo_meta))
+        monkeypatch.setattr(_persona_mod, "_gh_fetch_content", _AsyncSpy(return_value=file_payload))
 
-            result = await ops.audit_repo(repo="owner/repo")
+        result = await ops.audit_repo(repo="owner/repo")
 
-            # Verify structure
-            assert result["repo"] == "owner/repo"
-            assert result["repo_url"] == "https://github.com/owner/repo"
-            assert result["path"] == ".kagan/personas.json"
-            assert result["persona_count"] == 1
-            assert "personas" in result
-            assert "findings" in result
-            assert "audit_risk_level" in result
-            assert "trust_assessment" in result
-            assert "trust_tier" in result
-            assert "disclaimer" in result
+        # Verify structure
+        assert result["repo"] == "owner/repo"
+        assert result["repo_url"] == "https://github.com/owner/repo"
+        assert result["path"] == ".kagan/personas.json"
+        assert result["persona_count"] == 1
+        assert "personas" in result
+        assert "findings" in result
+        assert "audit_risk_level" in result
+        assert "trust_assessment" in result
+        assert "trust_tier" in result
+        assert "disclaimer" in result
 
-            # Verify trust_assessment structure
-            trust = result["trust_assessment"]
-            assert "repo" in trust
-            assert "stars" in trust
-            assert "repo_age_days" in trust
-            assert "audit_risk_level" in trust
-            assert "trust_score" in trust
-            assert "trust_tier" in trust
-            assert "findings" in trust
-            assert "archived" in trust
+        # Verify trust_assessment structure
+        trust = result["trust_assessment"]
+        assert "repo" in trust
+        assert "stars" in trust
+        assert "repo_age_days" in trust
+        assert "audit_risk_level" in trust
+        assert "trust_score" in trust
+        assert "trust_tier" in trust
+        assert "findings" in trust
+        assert "archived" in trust
 
     @pytest.mark.asyncio
     async def test_audit_repo_rejects_private_repos(
         self,
+        monkeypatch: pytest.MonkeyPatch,
         ops: PersonaPresetOps,
     ) -> None:
         """audit_repo() rejects private repositories."""
-        private_repo_meta = {
-            "private": True,
-        }
+        private_repo_meta = {"private": True}
 
-        with (
-            patch("kagan.core._persona._ensure_gh_ready") as mock_ensure,
-            patch("kagan.core._persona._gh_api_json") as mock_api,
-        ):
-            mock_ensure.return_value = None
-            mock_api.return_value = private_repo_meta
+        monkeypatch.setattr(_persona_mod, "_ensure_gh_ready", _AsyncSpy())
+        monkeypatch.setattr(_persona_mod, "_gh_api_json", _AsyncSpy(return_value=private_repo_meta))
 
-            with pytest.raises(ValueError, match="public repositories"):
-                await ops.audit_repo(repo="owner/repo")
+        with pytest.raises(ValueError, match="public repositories"):
+            await ops.audit_repo(repo="owner/repo")
 
     @pytest.mark.asyncio
     async def test_audit_repo_with_suspicious_personas(
         self,
+        monkeypatch: pytest.MonkeyPatch,
         ops: PersonaPresetOps,
         sample_repo_meta: dict,
     ) -> None:
@@ -723,69 +769,27 @@ class TestPersonaPresetOpsAudit:
         encoded_content = base64.b64encode(json.dumps(suspicious_personas).encode()).decode()
         file_payload = {"content": encoded_content}
 
-        with (
-            patch("kagan.core._persona._ensure_gh_ready") as mock_ensure,
-            patch("kagan.core._persona._gh_api_json") as mock_api,
-            patch("kagan.core._persona._gh_fetch_content") as mock_fetch,
-        ):
-            mock_ensure.return_value = None
-            mock_api.return_value = sample_repo_meta
-            mock_fetch.return_value = file_payload
+        monkeypatch.setattr(_persona_mod, "_ensure_gh_ready", _AsyncSpy())
+        monkeypatch.setattr(_persona_mod, "_gh_api_json", _AsyncSpy(return_value=sample_repo_meta))
+        monkeypatch.setattr(_persona_mod, "_gh_fetch_content", _AsyncSpy(return_value=file_payload))
 
-            result = await ops.audit_repo(repo="owner/repo")
+        result = await ops.audit_repo(repo="owner/repo")
 
-            assert len(result["findings"]) > 0
-            assert result["audit_risk_level"] == "medium"
-            assert result["trust_assessment"]["findings"] == result["findings"]
+        assert len(result["findings"]) > 0
+        assert result["audit_risk_level"] == "medium"
+        assert result["trust_assessment"]["findings"] == result["findings"]
 
 
 class TestPersonaPresetOpsPreview:
     """Tests for PersonaPresetOps.preview_import() method."""
 
-    @pytest.fixture
-    def mock_settings(self) -> MagicMock:
-        """Create mock settings ops."""
-        return MagicMock()
-
-    @pytest.fixture
-    def mock_audit(self) -> MagicMock:
-        """Create mock audit ops."""
-        return MagicMock()
-
-    @pytest.fixture
-    def ops(self, mock_settings: MagicMock, mock_audit: MagicMock) -> PersonaPresetOps:
-        """Create PersonaPresetOps instance with mocked dependencies."""
-        return PersonaPresetOps(mock_settings, mock_audit)
-
-    @pytest.fixture
-    def sample_repo_meta(self) -> dict:
-        """Sample GitHub repo metadata."""
-        now = datetime.now(UTC)
-        return {
-            "html_url": "https://github.com/owner/repo",
-            "stargazers_count": 150,
-            "archived": False,
-            "private": False,
-            "created_at": (now - timedelta(days=200)).isoformat().replace("+00:00", "Z"),
-            "pushed_at": now.isoformat().replace("+00:00", "Z"),
-            "default_branch": "main",
-        }
-
-    @pytest.fixture
-    def sample_personas(self) -> dict:
-        """Sample personas data."""
-        return {
-            "helper": {
-                "name": "Helper",
-                "description": "A helpful assistant",
-                "prompt": "You are a helpful coding assistant.",
-            }
-        }
-
     @pytest.mark.asyncio
     async def test_preview_import_returns_preview_without_importing(
         self,
+        monkeypatch: pytest.MonkeyPatch,
         ops: PersonaPresetOps,
+        fake_settings: _FakeSettingsOps,
+        fake_audit: _FakeAuditOps,
         sample_repo_meta: dict,
         sample_personas: dict,
     ) -> None:
@@ -793,68 +797,57 @@ class TestPersonaPresetOpsPreview:
         encoded_content = base64.b64encode(json.dumps(sample_personas).encode()).decode()
         file_payload = {"content": encoded_content}
 
-        with (
-            patch("kagan.core._persona._ensure_gh_ready") as mock_ensure,
-            patch("kagan.core._persona._gh_api_json") as mock_api,
-            patch("kagan.core._persona._gh_fetch_content") as mock_fetch,
-        ):
-            mock_ensure.return_value = None
-            mock_api.return_value = sample_repo_meta
-            mock_fetch.return_value = file_payload
+        monkeypatch.setattr(_persona_mod, "_ensure_gh_ready", _AsyncSpy())
+        monkeypatch.setattr(_persona_mod, "_gh_api_json", _AsyncSpy(return_value=sample_repo_meta))
+        monkeypatch.setattr(_persona_mod, "_gh_fetch_content", _AsyncSpy(return_value=file_payload))
 
-            result = await ops.preview_import(repo="owner/repo")
+        result = await ops.preview_import(repo="owner/repo")
 
-            # Verify preview structure
-            assert result["repo"] == "owner/repo"
-            assert "repo_url" in result
-            assert "persona_count" in result
-            assert "personas" in result
-            assert result["persona_count"] == 1
+        # Verify preview structure
+        assert result["repo"] == "owner/repo"
+        assert "repo_url" in result
+        assert "persona_count" in result
+        assert "personas" in result
+        assert result["persona_count"] == 1
 
-            # Verify persona preview details
-            personas_preview = result["personas"]
-            assert len(personas_preview) == 1
-            assert personas_preview[0]["key"] == "helper"
-            assert personas_preview[0]["name"] == "Helper"
-            assert personas_preview[0]["description"] == "A helpful assistant"
-            assert "prompt_preview" in personas_preview[0]
-            assert personas_preview[0]["prompt_length"] == len(
-                "You are a helpful coding assistant."
-            )
+        # Verify persona preview details
+        personas_preview = result["personas"]
+        assert len(personas_preview) == 1
+        assert personas_preview[0]["key"] == "helper"
+        assert personas_preview[0]["name"] == "Helper"
+        assert personas_preview[0]["description"] == "A helpful assistant"
+        assert "prompt_preview" in personas_preview[0]
+        assert personas_preview[0]["prompt_length"] == len("You are a helpful coding assistant.")
 
-            # Verify trust info is included
-            assert "trust_assessment" in result
-            assert "trust_tier" in result
-            assert "findings" in result
-            assert "audit_risk_level" in result
+        # Verify trust info is included
+        assert "trust_assessment" in result
+        assert "trust_tier" in result
+        assert "findings" in result
+        assert "audit_risk_level" in result
 
-            # Verify settings.set was NEVER called (no import)
-            ops._settings.set.assert_not_called()
-            ops._audit.record.assert_not_called()
+        # Verify settings.set was NEVER called (no import)
+        fake_settings.set.assert_not_called()
+        fake_audit.record.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_preview_import_rejects_private_repos(
         self,
+        monkeypatch: pytest.MonkeyPatch,
         ops: PersonaPresetOps,
     ) -> None:
         """preview_import() rejects private repositories."""
-        private_repo_meta = {
-            "private": True,
-        }
+        private_repo_meta = {"private": True}
 
-        with (
-            patch("kagan.core._persona._ensure_gh_ready") as mock_ensure,
-            patch("kagan.core._persona._gh_api_json") as mock_api,
-        ):
-            mock_ensure.return_value = None
-            mock_api.return_value = private_repo_meta
+        monkeypatch.setattr(_persona_mod, "_ensure_gh_ready", _AsyncSpy())
+        monkeypatch.setattr(_persona_mod, "_gh_api_json", _AsyncSpy(return_value=private_repo_meta))
 
-            with pytest.raises(ValueError, match="public repositories"):
-                await ops.preview_import(repo="owner/repo")
+        with pytest.raises(ValueError, match="public repositories"):
+            await ops.preview_import(repo="owner/repo")
 
     @pytest.mark.asyncio
     async def test_preview_import_prompt_truncation(
         self,
+        monkeypatch: pytest.MonkeyPatch,
         ops: PersonaPresetOps,
         sample_repo_meta: dict,
     ) -> None:
@@ -869,24 +862,20 @@ class TestPersonaPresetOpsPreview:
         encoded_content = base64.b64encode(json.dumps(long_prompt_personas).encode()).decode()
         file_payload = {"content": encoded_content}
 
-        with (
-            patch("kagan.core._persona._ensure_gh_ready") as mock_ensure,
-            patch("kagan.core._persona._gh_api_json") as mock_api,
-            patch("kagan.core._persona._gh_fetch_content") as mock_fetch,
-        ):
-            mock_ensure.return_value = None
-            mock_api.return_value = sample_repo_meta
-            mock_fetch.return_value = file_payload
+        monkeypatch.setattr(_persona_mod, "_ensure_gh_ready", _AsyncSpy())
+        monkeypatch.setattr(_persona_mod, "_gh_api_json", _AsyncSpy(return_value=sample_repo_meta))
+        monkeypatch.setattr(_persona_mod, "_gh_fetch_content", _AsyncSpy(return_value=file_payload))
 
-            result = await ops.preview_import(repo="owner/repo")
+        result = await ops.preview_import(repo="owner/repo")
 
-            preview = result["personas"][0]["prompt_preview"]
-            assert preview.endswith("...")
-            assert len(preview) == 203  # 200 chars + "..."
+        preview = result["personas"][0]["prompt_preview"]
+        assert preview.endswith("...")
+        assert len(preview) == 203  # 200 chars + "..."
 
     @pytest.mark.asyncio
     async def test_preview_import_with_ref(
         self,
+        monkeypatch: pytest.MonkeyPatch,
         ops: PersonaPresetOps,
         sample_repo_meta: dict,
         sample_personas: dict,
@@ -895,23 +884,19 @@ class TestPersonaPresetOpsPreview:
         encoded_content = base64.b64encode(json.dumps(sample_personas).encode()).decode()
         file_payload = {"content": encoded_content}
 
-        with (
-            patch("kagan.core._persona._ensure_gh_ready") as mock_ensure,
-            patch("kagan.core._persona._gh_api_json") as mock_api,
-            patch("kagan.core._persona._gh_fetch_content") as mock_fetch,
-        ):
-            mock_ensure.return_value = None
-            mock_api.return_value = sample_repo_meta
-            mock_fetch.return_value = file_payload
+        fetch_spy = _AsyncSpy(return_value=file_payload)
+        monkeypatch.setattr(_persona_mod, "_ensure_gh_ready", _AsyncSpy())
+        monkeypatch.setattr(_persona_mod, "_gh_api_json", _AsyncSpy(return_value=sample_repo_meta))
+        monkeypatch.setattr(_persona_mod, "_gh_fetch_content", fetch_spy)
 
-            result = await ops.preview_import(repo="owner/repo", ref="v1.0.0")
+        result = await ops.preview_import(repo="owner/repo", ref="v1.0.0")
 
-            assert result["ref"] == "v1.0.0"
-            mock_fetch.assert_called_once_with(
-                repo="owner/repo",
-                path=".kagan/personas.json",
-                ref="v1.0.0",
-            )
+        assert result["ref"] == "v1.0.0"
+        fetch_spy.assert_called_once_with(
+            repo="owner/repo",
+            path=".kagan/personas.json",
+            ref="v1.0.0",
+        )
 
 
 # =============================================================================
@@ -924,10 +909,8 @@ class TestFormatPersonaPreview:
 
     @pytest.fixture
     def ops(self) -> PersonaPresetOps:
-        """Create PersonaPresetOps with mocked dependencies."""
-        mock_settings = MagicMock()
-        mock_audit = MagicMock()
-        return PersonaPresetOps(mock_settings, mock_audit)
+        """Create PersonaPresetOps with typed fake dependencies."""
+        return PersonaPresetOps(_FakeSettingsOps(), _FakeAuditOps())
 
     def test_formats_persona_correctly(self, ops: PersonaPresetOps) -> None:
         """Correctly formats persona for preview."""

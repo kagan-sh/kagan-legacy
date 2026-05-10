@@ -2,13 +2,31 @@
 
 from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core.errors import KaganError
 from kagan.server.mcp.server import ServerOptions, get_context
+
+type IntegrationToolName = Literal[
+    "integration_preflight",
+    "integration_preview",
+    "integration_sync",
+    "mention_search",
+]
+INTEGRATION_READ_TOOL_NAMES: frozenset[IntegrationToolName] = frozenset(
+    (
+        "integration_preflight",
+        "integration_preview",
+        "mention_search",
+    )
+)
+INTEGRATION_WRITE_TOOL_NAMES: frozenset[IntegrationToolName] = frozenset(("integration_sync",))
+INTEGRATION_TOOL_NAMES: frozenset[IntegrationToolName] = frozenset(
+    (*INTEGRATION_READ_TOOL_NAMES, *INTEGRATION_WRITE_TOOL_NAMES)
+)
 
 
 def _sanitize_params(kwargs: dict[str, Any], max_length: int = 200) -> dict[str, str]:

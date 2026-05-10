@@ -64,6 +64,16 @@ def _resolve_lan_ip() -> str:
     hidden=True,
     help="Skip web bundle check (for dev with Vite proxy)",
 )
+@click.option(
+    "--fake-agent",
+    "fake_agent",
+    is_flag=True,
+    hidden=True,
+    envvar="KAGAN_FAKE_AGENT",
+    help=(
+        "Register the deterministic fake-agent backend for E2E testing. Never use in production."
+    ),
+)
 def web(
     host: str,
     port: int,
@@ -73,6 +83,7 @@ def web(
     db_path: str | None,
     project_id: str | None,
     dev_mode: bool,
+    fake_agent: bool,
 ) -> None:
     from kagan.server import has_web_bundle
 
@@ -117,6 +128,11 @@ def web(
 
     logger.debug("Web UI server starting")
 
+    if fake_agent:
+        from kagan.core._fake_agent import register_fake_backend
+
+        register_fake_backend()
+
     from kagan.server import ApiServerOptions, serve_http
     from kagan.server.mcp.server import ServerOptions
 
@@ -132,6 +148,7 @@ def web(
         port=port,
         web_ui=not dev_mode,  # Serve bundled UI unless in dev mode
         dev_mode=dev_mode,  # Skip auth in dev mode
+        fake_agent=fake_agent,
     )
     try:
         run_async(serve_http(opts))

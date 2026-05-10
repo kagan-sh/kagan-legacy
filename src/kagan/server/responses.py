@@ -384,6 +384,71 @@ class IntegrationSyncResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+# ── Unified session ───────────────────────────────────────────────────────────
+
+
+class SessionCapabilitiesResponse(_OrmBase):
+    can_chat: bool
+    can_stream: bool
+    can_replay: bool
+    can_stop: bool
+    can_close: bool
+    has_kagan_tools: bool
+
+
+class SessionItemResponse(_OrmBase):
+    id: str
+    type: str
+    role: str | None
+    status: str
+    title: str
+    backend: str | None
+    project_id: str | None
+    task_id: str | None
+    task_status: str | None = None
+    session_id: str | None
+    chat_session_id: str | None
+    updated_at: str
+    capabilities: SessionCapabilitiesResponse
+
+
+class SessionsResponse(BaseModel):
+    sessions: list[SessionItemResponse]
+
+
+class CreateSessionRequest(BaseModel):
+    type: Literal["orchestrator", "general"]
+    backend: str | None = None
+    title: str | None = None
+
+
+# ── Session replay ────────────────────────────────────────────────────────────
+
+
+class SessionReplayEvent(BaseModel):
+    """A single persisted session event returned by the replay endpoint."""
+
+    id: str
+    session_id: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _coerce_dt(cls, v: Any) -> str:
+        result = _dt_iso(v)
+        return result or ""
+
+
+class SessionReplayPage(BaseModel):
+    """Paginated response for GET /api/v1/sessions/{session_id}/replay."""
+
+    events: list[SessionReplayEvent]
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
 # ── Mentions ──────────────────────────────────────────────────────────────────
 
 
@@ -424,4 +489,10 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "IntegrationInfo": IntegrationInfo,
     "IntegrationSyncResult": IntegrationSyncResult,
     "MentionResponse": MentionResponse,
+    "SessionCapabilitiesResponse": SessionCapabilitiesResponse,
+    "SessionItemResponse": SessionItemResponse,
+    "SessionsResponse": SessionsResponse,
+    "CreateSessionRequest": CreateSessionRequest,
+    "SessionReplayEvent": SessionReplayEvent,
+    "SessionReplayPage": SessionReplayPage,
 }

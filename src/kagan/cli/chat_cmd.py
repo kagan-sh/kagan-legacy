@@ -26,7 +26,8 @@ except ModuleNotFoundError:
         "  kagan chat                         Interactive REPL\n"
         "  kagan chat 'fix the bug'           Single-shot prompt\n"
         "  kagan chat --prompt 'fix the bug'  Single-shot prompt\n"
-        "  kagan chat --session-id abc123     Resume a session"
+        "  kagan chat --session-id abc123     Resume a session\n\n"
+        "Note: --yolo has been removed; use the approval panel's session trust options."
     ),
 )
 @click.argument("prompt_argument", metavar="PROMPT", required=False)
@@ -47,22 +48,11 @@ except ModuleNotFoundError:
 @click.option(
     "--agent", "agent", type=str, default=None, help="Override the default agent backend."
 )
-@click.option(
-    "--yolo",
-    "yolo",
-    is_flag=True,
-    default=False,
-    help=(
-        "Auto-approve every tool call without prompting. Requires explicit "
-        "acknowledgement of a safety disclaimer at startup."
-    ),
-)
 def chat(
     prompt_argument: str | None,
     prompt_text: str | None,
     session_id: str | None,
     agent: str | None,
-    yolo: bool,
 ) -> None:
     """Start an interactive chat or run a single prompt."""
     logger.debug("Chat command invoked")
@@ -77,7 +67,6 @@ def chat(
                 prompt=prompt_text if prompt_text is not None else prompt_argument,
                 session_id=session_id,
                 agent=agent,
-                yolo=yolo,
             )
         )
     except KeyboardInterrupt:

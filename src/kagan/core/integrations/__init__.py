@@ -9,11 +9,11 @@ submodules — import them directly from ``kagan.core.integrations.github``.
 
 from __future__ import annotations
 
-from kagan.core.integrations._types import ExternalItem, ImportResult
+from kagan.core.integrations._types import ExternalItem, ImportResult, Integration
 from kagan.core.integrations.github import GitHubConfig, GitHubIntegration, github
 
 
-def all_enabled() -> list[GitHubIntegration]:
+def all_enabled() -> list[Integration]:
     """Return currently-configured integrations.
 
     Today: always ``[github]``. The GitHub integration's runtime checks
@@ -29,6 +29,7 @@ __all__ = [
     "GitHubConfig",
     "GitHubIntegration",
     "ImportResult",
+    "Integration",
     "all_enabled",
     "github",
 ]

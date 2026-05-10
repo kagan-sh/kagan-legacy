@@ -8,7 +8,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from kagan.core.errors import ValidationError
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerOptions, get_context
-from kagan.server.mcp.toolsets import mcp_error_boundary
+from kagan.server.mcp.toolsets import IntegrationToolName, mcp_error_boundary
 
 
 @mcp_error_boundary
@@ -225,12 +225,12 @@ async def _mention_search(
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register integration domain tools on mcp, filtered by opts."""
-    _tools: list[tuple[str, Callable[..., Any]]] = [
+    _tools: tuple[tuple[IntegrationToolName, Callable[..., Any]], ...] = (
         ("integration_preview", _integration_preview),
         ("integration_sync", _integration_sync),
         ("integration_preflight", _integration_preflight),
         ("mention_search", _mention_search),
-    ]
+    )
     for name, fn in _tools:
         if is_tool_allowed(name, opts):
             mcp.tool(name=name)(fn)

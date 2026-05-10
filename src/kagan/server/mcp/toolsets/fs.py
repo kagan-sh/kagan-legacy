@@ -24,16 +24,16 @@ from pathlib import Path
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.server.mcp._policy import is_tool_allowed
-from kagan.server.mcp.server import ServerOptions
-from kagan.server.mcp.toolsets import mcp_error_boundary
-from kagan.server.mcp.toolsets._edit_diff import (
+from kagan.core._edit_diff import (
     Edit,
     apply_edits_to_normalized_content,
     detect_bom,
     normalize_line_endings,
     reapply_line_endings,
 )
+from kagan.server.mcp._policy import is_tool_allowed
+from kagan.server.mcp.server import ServerOptions
+from kagan.server.mcp.toolsets import mcp_error_boundary
 
 # ---------------------------------------------------------------------------
 # Internal write result

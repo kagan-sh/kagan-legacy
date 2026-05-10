@@ -15,7 +15,11 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from sqlalchemy import Engine
+
+    from kagan.core.events import AgentLifecycle
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel
 
@@ -58,6 +62,10 @@ class KaganCore:
         self._closed = False
 
         self.active_project_id: str | None = None
+        # Optional hook registered by the server layer to fan out AgentLifecycle
+        # events to active /watch subscribers for a project's orchestrator sessions.
+        # Signature: async (project_id: str, event: AgentLifecycle) -> None
+        self._lifecycle_broadcast_fn: Callable[[str, AgentLifecycle], Awaitable[None]] | None = None
         # reviews namespace must be built after tasks/worktrees are set
         self.reviews = _make_reviews_ns(self._engine, self)
         logger.info("KaganCore initialized")
@@ -135,6 +143,31 @@ class KaganCore:
             )
 
         return _generate
+
+    # -------------------------------------------------------------------------
+    # Orchestrator-chat overlay helpers (public API)
+    # -------------------------------------------------------------------------
+
+    async def resolve_active_session(self, task_id: str):
+        """Return the most relevant agent Session for *task_id*, or None.
+
+        Priority: active worker → active reviewer → latest reviewer → latest worker.
+        """
+        from kagan.core._sessions import list_task_sessions
+        from kagan.core._sessions_query import resolve_active_session
+
+        sessions = await list_task_sessions(self._engine, task_id)
+        return resolve_active_session(sessions)
+
+    async def list_session_items(self, project_id: str | None = None):
+        """Return all sessions (chat + task) unified as SessionItem.
+
+        Results are grouped by status (active → idle → terminal) and sorted
+        by ``updated_at DESC`` within each group.  Optionally scoped to a project.
+        """
+        from kagan.core._session_items import list_session_items
+
+        return await list_session_items(self._engine, project_id=project_id)
 
     async def preflight(self, *, agent_backend: str | None = None) -> list[PreflightCheckResult]:
         return await asyncio.to_thread(run_all_checks, self._db_path, agent_backend)

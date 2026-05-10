@@ -208,6 +208,7 @@ _WORKER_TOOLS = [
     "review_conflicts",
     "integration_preflight",
     "integration_preview",
+    "mention_search",
     "verify_step",
     "verification_summary",
     "checkpoint_create",

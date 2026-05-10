@@ -27,10 +27,20 @@ _MAX_PREVIEW_LINES = 4
 
 _APPROVAL_OPTIONS: list[tuple[str, str]] = [
     ("Approve once", "allow_once"),
-    ("Approve for this session", "allow_always"),
+    ("Approve tool for session", "allow_always"),
+    ("Allow all for session", "allow_all_session"),
     ("Reject", "reject_once"),
     ("Reject — tell the model what to do", "reject_feedback"),
 ]
+
+
+def _tc(tool_call: Any, *keys: str) -> Any:
+    """Get an attribute from a tool_call that may be a dict or an object."""
+    for k in keys:
+        v = tool_call.get(k) if isinstance(tool_call, dict) else getattr(tool_call, k, None)
+        if v:
+            return v
+    return None
 
 
 def _use_ascii_spinner() -> bool:
@@ -52,13 +62,13 @@ def strip_tool_prefix(name: str) -> str:
 
 
 def _tool_display_name(tool_call: Any) -> str:
-    """Return a human-readable tool name from an ACP tool_call object."""
-    raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or "tool call"
+    """Return a human-readable tool name from an ACP tool_call object or dict."""
+    raw = _tc(tool_call, "title", "name") or "tool call"
     return strip_tool_prefix(str(raw))
 
 
 def _is_shell_command(tool_call: Any) -> bool:
-    raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or ""
+    raw = _tc(tool_call, "title", "name") or ""
     lower = str(raw).casefold()
     return any(kw in lower for kw in ("shell", "bash", "exec", "run", "command"))
 
@@ -66,7 +76,7 @@ def _is_shell_command(tool_call: Any) -> bool:
 def _extract_shell_command(tool_call: Any) -> str | None:
     """Try to pull the shell command string out of tool args."""
     for attr in ("raw_input", "rawInput", "arguments", "args"):
-        val = getattr(tool_call, attr, None)
+        val = _tc(tool_call, attr)
         if not val:
             continue
         if isinstance(val, str):
@@ -96,7 +106,7 @@ def _extract_key_args_preview(tool_call: Any) -> str | None:
     import json
 
     for attr in ("raw_input", "rawInput", "arguments", "args"):
-        val = getattr(tool_call, attr, None)
+        val = _tc(tool_call, attr)
         if not val:
             continue
         parsed: dict[str, object] | None = None
@@ -143,8 +153,8 @@ def build_approval_panel(
     display_name = _tool_display_name(tool_call)
     lines: list[object] = []
 
-    # Header
-    header_text = f"Kagan wants to run [bold]{_rich_escape(display_name)}[/bold]"
+    # Header — declarative: describe what the agent will execute, not its intent.
+    header_text = f"Agent will run [bold]{_rich_escape(display_name)}[/bold]"
     lines.append(Text.from_markup(f"[yellow]{header_text}[/yellow]"))
 
     # Agent metadata (subagent / source task)
@@ -174,7 +184,7 @@ def build_approval_panel(
         if preview:
             lines.append(Text(preview, style=APPROVAL.dim))
         else:
-            raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or ""
+            raw = _tc(tool_call, "title", "name") or ""
             lines.append(Text(strip_tool_prefix(str(raw)), style=APPROVAL.dim))
 
     lines.append(Text(""))
@@ -183,7 +193,7 @@ def build_approval_panel(
     panel_options = _build_display_options()
     for i, (label, _kind) in enumerate(panel_options):
         num = i + 1
-        is_feedback = i == 3
+        is_feedback = i == 4
         if i == selected_index:
             if is_feedback and feedback_draft:
                 cursor_display = f"→ [{num}] Reject: {feedback_draft}█"
@@ -195,10 +205,10 @@ def build_approval_panel(
 
     # Keyboard hint footer
     lines.append(Text(""))
-    if selected_index == 3 and feedback_draft:
+    if selected_index == 4 and feedback_draft:
         hint = "  Type feedback  Enter submit  Esc cancel"
     else:
-        hint = "  ▲/▼ select  1/2/3/4 choose  ↵ confirm"
+        hint = "  ▲/▼ select  1-5 choose  ↵ confirm"
     lines.append(Text(hint, style=APPROVAL.hint))
 
     # Queue depth indicator
@@ -217,14 +227,15 @@ def build_approval_panel(
 
 _DISPLAY_OPTIONS: list[tuple[str, str]] = [
     ("Approve once", "allow_once"),
-    ("Approve for this session", "allow_always"),
+    ("Approve tool for session", "allow_always"),
+    ("Allow all for session", "allow_all_session"),
     ("Reject", "reject_once"),
     ("Reject — tell the model what to do", "reject_feedback"),
 ]
 
 
 def _build_display_options() -> list[tuple[str, str]]:
-    """Return the fixed 4-slot panel option list.
+    """Return the fixed 5-slot panel option list.
 
     The panel surface is constant; ACP options aren't consulted because
     `_map_approval_result` resolves the user's choice by slot index.

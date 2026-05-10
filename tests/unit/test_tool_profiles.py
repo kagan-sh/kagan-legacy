@@ -1,12 +1,29 @@
 """Tests for MCP agent role-based tool filtering."""
 
+from collections.abc import Callable
+from typing import Any, cast
+
 import pytest
 
 from kagan.core.enums import AgentRole
 from kagan.server.mcp._policy import ALL_TOOL_NAMES, ROLE_TOOLS, is_tool_allowed
 from kagan.server.mcp.server import ServerOptions
+from kagan.server.mcp.toolsets import INTEGRATION_TOOL_NAMES, integrations
 
 pytestmark = [pytest.mark.unit]
+
+
+class _ToolRecorder:
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+
+    def tool(self, *, name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        self.names.add(name)
+
+        def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            return fn
+
+        return _decorator
 
 
 def test_worker_role_tools() -> None:
@@ -25,6 +42,7 @@ def test_worker_role_tools() -> None:
         "review_conflicts",
         "integration_preflight",
         "integration_preview",
+        "mention_search",
         "verify_step",
         "verification_summary",
         "checkpoint_create",
@@ -54,6 +72,18 @@ def test_orchestrator_gets_all_tools() -> None:
     opts = ServerOptions(role=AgentRole.ORCHESTRATOR)
     allowed = {name for name in ALL_TOOL_NAMES if is_tool_allowed(name, opts)}
     assert allowed == ALL_TOOL_NAMES
+
+
+def test_registered_integration_tools_are_covered_by_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _ToolRecorder()
+    monkeypatch.setattr(integrations, "is_tool_allowed", lambda _name, _opts: True)
+
+    integrations.register(cast("Any", recorder), ServerOptions(role=AgentRole.ORCHESTRATOR))
+
+    assert recorder.names == set(INTEGRATION_TOOL_NAMES)
+    assert recorder.names <= ROLE_TOOLS[AgentRole.ORCHESTRATOR]
 
 
 def test_no_role_defaults_to_orchestrator() -> None:

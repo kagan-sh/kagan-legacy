@@ -56,6 +56,7 @@ class ChatSessionCreateRequest(BaseModel):
     label: str | None = Field(default=None, max_length=255)
     source: str = Field(default="web", max_length=64)
     project_id: str | None = Field(default=None, max_length=255)
+    session_type: str | None = Field(default=None, max_length=64)
 
     @field_validator("source", mode="before")
     @classmethod

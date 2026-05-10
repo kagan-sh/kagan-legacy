@@ -17,4 +17,12 @@ test.describe("Navigation", () => {
       page.getByRole("heading", { name: "Backlog", exact: true }),
     ).toBeVisible();
   });
+
+  test("retired /analytics route redirects through workspace to chat", async ({
+    page,
+  }) => {
+    await page.goto("/analytics");
+    // /analytics → /workspace → /chat (two-hop redirect chain in routes.tsx).
+    await expect(page).toHaveURL(/\/chat$/);
+  });
 });

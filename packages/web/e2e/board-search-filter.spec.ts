@@ -17,12 +17,16 @@ test.describe("Board search and filter", () => {
 
     await page.goto("/board");
     await page.waitForLoadState("load");
+    // The board content must render at least the Backlog heading before the
+    // global Cmd+K handler is attached. Without this wait, Spotlight may not
+    // open on the first keypress under coverage-instrumented builds.
+    await expect(
+      page.getByRole("heading", { name: "Backlog", exact: true }),
+    ).toBeVisible();
 
-    // Open Spotlight via Cmd/Ctrl+K and search for the task.
-    const isMac = await page.evaluate(() =>
-      navigator.platform.toLowerCase().includes("mac"),
-    );
-    await page.keyboard.press(isMac ? "Meta+k" : "Control+k");
+    // Open Spotlight via the header search trigger (more reliable than the
+    // keyboard chord on a hydrating page).
+    await page.getByRole("button", { name: /search tasks/i }).click();
     const dialog = page.getByRole("dialog", { name: /command palette/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -36,11 +40,13 @@ test.describe("Board search and filter", () => {
   test("Spotlight shows no-results state for unmatched query", async ({ page }) => {
     await page.goto("/board");
     await page.waitForLoadState("load");
+    await expect(
+      page.getByRole("heading", { name: "Backlog", exact: true }),
+    ).toBeVisible();
 
-    const isMac = await page.evaluate(() =>
-      navigator.platform.toLowerCase().includes("mac"),
-    );
-    await page.keyboard.press(isMac ? "Meta+k" : "Control+k");
+    // Header search trigger is more reliable than the keyboard chord on
+    // coverage-instrumented builds.
+    await page.getByRole("button", { name: /search tasks/i }).click();
     const dialog = page.getByRole("dialog", { name: /command palette/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
@@ -73,7 +79,11 @@ test.describe("Board search and filter", () => {
     await expect(page.getByRole("button", { name: /^ID/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Status/i })).toBeVisible();
 
-    // The created task should appear as a row button.
-    await expect(page.getByRole("button", { name: title })).toBeVisible();
+    // The created task should appear as a row in the main list (sidebar
+    // mirrors task titles, so scope the selector to the main landmark).
+    const main = page.locator("#main-content");
+    await expect(
+      main.locator("[data-task-id]", { hasText: title }),
+    ).toBeVisible();
   });
 });

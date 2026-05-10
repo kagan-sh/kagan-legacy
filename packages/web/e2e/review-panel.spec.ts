@@ -73,7 +73,9 @@ test.describe("Review panel", () => {
     await page.goto(`/task/${taskId}`);
     await page.waitForLoadState("load");
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    // Task title contains "Approve" so the sidebar mirror also matches —
+    // exact:true picks only the review-panel action button.
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(page.getByText("Task approved")).toBeVisible({
       timeout: 5_000,
     });
@@ -96,7 +98,9 @@ test.describe("Review panel", () => {
       .locator('textarea[placeholder="Optional feedback..."]')
       .fill(feedbackText);
 
-    await page.getByRole("button", { name: "Reject" }).click();
+    // Same disambiguation — title contains "Reject"; exact:true picks the
+    // review-panel destructive button.
+    await page.getByRole("button", { name: "Reject", exact: true }).click();
     await expect(page.getByText("Task rejected")).toBeVisible({
       timeout: 5_000,
     });

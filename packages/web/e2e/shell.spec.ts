@@ -41,14 +41,23 @@ test.describe("Shell layout", () => {
 
   test("Cmd/Ctrl+\\ toggles the sidebar", async ({ page }) => {
     await page.goto("/board");
+    await expect(
+      page.getByRole("heading", { name: "Backlog", exact: true }),
+    ).toBeVisible();
+
+    // `aside` becomes aria-hidden when collapsed, which removes it from the
+    // accessibility tree — match by attribute instead of role.
+    const sidebar = page.locator('aside[aria-label="Workspace sidebar"]');
+    const initial =
+      (await sidebar.getAttribute("data-collapsed")) === "true";
+
     const isMac = await page.evaluate(() =>
       navigator.platform.toLowerCase().includes("mac"),
     );
-    const sidebar = page.getByRole("complementary", {
-      name: /workspace sidebar/i,
-    });
-    await expect(sidebar).toHaveAttribute("data-collapsed", "false");
     await page.keyboard.press(isMac ? "Meta+\\" : "Control+\\");
-    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    await expect(sidebar).toHaveAttribute(
+      "data-collapsed",
+      initial ? "false" : "true",
+    );
   });
 });

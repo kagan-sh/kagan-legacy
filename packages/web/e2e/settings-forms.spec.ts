@@ -11,7 +11,7 @@ test.describe("Settings forms", () => {
   });
 
   test("opens workflow section and shows controls", async ({ page }) => {
-    await page.getByRole("button", { name: /Workflow/i }).click();
+    await page.locator("#settings-card-workflow").click();
     await expect(page.getByRole("heading", { name: "Workflow" })).toBeVisible();
 
     // Review section
@@ -36,7 +36,7 @@ test.describe("Settings forms", () => {
   });
 
   test("opens agents section and shows controls", async ({ page }) => {
-    await page.getByRole("button", { name: /Agents/i }).click();
+    await page.locator("#settings-card-agents").click();
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
 
     await expect(page.getByText("Default agent backend")).toBeVisible();
@@ -58,7 +58,7 @@ test.describe("Settings forms", () => {
   });
 
   test("opens advanced section and shows controls", async ({ page }) => {
-    await page.getByRole("button", { name: /Advanced/i }).click();
+    await page.locator("#settings-card-advanced").click();
     await expect(page.getByRole("heading", { name: "Advanced" })).toBeVisible();
 
     await expect(page.getByRole("group", { name: "Appearance" })).toBeVisible();
@@ -81,7 +81,7 @@ test.describe("Settings forms", () => {
   test("additional instructions shows apply/discard when dirty", async ({
     page,
   }) => {
-    await page.getByRole("button", { name: /Agents/i }).click();
+    await page.locator("#settings-card-agents").click();
     await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
 
     const textarea = page
@@ -102,12 +102,12 @@ test.describe("Settings forms", () => {
   });
 
   test("navigates back from section to category list", async ({ page }) => {
-    await page.getByRole("button", { name: /Workflow/i }).click();
+    await page.locator("#settings-card-workflow").click();
     await expect(page.getByRole("heading", { name: "Workflow" })).toBeVisible();
 
     await page.getByRole("button", { name: /All settings/i }).click();
-    await expect(page.getByRole("button", { name: /Workflow/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Agents/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Advanced/i })).toBeVisible();
+    await expect(page.locator("#settings-card-workflow")).toBeVisible();
+    await expect(page.locator("#settings-card-agents")).toBeVisible();
+    await expect(page.locator("#settings-card-advanced")).toBeVisible();
   });
 });

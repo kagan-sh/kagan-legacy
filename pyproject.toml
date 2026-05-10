@@ -311,8 +311,8 @@ help = "Run Vitest unit tests on the web package"
 shell = "pnpm run web:test"
 
 [tool.poe.tasks.web-a11y]
-help = "Run accessibility checks (vitest-axe component scans)"
-shell = "pnpm --filter kagan-web exec vitest run src/test/a11y.test.tsx"
+help = "Run accessibility checks (axe-core/playwright against real surfaces)"
+shell = "cd packages/web && pnpm exec playwright test e2e/a11y.spec.ts"
 
 [tool.poe.tasks.web-check]
 help = "Run all web package checks (typecheck + test)"

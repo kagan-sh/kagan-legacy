@@ -17,18 +17,18 @@ test.describe("Board keyboard shortcuts", () => {
     // New toolbar: view toggle uses buttons with aria-label, not radio inputs.
     await page.getByRole("button", { name: "List view" }).click();
 
-    // Click first task to select it
-    await page.getByRole("button", { name: t1 }).click();
-    await expect(page.getByRole("button", { name: t1 })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    // Scope to the main landmark — sidebar mirrors task titles as buttons.
+    // `[data-task-id]` covers both the list-view row (`<button>`) and the
+    // kanban card (`<div role=button>`) variants.
+    const main = page.locator("#main-content");
+    const row1 = main.locator("[data-task-id]", { hasText: t1 });
+    const row2 = main.locator("[data-task-id]", { hasText: t2 });
+
+    await row1.click();
+    await expect(row1).toHaveAttribute("aria-pressed", "true");
 
     await page.keyboard.press("ArrowDown");
-    await expect(page.getByRole("button", { name: t2 })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    await expect(row2).toHaveAttribute("aria-pressed", "true");
   });
 
   test("Enter opens selected task", async ({ page, request }) => {
@@ -37,9 +37,33 @@ test.describe("Board keyboard shortcuts", () => {
 
     await page.goto("/board");
     await page.waitForLoadState("load");
-    await page.getByRole("button", { name: title }).click();
+    const main = page.locator("#main-content");
+    await main
+      .locator("[role=button][aria-roledescription=draggable]", {
+        hasText: title,
+      })
+      .click();
 
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/task\//);
   });
+
+  test("'e' opens the edit dialog for the selected task", async ({
+    page,
+    request,
+  }) => {
+    const title = `KBEdit ${Date.now()}`;
+    await createTaskViaApi(request, title);
+
+    await page.goto("/board");
+    await page.waitForLoadState("load");
+    const card = page
+      .locator('[role="button"][aria-roledescription="draggable"]')
+      .filter({ hasText: title });
+    await card.click();
+
+    await page.keyboard.press("e");
+    await expect(page.getByRole("dialog", { name: /edit task/i })).toBeVisible();
+  });
+
 });

@@ -34,10 +34,11 @@ test.describe("Task edit and delete", () => {
     // Dialog should close
     await expect(dialog).toBeHidden();
 
-    // Reload to verify persistence (task detail may not re-fetch immediately)
+    // Reload to verify persistence (task detail may not re-fetch immediately).
+    // Sidebar mirrors task titles, so scope to the page heading.
     await page.reload();
     await page.waitForLoadState("load");
-    await expect(page.getByText(newTitle)).toBeVisible();
+    await expect(page.getByRole("heading", { name: newTitle })).toBeVisible();
   });
 
   test("edits task description from detail page", async ({ page, request }) => {
@@ -85,10 +86,11 @@ test.describe("Task edit and delete", () => {
 
     await expect(dialog).toBeHidden();
 
-    // Reload and verify original title persisted
+    // Reload and verify original title persisted — page heading carries the
+    // title; sidebar mirrors it as a span, so scope by heading role.
     await page.reload();
     await page.waitForLoadState("load");
-    await expect(page.getByText(title)).toBeVisible();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(page.getByText("Should not save")).toHaveCount(0);
   });
 });

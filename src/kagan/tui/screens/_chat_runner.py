@@ -35,26 +35,22 @@ from kagan.cli.chat import (
     run_orchestrator_turn,
     warm_orchestrator_backend,
 )
-from kagan.core.chat import (
+from kagan.core.chat import TurnInProgressError
+from kagan.core.chat._turn_display import TurnPhaseTracker
+from kagan.core.errors import KaganError
+from kagan.core.events import (
     AssistantChunk,
     AssistantMessagePersisted,
-    ChatEvent,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnInProgressError,
-    TurnStarted,
+    Error,
+    Event,
+    ThinkingChunk,
+    ToolCall,
+    ToolCallUpdate,
+    TurnEnd,
+    TurnStart,
     UsageUpdate,
 )
-from kagan.core.chat import (
-    ToolCallProgress as ChatToolCallProgress,
-)
-from kagan.core.chat import (
-    ToolCallStart as ChatToolCallStart,
-)
-from kagan.core.chat._turn_display import TurnPhaseTracker
-from kagan.core.chat.events import PermissionRequest
-from kagan.core.errors import KaganError
+from kagan.core.permission import PermissionRequest
 from kagan.tui.screens._agent_event_presenter import (
     acp_payload,
     present_agent_event,
@@ -91,8 +87,8 @@ TASK_REVIEWER_SESSION_KEY = "task-reviewer"
 # ---------------------------------------------------------------------------
 
 
-def apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
-    """Translate one :class:`ChatEvent` from the engine into ChatPanel calls.
+def apply_chat_event_to_panel(panel: ChatPanel, event: Event | PermissionRequest) -> None:
+    """Translate one :class:`Event` from the engine into ChatPanel calls.
 
     Mirrors the user-visible status indicators that the legacy ACP-on_update
     path emitted (``set_runtime_status`` / ``set_stream_action``) so screens
@@ -102,62 +98,64 @@ def apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
     UI lands later. ``PermissionRequest`` is consumed in
     :func:`send_chat_message` before this translator runs.
     """
-    if isinstance(event, TurnStarted):
-        panel._turn_tracker = TurnPhaseTracker()
-        panel.set_runtime_status("thinking")
-        panel.set_stream_action("Initializing...", confidence="assumption")
-        return
-    if isinstance(event, AssistantChunk):
-        panel.set_runtime_status("thinking")
-        if panel._turn_tracker is None:
+    match event:
+        case TurnStart():
             panel._turn_tracker = TurnPhaseTracker()
-        if event.thought:
+            panel.set_runtime_status("thinking")
+            panel.set_stream_action("Initializing...", confidence="assumption")
+        case AssistantChunk():
+            panel.set_runtime_status("thinking")
+            if panel._turn_tracker is None:
+                panel._turn_tracker = TurnPhaseTracker()
+            panel._turn_tracker.set_phase("composing")
+            panel._turn_tracker.add_text(event.delta)
+            panel.set_stream_action(panel._turn_tracker.composing_label(), confidence="certain")
+            panel.append_assistant_fragment(event.delta)
+        case ThinkingChunk():
+            panel.set_runtime_status("thinking")
+            if panel._turn_tracker is None:
+                panel._turn_tracker = TurnPhaseTracker()
             panel._turn_tracker.set_phase("thinking")
-            panel._turn_tracker.add_text(event.text)
+            panel._turn_tracker.add_text(event.delta)
             panel.set_stream_action(panel._turn_tracker.thinking_label(), confidence="assumption")
-            panel.append_thought_fragment(event.text)
-            return
-        panel._turn_tracker.set_phase("composing")
-        panel._turn_tracker.add_text(event.text)
-        panel.set_stream_action(panel._turn_tracker.composing_label(), confidence="certain")
-        panel.append_assistant_fragment(event.text)
-        return
-    if isinstance(event, ChatToolCallStart):
-        panel.set_runtime_status("thinking")
-        panel.upsert_tool_call(
-            event.tool_id,
-            event.title,
-            status="running",
-            args=event.args,
-            kind=event.kind_hint,
-        )
-        panel.set_stream_action(f"Running tool: {event.title}", confidence="certain")
-        return
-    if isinstance(event, ChatToolCallProgress):
-        panel.set_runtime_status("thinking")
-        panel.update_tool_call(event.tool_id, event.status, result=event.result)
-        return
-    if isinstance(event, UsageUpdate):
-        panel.set_runtime_status("thinking")
-        return
-    if isinstance(event, AssistantMessagePersisted):
-        return
-    if isinstance(event, TurnDone):
-        panel._turn_tracker = None
-        panel.set_runtime_status("ready")
-        panel.set_stream_action("Waiting for prompt", confidence="certain")
-        panel.increment_turn_count()
-        return
-    if isinstance(event, TurnCancelled):
-        panel._turn_tracker = None
-        panel.set_runtime_status("ready")
-        panel.set_stream_action("Waiting for prompt", confidence="certain")
-        return
-    if isinstance(event, TurnError):
-        panel.set_runtime_status("error")
-        panel.set_stream_action("Orchestrator error", confidence="needs-validation")
-        panel.add_system_message(f"Orchestrator error: {event.message}")
-        return
+            panel.append_thought_fragment(event.delta)
+        case ToolCall():
+            panel.set_runtime_status("thinking")
+            panel.upsert_tool_call(
+                event.tool_call_id,
+                event.title,
+                status="running",
+                args=event.args,
+                kind=event.kind,
+            )
+            panel.set_stream_action(f"Running tool: {event.title}", confidence="certain")
+        case ToolCallUpdate():
+            panel.set_runtime_status("thinking")
+            panel.update_tool_call(
+                event.tool_call_id,
+                event.progress or "running",
+                result=event.content,
+            )
+        case UsageUpdate():
+            panel.set_runtime_status("thinking")
+        case AssistantMessagePersisted():
+            pass
+        case TurnEnd(reason="done"):
+            panel._turn_tracker = None
+            panel.set_runtime_status("ready")
+            panel.set_stream_action("Waiting for prompt", confidence="certain")
+            panel.increment_turn_count()
+        case TurnEnd():
+            # cancelled or error
+            panel._turn_tracker = None
+            panel.set_runtime_status("ready")
+            panel.set_stream_action("Waiting for prompt", confidence="certain")
+        case Error():
+            panel.set_runtime_status("error")
+            panel.set_stream_action("Orchestrator error", confidence="needs-validation")
+            panel.add_system_message(f"Orchestrator error: {event.message}")
+        case _:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -222,12 +220,10 @@ async def send_chat_message(
                         )
                     else:
                         await panel.await_permission_resolution(core, chat_session_id, event)
-                elif isinstance(event, AssistantChunk) and not event.thought:
-                    streamed_chunks.append(event.text)
+                elif isinstance(event, AssistantChunk):
+                    streamed_chunks.append(event.delta)
                 if isinstance(event, AssistantMessagePersisted):
                     persisted_response = event.content
-                if isinstance(event, TurnDone) and event.full_response:
-                    persisted_response = event.full_response
                 apply_chat_event_to_panel(panel, event)
         except TurnInProgressError:
             panel.add_system_message("A turn is already running for this session.")

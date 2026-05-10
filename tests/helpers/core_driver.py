@@ -649,7 +649,7 @@ class CoreDriver:
         else:
             await asyncio.wait_for(_consume(), timeout=10.0)
 
-        from kagan.core.chat.events import AssistantMessagePersisted
+        from kagan.core.events import AssistantMessagePersisted
 
         persisted = next(
             (e for e in reversed(events) if isinstance(e, AssistantMessagePersisted)), None

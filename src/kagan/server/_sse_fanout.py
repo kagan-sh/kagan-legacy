@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING, Any, cast
 from starlette.responses import JSONResponse
 
 from kagan.core import Attachment, AttachmentBody
-from kagan.core.chat import ChatEvent, ChatSessionView, chat_session_to_view
+from kagan.core.chat import ChatSessionView, chat_session_to_view
+from kagan.core.events import Event, event_to_dict
+from kagan.core.permission import PermissionRequest
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err
 from kagan.server.responses import (
@@ -54,57 +56,55 @@ def _emit(frame: dict[str, Any]) -> str:
     return f"data: {json.dumps(frame)}\n\n"
 
 
-def _chat_event_to_sse_frame(event: ChatEvent) -> dict[str, Any] | None:
-    """Translate one ``ChatEvent`` to its existing SSE wire shape.
+def _chat_event_to_sse_frame(event: Event | PermissionRequest) -> dict[str, Any] | None:
+    """Serialize one event to an SSE frame dict.
 
-    The web client (``packages/web/src/lib/api/types.ts``) and VS Code
-    extension consume these by string type tag. DO NOT change the shapes here
-    without coordinating a wire-drift bump.
+    Event variants are serialized directly via ``event_to_dict``.
+    ``PermissionRequest`` (sidechannel) produces a ``CHAT_PERMISSION_REQUEST``
+    frame so web consumers can display the approval UI.
+    ``TurnStart`` is suppressed here because the SSE producer already emits a
+    ``CHAT_TURN_STARTED`` frame with ``by_source`` before streaming begins.
 
-    Returns ``None`` for events that have no SSE analogue today — e.g.
-    ``UsageUpdate``, ``PermissionRequest`` (handled by ACP-level routes).
+    Returns ``None`` for events that have no SSE wire analogue.
     """
-    match event.kind:
-        case "assistant_chunk":
-            frame: dict[str, Any] = {"t": "CHAT_CHUNK", "content": event.text}
-            if event.thought:
-                frame["thought"] = True
-            return frame
-        case "tool_call_start":
-            return {"t": "CHAT_TOOL_START", "tool": event.title}
-        case "tool_call_progress":
-            return {"t": "CHAT_TOOL_PROGRESS", "tool": event.tool_id, "status": event.status}
-        case "assistant_message":
-            return {
-                "t": "CHAT_ASSISTANT_MESSAGE",
-                "message_id": event.message_id,
-                "content": event.content,
-                "terminated": event.terminated,
-            }
-        case "done":
-            return {"t": "CHAT_DONE", "full_response": event.full_response}
-        case "error":
-            return {"t": "CHAT_ERROR", "error": event.message}
-        case "turn_cancelled":
-            return {"t": "CHAT_TURN_TERMINATED", "reason": event.reason}
-        case "permission_request":
-            # Strip embedded args from title (e.g. "task_create: {..." → "task_create")
-            raw_title = ""
-            tc = event.tool_call
-            if isinstance(tc, dict):
-                raw_title = tc.get("title") or tc.get("name") or ""
-            else:
-                raw_title = getattr(tc, "title", None) or getattr(tc, "name", None) or ""
-            tool_name = str(raw_title).split(":")[0].split("{")[0].strip()
-            return {
-                "t": "CHAT_PERMISSION_REQUEST",
-                "future_id": event.future_id,
-                "tool_name": tool_name,
-            }
-        case "turn_started":
-            # Emitted as CHAT_TURN_STARTED at a different point in the producer
-            # (it carries by_source from the request), so we ignore it here.
+    if isinstance(event, PermissionRequest):
+        tc = event.tool_call
+        if isinstance(tc, dict):
+            raw_title = tc.get("title") or tc.get("name") or ""
+        else:
+            raw_title = getattr(tc, "title", None) or getattr(tc, "name", None) or ""
+        tool_name = str(raw_title).split(":")[0].split("{")[0].strip()
+        return {
+            "t": "CHAT_PERMISSION_REQUEST",
+            "future_id": event.future_id,
+            "tool_name": tool_name,
+        }
+    match event.type:
+        case "turn_start":
+            # Suppressed: producer emits CHAT_TURN_STARTED with by_source before streaming.
             return None
+        case "assistant_chunk":
+            return event_to_dict(event)
+        case "thinking_chunk":
+            return event_to_dict(event)
+        case "tool_call":
+            return event_to_dict(event)
+        case "tool_call_update":
+            return event_to_dict(event)
+        case "tool_call_result":
+            return event_to_dict(event)
+        case "usage_update":
+            return event_to_dict(event)
+        case "error":
+            return event_to_dict(event)
+        case "agent_lifecycle":
+            return event_to_dict(event)
+        case "assistant_message":
+            return event_to_dict(event)
+        case "user_message":
+            return event_to_dict(event)
+        case "turn_end":
+            return event_to_dict(event)
         case _:
             return None
 

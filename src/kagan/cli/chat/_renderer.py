@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
-    from kagan.core.chat.events import ChatEvent
+    from kagan.core.events import Event as ChatEvent
 
 # Approval modals (transient prompt_toolkit Applications) need to coexist with
 # the long-lived REPL prompt session. While a modal owns the screen, prints
@@ -292,9 +292,20 @@ class CLIRenderer:
         result = self._tool_runs.serialize_payload(self._tool_runs.extract_tool_result(update))
         if result:
             run.result = result
-        if status not in ("completed", "failed"):
-            return
+
+    def on_tool_call_result(self, result: Any) -> None:
+        self._md_region.finalize()
+        tool_key = self._tool_runs.tool_key(result)
+        existing = self._tool_runs.get_run(tool_key)
+        title = (existing.title if existing else None) or "tool"
+        key_arg = existing.key_arg if existing else None
+        run = self._tool_runs.ensure_tool_run(update=result, title=title, key_arg=key_arg)
+        output = getattr(result, "output", None)
+        if output:
+            run.result = self._tool_runs.serialize_payload(output)
+        status = "failed" if getattr(result, "is_error", False) else "completed"
         self._tool_runs.set_status(tool_key, status)
+        run.status = status
         run.ended_at = run.ended_at or time.monotonic()
         self._grouped_tools.complete(tool_key, status, run.ended_at)
         print_via_terminal(
@@ -309,26 +320,25 @@ class CLIRenderer:
     # ------------------------------------------------------------------
 
     def on_event(self, event: ChatEvent) -> None:
-        """Dispatch a typed ChatEvent through the granular hooks.
-
-        Phase 5b: not yet wired. Phase 5c will route engine.stream_assistant()
-        through this. Kept here so the seam is visible and so phase 5c is a
-        small wiring change rather than a rewrite.
-        """
-        match event.kind:
+        """Dispatch a typed Event through the granular hooks."""
+        match event.type:
             case "assistant_chunk":
-                self.on_assistant_chunk(event.text, thought=event.thought)
-            case "tool_call_start":
+                self.on_assistant_chunk(event.delta, thought=False)  # type: ignore[union-attr]
+            case "thinking_chunk":
+                self.on_assistant_chunk(event.delta, thought=True)  # type: ignore[union-attr]
+            case "tool_call":
                 self.on_tool_call_start(event)
-            case "tool_call_progress":
+            case "tool_call_update":
                 self.on_tool_call_progress(event)
-            case "usage":
+            case "tool_call_result":
+                self.on_tool_call_result(event)
+            case "usage_update":
                 self.on_usage_update(event)
-            case "done":
+            case "turn_end":
                 # finish_turn() is the controller's responsibility; here we just
                 # ensure pending Markdown is flushed.
                 self.finalize_pending_markdown()
-            case "turn_cancelled" | "error" | "assistant_message":
+            case "error" | "assistant_message":
                 self.finalize_pending_markdown()
             case _:
                 pass

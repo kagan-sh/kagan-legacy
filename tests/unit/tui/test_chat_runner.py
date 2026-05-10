@@ -16,15 +16,19 @@ if TYPE_CHECKING:
 import pytest
 from textual.app import App, ComposeResult
 
-from kagan.core.chat import (
+from kagan.core.events import (
     AssistantChunk,
     AssistantMessagePersisted,
-    ChatEvent,
-    ToolCallProgress,
-    ToolCallStart,
-    TurnDone,
-    TurnStarted,
+    Event,
+    ToolCall,
+    ToolCallUpdate,
+    TurnEnd,
+    TurnStart,
 )
+from kagan.core.permission import PermissionRequest
+
+# Legacy alias for readability in type annotations below.
+ChatEvent = Event | PermissionRequest
 from kagan.tui.screens._chat_runner import (
     apply_chat_event_to_panel,
     apply_task_chat_event,
@@ -55,11 +59,11 @@ async def test_apply_chat_event_to_panel_streams_assistant_text() -> None:
         await pilot.pause()
         panel = app.screen.query_one(ChatPanel)
         # Drive a small synthetic turn through the translator.
-        events: list[ChatEvent] = [
-            TurnStarted(at=__import__("datetime").datetime.now()),
-            AssistantChunk(text="Hello "),
-            AssistantChunk(text="world"),
-            TurnDone(full_response="Hello world"),
+        events: list[Event] = [
+            TurnStart(turn_id="t-1", session_id="s-1", agent_id=""),
+            AssistantChunk(turn_id="t-1", session_id="s-1", message_id="m-1", delta="Hello "),
+            AssistantChunk(turn_id="t-1", session_id="s-1", message_id="m-1", delta="world"),
+            TurnEnd(turn_id="t-1", reason="done"),
         ]
         for event in events:
             apply_chat_event_to_panel(panel, event)
@@ -77,11 +81,19 @@ async def test_apply_chat_event_to_panel_handles_tool_calls() -> None:
         panel = app.screen.query_one(ChatPanel)
         apply_chat_event_to_panel(
             panel,
-            ToolCallStart(tool_id="call_1", title="grep", args="pattern=foo"),
+            ToolCall(
+                turn_id="t-1",
+                session_id="s-1",
+                tool_call_id="call_1",
+                name="grep",
+                title="grep",
+                kind=None,
+                args="pattern=foo",
+            ),
         )
         apply_chat_event_to_panel(
             panel,
-            ToolCallProgress(tool_id="call_1", status="completed", result="match.py:3"),
+            ToolCallUpdate(tool_call_id="call_1", content="match.py:3", progress="completed"),
         )
         await pilot.pause()
         # Translator must not crash and must leave the runtime status at a
@@ -98,7 +110,7 @@ async def test_apply_chat_event_to_panel_handles_tool_calls() -> None:
 class _StubChatEngine:
     """Minimal ChatEngine surface needed by ``send_chat_message``."""
 
-    def __init__(self, events: list[ChatEvent]) -> None:
+    def __init__(self, events: list[Event]) -> None:
         self._events = events
         self.push_user_calls: list[tuple[str, str]] = []
         self.stream_calls: list[tuple[str, list[Any], str | None]] = []
@@ -113,10 +125,10 @@ class _StubChatEngine:
         *,
         prompt_blocks: list[Any],
         agent_backend: str | None = None,
-    ) -> AsyncIterator[ChatEvent]:
+    ) -> AsyncIterator[Event]:
         self.stream_calls.append((session_id, prompt_blocks, agent_backend))
 
-        async def _gen() -> AsyncIterator[ChatEvent]:
+        async def _gen() -> AsyncIterator[Event]:
             for event in self._events:
                 yield event
 
@@ -137,7 +149,7 @@ class _StubOrchestratorSessions:
 
 
 class _StubCore:
-    def __init__(self, events: list[ChatEvent]) -> None:
+    def __init__(self, events: list[Event]) -> None:
         self.chat = _StubChatEngine(events)
         self.settings = _StubSettings()
 
@@ -155,14 +167,12 @@ class _ChatPanelHostAppWithCore(App[None]):
 @pytest.mark.asyncio
 async def test_send_chat_message_drives_engine_turn() -> None:
     """Happy path: send_chat_message pushes user, streams events, returns history."""
-    from datetime import datetime
-
-    events: list[ChatEvent] = [
-        TurnStarted(at=datetime.now()),
-        AssistantChunk(text="hi "),
-        AssistantChunk(text="there"),
+    events: list[Event] = [
+        TurnStart(turn_id="t-1", session_id="sess-123", agent_id=""),
+        AssistantChunk(turn_id="t-1", session_id="sess-123", message_id="m-1", delta="hi "),
+        AssistantChunk(turn_id="t-1", session_id="sess-123", message_id="m-1", delta="there"),
         AssistantMessagePersisted(message_id=42, content="hi there", terminated=False),
-        TurnDone(full_response="hi there"),
+        TurnEnd(turn_id="t-1", reason="done"),
     ]
     core = _StubCore(events)
     sessions = _StubOrchestratorSessions(session_id="sess-123")

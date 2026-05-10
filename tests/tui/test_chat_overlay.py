@@ -259,11 +259,12 @@ async def test_ctrl_down_cycles_selected_session(board: KaganDriver) -> None:
 async def test_prompt_arrow_down_cycles_when_input_focused(board: KaganDriver) -> None:
     """↓ in the prompt (overlay mode) rotates sessions like Ctrl+Down."""
 
+    from textual.widgets import Input
+
     from kagan.core._session_items import SessionCapabilities, SessionItem
     from kagan.tui import KaganApp
     from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
     from kagan.tui.widgets.session_list import SessionList
-    from textual.widgets import Input
 
     def _make_item(session_id: str, task_id: str, title: str) -> SessionItem:
         return SessionItem(

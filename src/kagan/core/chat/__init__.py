@@ -26,21 +26,6 @@ from kagan.core.chat.engine import (
     TurnInProgressError,
     TurnStatus,
 )
-from kagan.core.chat.events import (
-    AssistantChunk,
-    AssistantMessagePersisted,
-    ChatEvent,
-    PermissionRequest,
-    PermissionResolved,
-    ToolCallProgress,
-    ToolCallStart,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnStarted,
-    UsageUpdate,
-    UserMessagePersisted,
-)
 from kagan.core.chat.sessions import (
     CHAT_LAST_SESSION_PREFIX,
     CHAT_SCOPE_PREFIX,
@@ -50,12 +35,33 @@ from kagan.core.chat.sessions import (
     clean_generated_title,
     format_relative_time,
 )
+from kagan.core.events import (
+    AgentLifecycle,
+    AssistantChunk,
+    AssistantMessagePersisted,
+    Error,
+    Event,
+    ThinkingChunk,
+    ToolCall,
+    ToolCallResult,
+    ToolCallUpdate,
+    TurnEnd,
+    TurnStart,
+    UsageUpdate,
+    UserMessagePersisted,
+)
+from kagan.core.permission import PermissionRequest, PermissionResolved
+
+# ``ChatEvent`` is kept as an alias for ``Event`` — it is the public name
+# used by transport layers (CLI/TUI/server) to type-annotate the stream.
+ChatEvent = Event
 
 __all__ = [
     "CHAT_LAST_SESSION_PREFIX",
     "CHAT_SCOPE_PREFIX",
     "ACPSessionFactory",
     "ACPTurnResult",
+    "AgentLifecycle",
     "AgentNotificationKind",
     "AssistantChunk",
     "AssistantMessagePersisted",
@@ -64,16 +70,18 @@ __all__ = [
     "ChatEvent",
     "ChatSessionView",
     "ChatSessions",
+    "Error",
+    "Event",
     "LongLivedACPFactory",
     "PermissionRequest",
     "PermissionResolved",
-    "ToolCallProgress",
-    "ToolCallStart",
-    "TurnCancelled",
-    "TurnDone",
-    "TurnError",
+    "ThinkingChunk",
+    "ToolCall",
+    "ToolCallResult",
+    "ToolCallUpdate",
+    "TurnEnd",
     "TurnInProgressError",
-    "TurnStarted",
+    "TurnStart",
     "TurnStatus",
     "UsageSnapshot",
     "UsageUpdate",

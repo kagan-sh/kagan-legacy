@@ -96,23 +96,20 @@ from kagan.core import (
     get_system_git_identity,
 )
 from kagan.core.chat import LongLivedACPFactory
-from kagan.core.chat.events import (
+from kagan.core.errors import AgentError, KaganError
+from kagan.core.events import (
     AssistantChunk,
     AssistantMessagePersisted,
-    PermissionRequest,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnStarted,
+    Error,
+    ThinkingChunk,
+    ToolCall,
+    ToolCallResult,
+    ToolCallUpdate,
+    TurnEnd,
+    TurnStart,
     UsageUpdate,
 )
-from kagan.core.chat.events import (
-    ToolCallProgress as ChatToolCallProgress,
-)
-from kagan.core.chat.events import (
-    ToolCallStart as ChatToolCallStart,
-)
-from kagan.core.errors import AgentError, KaganError
+from kagan.core.permission import PermissionRequest
 
 __all__ = [
     "ChatController",
@@ -913,7 +910,7 @@ class ChatController:
                     async for event in stream:
                         self._dispatch_event(event)
                         _live.refresh()
-                        if isinstance(event, TurnError):
+                        if isinstance(event, Error):
                             had_error = True
                 finally:
                     with contextlib.suppress(BaseException):
@@ -979,20 +976,27 @@ class ChatController:
         return _SendResult()
 
     def _dispatch_event(self, event: Any) -> None:
-        if isinstance(event, AssistantChunk):
-            self._renderer.on_assistant_chunk(event.text, thought=event.thought)
-        elif isinstance(event, ChatToolCallStart):
-            self._renderer.on_tool_call_start(event)
-        elif isinstance(event, ChatToolCallProgress):
-            self._renderer.on_tool_call_progress(event)
-        elif isinstance(event, UsageUpdate):
-            self._renderer.on_usage_update(event)
-        elif isinstance(event, PermissionRequest):
-            self._spawn_permission_task(event)
-        elif isinstance(event, TurnCancelled | TurnError | AssistantMessagePersisted):
-            self._renderer.finalize_pending_markdown()
-        elif isinstance(event, TurnDone | TurnStarted):
-            return
+        match event:
+            case AssistantChunk():
+                self._renderer.on_assistant_chunk(event.delta, thought=False)
+            case ThinkingChunk():
+                self._renderer.on_assistant_chunk(event.delta, thought=True)
+            case ToolCall():
+                self._renderer.on_tool_call_start(event)
+            case ToolCallUpdate():
+                self._renderer.on_tool_call_progress(event)
+            case ToolCallResult():
+                self._renderer.on_tool_call_result(event)
+            case UsageUpdate():
+                self._renderer.on_usage_update(event)
+            case PermissionRequest():
+                self._spawn_permission_task(event)
+            case TurnEnd(reason="cancelled") | Error() | AssistantMessagePersisted():
+                self._renderer.finalize_pending_markdown()
+            case TurnEnd() | TurnStart():
+                return
+            case _:
+                pass
 
     def _spawn_permission_task(self, event: PermissionRequest) -> None:
         if self._chat_session_id is None:
@@ -1025,30 +1029,18 @@ class ChatController:
         if usage is None:
             _TOOLBAR_STATE.context_pct = None
             return
-        used = getattr(usage, "used", None)
-        size = getattr(usage, "size", None)
+        # UsageUpdate uses input/output/cached/cost fields.
+        used = getattr(usage, "input", None)
         cost = getattr(usage, "cost", None)
         metrics_parts: list[str] = []
-        if used is not None and size is not None and size > 0:
+        if used is not None:
             used_k = used / 1000
-            size_k = size / 1000
-            _TOOLBAR_STATE.context_pct = used / size
-            if size_k >= 1000:
-                metrics_parts.append(f"ctx {used_k:.0f}k/{size_k:.0f}k")
-            else:
-                metrics_parts.append(f"ctx {used_k:.1f}k/{size_k:.1f}k")
+            metrics_parts.append(f"ctx {used_k:.1f}k")
         if cost is not None:
             metrics_parts.append(f"${cost:.2f}")
         if metrics_parts:
             _console.print(f"[dim]  {' · '.join(metrics_parts)}[/dim]")
-        if used is not None and size is not None and size > 0:
-            pct = used / size
-            if pct > 0.8:
-                _console.print(
-                    f"[bold red]  ⚠ Context window {pct:.0%} full — agent may degrade[/bold red]"
-                )
-            elif pct > 0.6:
-                _console.print(f"[yellow]  ⚠ Context window {pct:.0%} full[/yellow]")
+        _TOOLBAR_STATE.context_pct = None
 
     # ------------------------------------------------------------------
     # REPL loop and slash commands

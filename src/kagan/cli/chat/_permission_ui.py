@@ -31,7 +31,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from kagan.core.chat.events import PermissionRequest
+    from kagan.core.permission import PermissionRequest
 
 from loguru import logger
 from prompt_toolkit.application.run_in_terminal import run_in_terminal

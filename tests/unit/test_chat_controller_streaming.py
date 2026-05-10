@@ -18,10 +18,8 @@ from rich.console import Console
 import kagan.cli.chat._permission_ui as chat_acp_module
 from kagan.cli.chat._permission_ui import PermissionUI
 from kagan.cli.chat._renderer import CLIRenderer
-from kagan.core.chat.events import (
-    PermissionRequest,
-    ToolCallStart,
-)
+from kagan.core.events import ToolCall
+from kagan.core.permission import PermissionRequest
 
 pytestmark = [pytest.mark.unit]
 
@@ -137,7 +135,15 @@ def test_markdown_region_finalizes_before_tool_call_start() -> None:
 
     renderer.on_assistant_chunk("Looking up files.")
     renderer.on_tool_call_start(
-        ToolCallStart(tool_id="tool-1", title="Read file", kind_hint=None, args=None)
+        ToolCall(
+            turn_id="t-1",
+            session_id="s-1",
+            tool_call_id="tool-1",
+            name="read_file",
+            title="Read file",
+            kind=None,
+            args=None,
+        )
     )
     renderer.finish_turn()
 

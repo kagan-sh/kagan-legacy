@@ -6,18 +6,16 @@ from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel
 from sqlalchemy import Engine, and_, desc, or_
 from sqlmodel import select
 
 from kagan.core._db_helpers import _add_and_refresh, _db_async, _sa_col
 from kagan.core.enums import TaskStatus
 from kagan.core.models import SessionEvent
-
-if TYPE_CHECKING:
-    from kagan.core.agent_events import AgentEvent
 
 LIVE_STREAM_QUEUE_MAX_SIZE = 512
 GLOBAL_STREAM_QUEUE_MAX_SIZE = 512
@@ -494,12 +492,12 @@ class Events:
     async def emit_typed(
         self,
         task_id: str,
-        agent_event: "AgentEvent",
+        agent_event: BaseModel,
         *,
         session_id: str | None = None,
         persist: bool = True,
     ) -> SessionEvent:
-        """Emit a typed ``AgentEvent`` variant.
+        """Emit a typed Pydantic agent-event variant.
 
         The variant's ``kind`` field becomes ``event_type`` in the DB row.
         The full ``model_dump(mode="json")`` is stored in ``payload``
@@ -507,9 +505,6 @@ class Events:
 
         Payload secrets are scrubbed before persistence.
         """
-        # Import here to avoid circular imports at module load time.
-        from kagan.core.agent_events import AgentEvent as _AgentEventType  # noqa: F401
-
         raw_payload: dict[str, Any] = agent_event.model_dump(mode="json")
         kind: str = raw_payload.get("kind", "unknown")
         scrubbed_payload = _scrub_secrets(raw_payload)

@@ -43,7 +43,7 @@ from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
 
 if TYPE_CHECKING:
     from kagan.core import KaganCore
-    from kagan.core.chat.events import PermissionRequest
+    from kagan.core.permission import PermissionRequest
 
 _SLASH_ALIASES: Final[dict[str, str]] = {
     "q": "exit",

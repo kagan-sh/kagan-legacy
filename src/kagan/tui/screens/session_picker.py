@@ -82,7 +82,7 @@ class SessionPickerModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="session-picker-container"):
-            yield Label("Jump to Session", classes="modal-title")
+            yield Label("Jump to session", classes="modal-title")
             yield Input(
                 placeholder="Filter tasks, ids, or sessions...",
                 id="session-picker-filter",

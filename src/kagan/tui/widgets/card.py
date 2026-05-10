@@ -72,63 +72,7 @@ class TaskCard(Widget):
         "right": "action_focus_right",
     }
 
-    DEFAULT_CSS = """
-    TaskCard {
-        layout: vertical;
-        height: 3;
-    }
-
-    TaskCard.-selected {
-        height: 4;
-    }
-
-    TaskCard .card-content {
-        width: 100%;
-        height: 100%;
-    }
-
-    TaskCard .card-row {
-        width: 100%;
-        height: 1;
-    }
-
-    TaskCard .card-rail {
-        width: 1;
-    }
-
-    TaskCard .card-indicator {
-        width: 2;
-    }
-
-    TaskCard .card-title {
-        width: 1fr;
-    }
-
-    TaskCard .card-id {
-        width: auto;
-    }
-
-    TaskCard .card-desc {
-        width: 1fr;
-    }
-
-    TaskCard .card-elapsed {
-        width: auto;
-    }
-
-    TaskCard .card-badge-row {
-        width: 100%;
-    }
-
-    TaskCard .card-badge {
-        width: auto;
-        margin-right: 1;
-    }
-
-    TaskCard .card-spacer {
-        width: 1fr;
-    }
-    """
+    DEFAULT_CSS = ""
 
     task_data: reactive[TaskData | None] = reactive(None, always_update=True)
     selected: var[bool] = var(False, always_update=True)

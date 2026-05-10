@@ -63,9 +63,10 @@ class DiffFileTree(Widget):
     can_focus = True
     DEFAULT_CSS = """
     DiffFileTree {
-        width: 1fr;
+        width: 34%;
         height: 1fr;
         min-width: 24;
+        max-width: 60;
         background: $surface;
         border: none;
     }
@@ -84,6 +85,8 @@ class DiffFileTree(Widget):
     DiffFileTree .diff-tree-file-row {
         padding: 0 1;
         height: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     DiffFileTree .diff-tree-file-row.added {
         color: $success;
@@ -133,7 +136,13 @@ class DiffFileTree(Widget):
 
         yield Static("j/k navigate · Enter · h/l panes", classes="diff-tree-hint")
 
-    def set_files(self, files: list[_DiffFile], *, empty_message: str = "No files") -> None:
+    def set_files(
+        self,
+        files: list[_DiffFile],
+        *,
+        empty_message: str = "No files",
+        selected_path: str | None = None,
+    ) -> None:
         self._files = files
         self._empty_message = empty_message
         if not files:
@@ -141,7 +150,16 @@ class DiffFileTree(Widget):
             self.refresh(recompose=True)
             self.post_message(self.FileSelected(None))
             return
-        self._cursor = min(self._cursor, len(files) - 1)
+
+        if selected_path is not None:
+            for index, entry in enumerate(files):
+                if entry.path == selected_path:
+                    self._cursor = index
+                    break
+            else:
+                self._cursor = min(self._cursor, len(files) - 1)
+        else:
+            self._cursor = min(self._cursor, len(files) - 1)
         self.refresh(recompose=True)
         self._publish_selection()
 
@@ -185,8 +203,9 @@ class DiffContentPane(Widget):
     can_focus = True
     DEFAULT_CSS = """
     DiffContentPane {
-        width: 2fr;
+        width: 1fr;
         height: 1fr;
+        min-width: 0;
         background: $background;
         border: none;
     }
@@ -210,9 +229,15 @@ class DiffContentPane(Widget):
     DiffContentPane #diff-log {
         height: 1fr;
         overflow-y: auto;
+        overflow-x: auto;
         scrollbar-gutter: stable;
+        text-wrap: nowrap;
     }
     """
+
+    def __init__(self, *, id: str | None = None, classes: str | None = None) -> None:
+        super().__init__(id=id, classes=classes)
+        self._shown_signature: tuple[str, str, int, int] | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("Select a file", classes="diff-content-header", id="diff-header")
@@ -225,17 +250,26 @@ class DiffContentPane(Widget):
         stats = self.query_one("#diff-stats", DiffStats)
         body = self.query_one("#diff-log", Static)
         if entry is None:
+            if self._shown_signature is None:
+                return
+            self._shown_signature = None
             header.update("Select a file")
             stats.set_stats(0, 0, 0)
             body.update("No changes")
+            body.scroll_home(animate=False)
             return
 
+        signature = (entry.path, entry.diff_text, entry.insertions, entry.deletions)
+        if signature == self._shown_signature:
+            return
+        self._shown_signature = signature
         status_marker = {"added": "NEW", "deleted": "DEL", "modified": "MOD"}.get(
             entry.status.lower(), entry.status.upper()
         )
         header.update(f"{entry.path}  {status_marker}  +{entry.insertions}/-{entry.deletions}")
         stats.set_stats(1, entry.insertions, entry.deletions)
         body.update(_render_diff(entry.diff_text))
+        body.scroll_home(animate=False)
 
     def action_scroll_down(self) -> None:
         self.query_one("#diff-log", Static).scroll_down(animate=False)
@@ -304,11 +338,16 @@ class DiffView(Widget):
         self.query_one(DiffContentPane).focus()
 
     def set_diff(self, diff_text: str) -> None:
-        self._diff_text = diff_text.strip()
+        cleaned = diff_text.strip()
+        if cleaned == self._diff_text:
+            return
+        selected_path = self.current_file_path()
+        self._diff_text = cleaned
         self._files = _parse_diff_files(self._diff_text)
         self.query_one(DiffFileTree).set_files(
             self._files,
             empty_message="No changed files",
+            selected_path=selected_path,
         )
 
     def append_diff(self, diff_text: str) -> None:

@@ -7,8 +7,8 @@ boundary — no ``gh`` CLI calls are made.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from textual.app import App, ComposeResult
@@ -35,12 +35,19 @@ _KAGAN_MENTION = _mention("kagan", "kagan#aabbccdd", "Implement login", "BACKLOG
 _GITHUB_MENTION = _mention("github", "#42", "Fix bug in login", "open")
 
 
+@contextmanager
 def _mock_search(results):
-    """Return a patch context for search_mentions that returns ``results``."""
-    return patch(
-        "kagan.core.integrations.mentions.search_mentions",
-        AsyncMock(return_value=results),
-    )
+    """Monkeypatch search_mentions to return ``results`` without AsyncMock."""
+
+    async def _fake_search(*args, **kwargs):
+        return results
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr("kagan.core.integrations.mentions.search_mentions", _fake_search)
+    try:
+        yield
+    finally:
+        mp.undo()
 
 
 # ---------------------------------------------------------------------------

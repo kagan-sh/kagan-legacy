@@ -40,7 +40,7 @@ class AttachedInstructionsModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="attached-instructions-container"):
-            yield Label("Interactive Session Instructions", classes="modal-title")
+            yield Label("Interactive session instructions", classes="modal-title")
             yield Rule()
 
             if self._taking_over:

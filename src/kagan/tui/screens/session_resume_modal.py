@@ -37,7 +37,7 @@ class SessionResumeModal(ModalScreen[RecentSessionSelection | None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="session-resume-container"):
-            yield Static("Resume Recent Session", classes="modal-title")
+            yield Static("Resume recent session", classes="modal-title")
             yield Static(
                 "Only sessions tied to a project are shown. "
                 "Resuming reopens that project and chat history.",

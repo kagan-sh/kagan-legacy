@@ -360,7 +360,7 @@ class SearchBar(Widget):
             or self.sort_filter
         )
         if has_filter:
-            clear.update("✕ clear")
+            clear.update("✗ clear")
         elif self.is_visible:
             clear.update("Esc hide")
         else:

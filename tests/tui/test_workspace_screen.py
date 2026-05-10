@@ -22,13 +22,13 @@ async def test_w_toggles_between_kanban_and_workspace(board_with_task: KaganDriv
         await pilot.pause()
         assert isinstance(app.screen, WorkspaceScreen)
         assert app.screen.focused is app.screen.query_one("#workspace-session-list", OptionList)
-        assert "enter open" in str(app.screen.query_one("#workspace-footer", Static).content)
+        assert "j/k nav" in str(app.screen.query_one("#workspace-footer", Static).content)
         assert (
             str(app.screen.query_one("#workspace-main-title", Static).content)
             == app.orchestrator_sessions.list_items()[0].label
         )
 
-        await pilot.press("ctrl+i")
+        await pilot.press("ctrl+period")
         await pilot.pause()
         assert app.screen.focused is app.screen.query_one("#chat-overlay-input", Input)
         assert "enter send" in str(app.screen.query_one("#workspace-footer", Static).content)
@@ -36,7 +36,7 @@ async def test_w_toggles_between_kanban_and_workspace(board_with_task: KaganDriv
         await pilot.press("escape")
         await pilot.pause()
         assert app.screen.focused is app.screen.query_one("#workspace-session-list", OptionList)
-        assert "enter open" in str(app.screen.query_one("#workspace-footer", Static).content)
+        assert "j/k nav" in str(app.screen.query_one("#workspace-footer", Static).content)
 
         await pilot.press("w")
         await pilot.pause()

@@ -1,4 +1,5 @@
 import inspect
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from kagan.tui.screens.doctor_modal import DoctorModal, emit_doctor_warned_telem
 from kagan.tui.screens.gateway import AttachedInstructionsModal  # noqa: F401
 from kagan.tui.screens.help import HelpModal
 from kagan.tui.screens.kanban import KanbanScreen
+from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 from kagan.tui.screens.repo_picker import RepoPickerModal
 from kagan.tui.screens.session_dashboard import SessionDashboardScreen
 from kagan.tui.screens.settings import SettingsModal
@@ -55,6 +57,10 @@ def _any_backend_available(checks: list[DoctorCheck]) -> bool:
     )
 
 
+def _has_startup_doctor_failures(checks: list[DoctorCheck]) -> bool:
+    return any(c.status == "fail" for c in checks)
+
+
 class KaganApp(App[None]):
     BINDINGS = APP_BINDINGS
 
@@ -70,6 +76,7 @@ class KaganApp(App[None]):
 
     SCREENS = {
         "kanban-screen": KanbanScreen,
+        "orchestrator-overlay": OrchestratorOverlay,
         "session-dashboard-screen": SessionDashboardScreen,
         "repo-picker-modal": RepoPickerModal,
         "agent-picker-modal": AgentPickerModal,
@@ -99,7 +106,6 @@ class KaganApp(App[None]):
         self.project: Project | None = None
         self.selected_repo_id: str | None = None
         self.selected_repo_name: str | None = None
-        # Startup doctor checks (None = skip_preflight was True or tests; [] = no issues)
         self._startup_checks: list[DoctorCheck] | None = startup_checks
 
         self.register_theme(KAGAN_THEME)
@@ -133,13 +139,13 @@ class KaganApp(App[None]):
 
     async def _route_startup(self) -> None:
         checks = self._startup_checks
-        pending_warning: str | None = None
         if checks is not None and len(checks) > 0:
-            has_fail = any(c.status == "fail" for c in checks)
+            has_fail = _has_startup_doctor_failures(checks)
             has_warn = any(c.status == "warn" for c in checks)
             if has_fail or has_warn:
                 fail_count = sum(1 for c in checks if c.status == "fail")
                 warn_count = sum(1 for c in checks if c.status == "warn")
+                # Telemetry always fires on raw counts — we don't lose signal.
                 self.run_worker(
                     emit_doctor_warned_telemetry_async(
                         self.core,
@@ -154,13 +160,6 @@ class KaganApp(App[None]):
                     callback=self._on_doctor_modal_dismissed,
                 )
                 return
-            if has_warn:
-                warn_count = sum(1 for c in checks if c.status == "warn")
-                noun = "check" if warn_count == 1 else "checks"
-                pending_warning = (
-                    f"Degraded mode: {warn_count} doctor {noun} returned warnings. "
-                    "Run 'kagan doctor' to fix."
-                )
 
         settings = await self.core.settings.get()
         last_project_id = settings.get("ui.last_project_id")
@@ -174,14 +173,11 @@ class KaganApp(App[None]):
                 logger.warning("Failed to load last project: {}", exc)
             else:
                 await self.activate_project(project)
-                self.push_screen("kanban-screen")
-                if pending_warning:
-                    self.notify(pending_warning, severity="warning", timeout=8)
+                default_screen = os.environ.get("KAGAN_DEFAULT_SCREEN", "workspace-screen")
+                self.push_screen(default_screen)
                 return
 
         self.push_screen(OnboardingFlow(mode="project-picker", dismissible=False))
-        if pending_warning:
-            self.notify(pending_warning, severity="warning", timeout=8)
 
     def _on_doctor_modal_dismissed(self, _skipped: bool) -> None:
         """Called when DoctorModal is dismissed (user clicked Skip anyway)."""
@@ -284,7 +280,7 @@ class KaganApp(App[None]):
 
         self.push_screen(
             ConfirmModal(
-                title="Quit Kagan",
+                title="Quit kagan",
                 message="Are you sure you want to shut down the TUI?",
                 confirm_label="Quit",
                 cancel_label="Cancel",
@@ -309,12 +305,11 @@ class KaganApp(App[None]):
             if inspect.isawaitable(result):
                 await result
 
-    async def action_open_task_chat(self) -> None:
-        handler = getattr(self.screen, "action_open_task_chat", None)
-        if callable(handler):
-            result: Any = handler()
-            if inspect.isawaitable(result):
-                await result
+    def action_open_orchestrator(self) -> None:
+        if isinstance(self.screen, OrchestratorOverlay):
+            self.pop_screen()
+            return
+        self.push_screen(OrchestratorOverlay())
 
     def action_show_help(self) -> None:
         sections: list[tuple[str, tuple[tuple[str, str], ...]]] = []
@@ -358,3 +353,14 @@ class KaganApp(App[None]):
             self.notify("Open a project before selecting a repository.", severity="warning")
             return
         self.push_screen(RepoPickerModal())
+
+    def action_toggle_mode(self) -> None:
+        handler = getattr(self.screen, "action_toggle_mode", None)
+        if callable(handler):
+            handler()
+            return
+        if isinstance(self.screen, KanbanScreen):
+            self.switch_screen("workspace-screen")
+        else:
+            default_screen = os.environ.get("KAGAN_DEFAULT_SCREEN", "workspace-screen")
+            self.push_screen(default_screen)

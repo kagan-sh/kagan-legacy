@@ -1,8 +1,10 @@
+import asyncio
 import contextlib
 import shlex
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
+from loguru import logger
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -23,6 +25,7 @@ from kagan.cli.chat import (
     parse_slash_invocation,
     resolve_slash_input,
 )
+from kagan.core.chat._history import KaganFileHistory
 from kagan.core.enums import SessionKind
 from kagan.tui.keybindings import CHAT_BINDINGS
 from kagan.tui.screens.file_picker import FilePickerModal
@@ -38,6 +41,10 @@ from kagan.tui.widgets.permission import PermissionPrompt
 from kagan.tui.widgets.status_bar import StatusBar
 from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
 
+if TYPE_CHECKING:
+    from kagan.core import KaganCore
+    from kagan.core.permission import PermissionRequest
+
 _SLASH_ALIASES: Final[dict[str, str]] = {
     "q": "exit",
     "quit": "exit",
@@ -46,6 +53,13 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
     "a": "agents",
     "f": "flow",
 }
+
+
+def _overlay_cycle_agent_hint() -> str:
+    """Footer fragment for overlay mode (prompt ↑/↓; global Ctrl+Shift+[/])."""
+    return "↑/↓ or Ctrl+Shift+[/] · switch agents"
+
+
 _TUI_SLASH_COMMANDS: Final[frozenset[str]] = frozenset(
     {
         "agents",
@@ -137,6 +151,12 @@ class ChatPanel(Vertical):
         pass
 
     @dataclass
+    class CycleAgentRequested(Message):
+        """Overlay-only: user pressed ↑/↓ in the prompt to cycle attached streams."""
+
+        direction: Literal[-1, 1]
+
+    @dataclass
     class InterruptCompleted(Message):
         pass
 
@@ -183,14 +203,24 @@ class ChatPanel(Vertical):
         self._pending_after_interrupt: str | None = None
         self._history_programmatic_update = False
         self._overlay_split_key = "Ctrl+."
-        self._overlay_fullscreen_key = "Ctrl+Shift+T"
+        self._overlay_fullscreen_key = "Ctrl+F"
         self._overlay_close_key = "Esc"
+        self._footer_mode: Literal["docked", "overlay"] = "docked"
         self._status_hint_override: str | None = None
         self._state_only_updates = 0
         # Cache of chat-session ids belonging to the active project, refreshed
         # asynchronously via :meth:`_refresh_project_session_keys`. ``None``
         # means "not yet loaded / no filter" — the picker shows everything.
         self._project_session_keys_cache: dict[str, set[str]] = {}
+        # Multi-turn message queue: messages submitted while the agent is
+        # streaming are held here and drained after the turn completes.
+        self._pending_queue: list[str] = []
+        self._max_queue_depth: Final[int] = 10
+        # Persistent input history — initialised with no-op until a project
+        # id is available (set via :meth:`set_project_id`).
+        self._file_history: KaganFileHistory | None = None
+        self._permission_waiter: asyncio.Future[None] | None = None
+        self._permission_meta: tuple[str, str, dict[str, Any]] | None = None
 
     @contextlib.contextmanager
     def state_only_updates(self):
@@ -297,6 +327,14 @@ class ChatPanel(Vertical):
                         )
                         badge.tooltip = "Current session kind (Orchestrator/Agent)"
                         yield badge
+                    queue_badge = Static(
+                        "",
+                        id="chat-overlay-queue-badge",
+                        classes="chat-queue-badge",
+                    )
+                    queue_badge.display = False
+                    queue_badge.tooltip = "Messages queued for after the current turn"
+                    yield queue_badge
                 with ChatSessionMenu(id="chat-overlay-session-switcher"):
                     with Horizontal(id="chat-overlay-session-current-wrap"):
                         mode_badge = Static(
@@ -470,10 +508,35 @@ class ChatPanel(Vertical):
             self._overlay_close_key = close.strip() or self._overlay_close_key
         self._refresh_status()
 
+    def set_footer_mode(self, mode: Literal["docked", "overlay"]) -> None:
+        """Switch hint display between docked and overlay layout.
+
+        - ``"docked"``  — shows split/fullscreen/files/sessions shortcuts
+        - ``"overlay"`` — shows ↑/↓ cycle-agent shortcuts for the prompt row
+        """
+        self._footer_mode = mode
+        self._refresh_status()
+
     def set_status_hint_override(self, hint: str | None) -> None:
         normalized = hint.strip() if isinstance(hint, str) else ""
         self._status_hint_override = normalized or None
         self._refresh_status()
+
+    def set_composer_context(self, *, access_mode: str = "", branch: str = "") -> None:
+        """Update the composer footer with access mode and branch info."""
+        status_bar = self._status_bar()
+        if status_bar is None:
+            return
+        status_bar.access_mode = access_mode
+        status_bar.branch_name = branch
+
+    def set_project_id(self, project_id: str, *, persist: bool = True) -> None:
+        """Attach a file-backed history store for *project_id*.
+
+        Must be called after :meth:`on_mount` so the widget is in the DOM.
+        Replaces any previously loaded history.
+        """
+        self._file_history = KaganFileHistory(project_id, persist=persist)
 
     def set_first_boot(self, enabled: bool = True) -> None:
         self.set_class(enabled, "first-boot")
@@ -495,6 +558,18 @@ class ChatPanel(Vertical):
 
     def append_thought_fragment(self, text: str) -> None:
         self._append_stream_fragment("thought", text)
+
+    def finish_thought(self) -> None:
+        """Finalise the thinking phase after a turn ends."""
+        stream = self._stream_output()
+        if stream is not None:
+            stream.finish_thought()
+
+    def set_show_reasoning(self, value: bool) -> None:
+        """Propagate show_reasoning flag to the active StreamingOutput."""
+        stream = self._stream_output()
+        if stream is not None:
+            stream.set_show_reasoning(value)
 
     def upsert_tool_call(
         self,
@@ -577,6 +652,37 @@ class ChatPanel(Vertical):
         if self.is_mounted:
             self._render_decision_surface()
 
+    async def await_permission_resolution(
+        self,
+        core: "KaganCore",
+        session_id: str,
+        event: "PermissionRequest",
+    ) -> None:
+        """Block until the user resolves an engine permission prompt (or cancel).
+
+        Used by :func:`~kagan.tui.screens._chat_runner.send_chat_message` when the
+        orchestrator stream yields :class:`~kagan.core.chat.events.PermissionRequest`.
+        """
+        from kagan.cli.chat._permission_ui import _format_permission_tool
+
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self._permission_waiter = fut
+        self._permission_meta = (event.future_id, session_id, dict(event.tool_call))
+        try:
+            self.request_permission(
+                _format_permission_tool(event.tool_call),
+                timeout_seconds=30,
+            )
+            await fut
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await core.chat.resolve_permission(session_id, event.future_id, outcome="deny")
+            raise
+        finally:
+            self._permission_waiter = None
+            self._permission_meta = None
+
     def clear_messages(self) -> None:
         state = self._current_state()
         state.entries.clear()
@@ -597,11 +703,17 @@ class ChatPanel(Vertical):
         return self._agent_hint
 
     def set_runtime_status(self, status: str) -> None:
+        previous = self._runtime_status
         self._runtime_status = status.strip().lower() or "ready"
         if self.is_mounted:
             status_bar = self._status_bar()
             if status_bar is not None:
                 status_bar.update_status(self._runtime_status)
+        # Drain the pending queue when the agent becomes idle
+        was_busy = previous in {"thinking", "initializing", "waiting"}
+        is_now_idle = self._runtime_status not in {"thinking", "initializing", "waiting"}
+        if was_busy and is_now_idle and self._pending_queue:
+            self.call_later(self._drain_pending_queue)
 
     def set_agent_backend(self, backend: str) -> None:
         if self.is_mounted:
@@ -637,6 +749,44 @@ class ChatPanel(Vertical):
         except NoMatches:
             pass
         return False
+
+    def pending_queue_size(self) -> int:
+        """Return the number of messages currently waiting in the queue."""
+        return len(self._pending_queue)
+
+    def clear_pending_queue(self) -> None:
+        """Clear all queued messages and hide the badge."""
+        self._pending_queue.clear()
+        self._update_queue_badge()
+
+    def _update_queue_badge(self) -> None:
+        with contextlib.suppress(NoMatches):
+            badge = self.query_one("#chat-overlay-queue-badge", Static)
+            count = len(self._pending_queue)
+            if count:
+                badge.update(f"↓ {count} queued")
+                badge.display = True
+            else:
+                badge.update("")
+                badge.display = False
+
+    def _drain_pending_queue(self) -> None:
+        """Submit the first item from the pending queue (if idle)."""
+        is_busy = self._runtime_status in {"thinking", "initializing", "waiting"}
+        if is_busy or not self._pending_queue:
+            return
+        text = self._pending_queue.pop(0)
+        self._update_queue_badge()
+        # Re-use the same submit path so history + UI are updated correctly
+        input_widget = self._input_widget()
+        if input_widget is not None:
+            self._history_programmatic_update = True
+            input_widget.value = text
+        self.post_message(self.SubmitRequested(text))
+        self.add_user_message(text)
+        if input_widget is not None:
+            input_widget.value = ""
+            self._current_state().draft = ""
 
     def hydrate_current_session_history(self, history: list[tuple[str, str]]) -> None:
         state = self._current_state()
@@ -707,10 +857,52 @@ class ChatPanel(Vertical):
 
     @on(PermissionPrompt.DecisionMade)
     def _on_permission_decision(self, event: PermissionPrompt.DecisionMade) -> None:
-        state = self._current_state()
-        state.decision_surface = None
-        self.add_system_message(f"Permission {event.decision}")
-        self._render_decision_surface()
+        meta = self._permission_meta
+        waiter = self._permission_waiter
+
+        if meta is None or waiter is None:
+            state = self._current_state()
+            state.decision_surface = None
+            self.add_system_message(f"Permission {event.decision}")
+            self._render_decision_surface()
+            return
+
+        future_id, session_id, tool_call = meta
+        core = getattr(self.app, "core", None)
+
+        async def _finish() -> None:
+            from kagan.cli.chat._permission_ui import _session_approvals, _tool_action_key
+
+            try:
+                if core is not None:
+                    key = _tool_action_key(tool_call)
+                    if event.decision == "allow":
+                        await core.chat.resolve_permission(
+                            session_id, future_id, outcome="allow_once"
+                        )
+                    elif event.decision == "allow_session":
+                        _session_approvals.grant(key)
+                        await core.chat.resolve_permission(
+                            session_id, future_id, outcome="allow_always"
+                        )
+                    elif event.decision == "allow_all":
+                        _session_approvals.grant_all()
+                        await core.chat.resolve_permission(
+                            session_id, future_id, outcome="allow_always"
+                        )
+                    elif event.decision in ("deny", "timeout"):
+                        await core.chat.resolve_permission(session_id, future_id, outcome="deny")
+            except Exception:
+                logger.exception("TUI permission resolution failed")
+            finally:
+                state_inner = self._current_state()
+                state_inner.decision_surface = None
+                self.add_system_message(f"Permission {event.decision}")
+                self._render_decision_surface()
+                if not waiter.done():
+                    waiter.set_result(None)
+
+        self.run_worker(_finish(), name="chat-permission-resolve", exit_on_error=False)
 
     def _handle_overlay_navigation(self, event: Key) -> bool:
         overlay_visible = bool(self._slash_matches or self._mention_matches)
@@ -740,9 +932,7 @@ class ChatPanel(Vertical):
             # instead of merely accepting the overlay selection.
             current_text = self._input_widget().value.strip()
             if current_text.startswith("/"):
-                cmd_name = (
-                    current_text.lstrip("/").split()[0] if current_text.lstrip("/") else ""
-                )
+                cmd_name = current_text.lstrip("/").split()[0] if current_text.lstrip("/") else ""
                 specs = [
                     spec
                     for spec in SLASH_COMMAND_REGISTRY.specs()
@@ -774,7 +964,7 @@ class ChatPanel(Vertical):
             return True
 
         if not self._input_has_focus():
-            return True
+            return False
 
         if event.key == "ctrl+c":
             event.prevent_default()
@@ -797,21 +987,54 @@ class ChatPanel(Vertical):
             if self._cycle_prompt_history(direction="up"):
                 event.prevent_default()
                 event.stop()
-            return True
+                return True
+            return False
 
         if event.key == "down":
             if self._cycle_prompt_history(direction="down"):
                 event.prevent_default()
                 event.stop()
-            return True
+                return True
+            return False
 
         return False
+
+    def _handle_overlay_cycle_agent(self, event: Key) -> bool:
+        """In overlay mode with prompt focused, ↑/↓ cycles orchestrator sessions."""
+        if self._footer_mode != "overlay" or not self._input_has_focus():
+            return False
+        if event.key == "up":
+            self.post_message(ChatPanel.CycleAgentRequested(direction=-1))
+            event.prevent_default()
+            event.stop()
+            return True
+        if event.key == "down":
+            self.post_message(ChatPanel.CycleAgentRequested(direction=1))
+            event.prevent_default()
+            event.stop()
+            return True
+        return False
+
+    # ------------------------------------------------------------------ paste
+    # Textual's ``Paste`` event carries only text (``event.text``).  Terminal
+    # emulators report clipboard data as a bracketed-paste sequence which is
+    # decoded as UTF-8 text — raw image bytes are never exposed.  Platform
+    # clipboard APIs that can surface image data (e.g. ``pyperclip``, AppKit,
+    # X selection) are out-of-scope for the TUI surface.
+    #
+    # Gap: image-paste is **not** supported in the TUI.  Users can still
+    # reference images by file path — type the absolute path and the agent
+    # will read it directly from disk.  Web UI users get native clipboard
+    # image paste via the ``onPaste`` handler in ``chat-input-bar.tsx``.
+    # ─────────────────────────────────────────────────────────────────────────
 
     def on_key(self, event: Key) -> None:
         """Intercept arrow keys for slash/mention completion overlay navigation."""
         if self._handle_overlay_navigation(event):
             return
         if self._handle_input_editing(event):
+            return
+        if self._handle_overlay_cycle_agent(event):
             return
         self._handle_prompt_history(event)
 
@@ -872,6 +1095,8 @@ class ChatPanel(Vertical):
                 self._current_state().draft = ""
             else:
                 self._pending_after_interrupt = None
+            # Escape during streaming also clears the message queue
+            self.clear_pending_queue()
             self.post_message(ChatPanel.InterruptRequested())
             return
         self._request_close()
@@ -967,6 +1192,23 @@ class ChatPanel(Vertical):
                 self._current_state().draft = ""
                 self._hide_overlays()
                 return
+
+        # If the agent is busy, queue the message instead of sending immediately.
+        is_busy = self._runtime_status in {"thinking", "initializing", "waiting"}
+        if is_busy and not text.startswith("/"):
+            if len(self._pending_queue) >= self._max_queue_depth:
+                self.app.notify(
+                    "Queue full (max 10). Message not added.",
+                    severity="warning",
+                )
+            else:
+                self._pending_queue.append(text)
+                self._update_queue_badge()
+            input_widget.value = ""
+            self._current_state().draft = ""
+            input_widget.focus()
+            self._hide_overlays()
+            return
 
         self._append_prompt_history(text)
         self._current_state().last_sent_text = text
@@ -1482,8 +1724,6 @@ class ChatPanel(Vertical):
             status_bar.update_hint(self._status_hint_override)
             return
 
-        split_key = self._overlay_split_key
-        fullscreen_key = self._overlay_fullscreen_key
         close_key = self._overlay_close_key
         is_active = self._runtime_status in {"thinking", "initializing", "waiting"}
         if is_active:
@@ -1492,19 +1732,35 @@ class ChatPanel(Vertical):
             has_pending = bool(normalize_chat_input(value))
             esc_hint = "Esc stop+send" if has_pending else "Esc stop & edit last"
         else:
-            esc_hint = f"{close_key} close"
-        if bool(self._slash_matches or self._mention_matches):
-            right = (
-                f"Enter send · Tab complete · Ctrl+J timeline · "
-                f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
-                f"Ctrl+C clear · {esc_hint}"
-            )
+            esc_hint = f"{close_key} back"
+
+        if self._footer_mode == "overlay":
+            cycle = _overlay_cycle_agent_hint()
+            if bool(self._slash_matches or self._mention_matches):
+                right = (
+                    f"Enter send · Tab complete · {cycle} · "
+                    f"Ctrl+P files · Ctrl+K sessions · Ctrl+C clear · {esc_hint}"
+                )
+            else:
+                right = (
+                    f"Enter send · {cycle} · "
+                    f"Ctrl+P files · Ctrl+K sessions · Ctrl+C clear · {esc_hint}"
+                )
         else:
-            right = (
-                f"Enter send · Up/Down history · Ctrl+J timeline · "
-                f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
-                f"Ctrl+C clear · {esc_hint}"
-            )
+            split_key = self._overlay_split_key
+            fullscreen_key = self._overlay_fullscreen_key
+            if bool(self._slash_matches or self._mention_matches):
+                right = (
+                    f"Enter send · Tab complete · "
+                    f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
+                    f"Ctrl+C clear · {esc_hint}"
+                )
+            else:
+                right = (
+                    f"Enter send · Up/Down history · "
+                    f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
+                    f"Ctrl+C clear · {esc_hint}"
+                )
         status_bar = self._status_bar()
         if status_bar is None:
             return
@@ -1520,8 +1776,34 @@ class ChatPanel(Vertical):
             state.prompt_history.append(cleaned)
             state.prompt_history = state.prompt_history[-100:]
         state.history_index = None
+        # Also push to file-backed history when available
+        if self._file_history is not None:
+            self._file_history.push(cleaned)
 
     def _cycle_prompt_history(self, *, direction: Literal["up", "down"]) -> bool:
+        # When persistent file history is available use it for navigation so
+        # history is shared across TUI sessions and with ``kg chat``.
+        if self._file_history is not None:
+            input_widget = self._input_widget()
+            current = input_widget.value if input_widget is not None else ""
+            if direction == "up":
+                value = self._file_history.cycle_up(current)
+            else:
+                value = self._file_history.cycle_down(current)
+            if value is None and direction == "up":
+                # No history yet — fall through to in-session history
+                pass
+            elif value is not None:
+                self._history_programmatic_update = True
+                if input_widget is not None:
+                    input_widget.value = value
+                    input_widget.focus()
+                self._current_state().draft = value
+                return True
+            elif direction == "down" and not self._file_history.is_navigating():
+                # Down at end of navigation — nothing to do
+                return False
+
         state = self._current_state()
         if not state.prompt_history:
             return False

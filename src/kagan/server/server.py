@@ -44,6 +44,7 @@ class ApiServerOptions:
     enable_tls: bool = False  # generate self-signed cert and serve HTTPS
     web_ui: bool = False  # mount bundled local web UI at /
     dev_mode: bool = False
+    fake_agent: bool = False  # register fake-agent backend and control routes
 
 
 class _KaganUvicornServer(uvicorn.Server):
@@ -130,6 +131,11 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
     register_chat_routes(mcp)
     register_integration_routes(mcp)
     register_session_routes(mcp)
+
+    if opts.fake_agent:
+        from kagan.server._fake_agent_routes import register_fake_agent_routes
+
+        register_fake_agent_routes(mcp)
 
     # Web UI must be last — it mounts a catch-all SPA fallback at /
     if opts.web_ui:

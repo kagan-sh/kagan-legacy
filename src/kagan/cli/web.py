@@ -148,6 +148,7 @@ def web(
         port=port,
         web_ui=not dev_mode,  # Serve bundled UI unless in dev mode
         dev_mode=dev_mode,  # Skip auth in dev mode
+        fake_agent=fake_agent,
     )
     try:
         run_async(serve_http(opts))

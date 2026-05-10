@@ -405,6 +405,7 @@ class SessionItemResponse(_OrmBase):
     backend: str | None
     project_id: str | None
     task_id: str | None
+    task_status: str | None = None
     session_id: str | None
     chat_session_id: str | None
     updated_at: str

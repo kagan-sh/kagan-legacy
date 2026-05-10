@@ -52,6 +52,10 @@ class WorkspaceScreen(Screen[None]):
         self._unified_session_items: list[SessionItem] = []
         self._poll_task: asyncio.Task[None] | None = None
         self._row_map: list[ChatSessionListItem | _GroupHeader] = []
+        self._expanded_tasks: set[str] = set()
+        self._done_show_all: bool = False
+
+    DONE_INITIAL_LIMIT = 5
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -62,9 +66,9 @@ class WorkspaceScreen(Screen[None]):
         with Horizontal(id="workspace-body"):
             with Vertical(id="workspace-sidebar"):
                 with Vertical(id="workspace-sidebar-head"):
-                    yield Static("Workspace", id="workspace-sidebar-title")
+                    yield Static("Chat sessions", id="workspace-sidebar-title")
                     yield Static(
-                        "Orchestrator conversations",
+                        "Sessions",
                         id="workspace-sidebar-subtitle",
                     )
                     yield Static(
@@ -76,20 +80,20 @@ class WorkspaceScreen(Screen[None]):
                         id="workspace-sidebar-mode-hint",
                     )
                 yield Input(
-                    placeholder="Filter conversations",
+                    placeholder="Filter sessions...",
                     id="workspace-search",
                 )
                 yield OptionList(id="workspace-session-list")
                 yield Static(
-                    "No conversations yet. Press n to start one.",
+                    "No sessions yet. Press n to start one.",
                     id="workspace-sidebar-empty",
                 )
             with Vertical(id="workspace-main"):
                 with Vertical(id="workspace-main-header"):
-                    yield Static("Active conversation", id="workspace-main-eyebrow")
-                    yield Static("No conversation selected", id="workspace-main-title")
+                    yield Static("Active session", id="workspace-main-eyebrow")
+                    yield Static("No session selected", id="workspace-main-title")
                     yield Static(
-                        "Select a conversation from the sidebar or press n to start one.",
+                        "Select a session from the sidebar or press n to start one.",
                         id="workspace-main-subtitle",
                     )
                     yield Static(
@@ -202,8 +206,22 @@ class WorkspaceScreen(Screen[None]):
         if row is None:
             return
         if isinstance(row, _GroupHeader):
-            if row.group_key == "__new_chat__":
+            key = row.group_key
+            if key == "__new_chat__":
                 self._request_new_session_kind()
+                return
+            if key.startswith("__task__"):
+                task_id = key.removeprefix("__task__")
+                if task_id in self._expanded_tasks:
+                    self._expanded_tasks.discard(task_id)
+                else:
+                    self._expanded_tasks.add(task_id)
+                self._render_session_list()
+                return
+            if key == "__done_more__":
+                self._done_show_all = True
+                self._render_session_list()
+                return
             return
         self._chat_session_switch_token += 1
         token = self._chat_session_switch_token
@@ -555,111 +573,152 @@ class WorkspaceScreen(Screen[None]):
         option_list.clear_options()
         self._row_map = []
 
-        # "+ New chat" button at top
+        active_key = prefer_key or self.kagan_app.orchestrator_sessions.active_key()
+        active_project_id = self.kagan_app.project.id if self.kagan_app.project else None
+
         option_list.add_option(Option("[+ New chat]", id="__new_chat__"))
         self._row_map.append(_GroupHeader("[+ New chat]", "__new_chat__"))
 
-        # Group orchestrator sessions by project
-        groups: dict[str, list[ChatSessionListItem]] = {}
-        ungrouped: list[ChatSessionListItem] = []
-        for item in self._session_items:
-            pid = (item.project_id or "").strip()
-            if pid:
-                groups.setdefault(pid, []).append(item)
-            else:
-                ungrouped.append(item)
-
-        active_key = prefer_key or self.kagan_app.orchestrator_sessions.active_key()
-
-        # Render project groups
-        project_name = self.kagan_app.project.name if self.kagan_app.project else "Sessions"
-        project_id = self.kagan_app.project.id if self.kagan_app.project else ""
-
-        if groups or ungrouped:
-            # Project header
-            option_list.add_option(Option(f"▸ {project_name}", id=f"__group__{project_id}"))
-            self._row_map.append(_GroupHeader(project_name, f"__group__{project_id}"))
-
-        # Orchestrator sessions under project
-        all_items = list(ungrouped)
-        for _pid, items in groups.items():
-            all_items.extend(items)
-
+        # Loose orchestrator/general sessions, project-scoped.
+        loose_items: list[ChatSessionListItem] = [
+            item
+            for item in self._session_items
+            if active_project_id is None or (item.project_id or "") == active_project_id
+        ]
         if needle:
-            filtered = [
+            loose_filtered = [
                 item
-                for item in all_items
+                for item in loose_items
                 if needle in item.label.lower()
                 or needle in item.session_id.lower()
                 or needle in (item.agent_backend or "").lower()
             ]
         else:
-            filtered = all_items
+            loose_filtered = loose_items
+        self._visible_session_items = loose_filtered
 
-        self._visible_session_items = filtered
-
-        for item in filtered:
+        active_row_index: int | None = None
+        for item in loose_filtered:
             is_active = self._session_key_for_item(item) == active_key
-            prefix = "  ●" if is_active else "  ◇"
-            label = f"{prefix} {item.label}"
+            glyph = "○" if (item.session_type or "").lower() == "general" else "◈"
+            label = f"  {glyph} {item.label}"
             ts = item.updated_relative or ""
             if ts:
                 label += f"  [dim]{ts}[/]"
             opt_id = f"__session__{item.session_id}"
             option_list.add_option(Option(label, id=opt_id))
             self._row_map.append(item)
+            if is_active:
+                active_row_index = len(self._row_map) - 1
 
-        # Task sessions from unified list
-        task_items = [si for si in self._unified_session_items if si.type == "task"]
-        if task_items:
-            option_list.add_option(Option("▸ Task sessions", id="__group__tasks"))
-            self._row_map.append(_GroupHeader("Task sessions", "__group__tasks"))
-            for ti in task_items:
-                label = ti.title or ti.id
-                if needle and needle not in label.lower():
-                    continue
-                ts_short = ti.updated_at[:10] if ti.updated_at else ""
-                glyph = "▶" if ti.role == "worker" else "◈"
-                row_label = f"  {glyph} {label}"
-                if ts_short:
-                    row_label += f"  [dim]{ts_short}[/]"
-                option_list.add_option(Option(row_label, id=f"__task__{ti.id}"))
-                self._row_map.append(_GroupHeader(label, f"__task__{ti.id}"))
-
-        # Manage visibility
-        visible_count = len(all_items) + len(task_items)
-        if needle:
-            visible_count = len(filtered) + (
-                sum(1 for ti in task_items if needle in (ti.title or ti.id).lower())
+        # Task groups, project-scoped, partitioned by task_status.
+        task_groups: dict[str, dict] = {}
+        for si in self._unified_session_items:
+            if si.type != "task" or not si.task_id:
+                continue
+            if active_project_id is not None and (si.project_id or "") != active_project_id:
+                continue
+            group = task_groups.setdefault(
+                si.task_id,
+                {
+                    "task_id": si.task_id,
+                    "title": si.title or si.task_id,
+                    "task_status": si.task_status,
+                    "sessions": [],
+                    "updated_at": si.updated_at,
+                },
             )
+            group["sessions"].append(si)
+            if si.updated_at and si.updated_at > group["updated_at"]:
+                group["updated_at"] = si.updated_at
+            if not group["task_status"] and si.task_status:
+                group["task_status"] = si.task_status
+
+        all_groups = sorted(task_groups.values(), key=lambda g: g["updated_at"], reverse=True)
+        live_groups = [g for g in all_groups if g["task_status"] != "DONE"]
+        done_groups = [g for g in all_groups if g["task_status"] == "DONE"]
+
+        def _group_matches(group: dict) -> bool:
+            if not needle:
+                return True
+            if needle in group["title"].lower():
+                return True
+            return any(needle in (s.title or "").lower() for s in group["sessions"])
+
+        live_visible = [g for g in live_groups if _group_matches(g)]
+        done_visible = [g for g in done_groups if _group_matches(g)]
+
+        def _render_task_group(group: dict, *, muted: bool) -> None:
+            expanded = group["task_id"] in self._expanded_tasks
+            chevron = "▾" if expanded else "▸"
+            title = group["title"]
+            count = len(group["sessions"])
+            row_label = f"  {chevron} {title}  [dim]{count}[/]"
+            if muted:
+                row_label = f"[dim]{row_label}[/]"
+            option_list.add_option(Option(row_label, id=f"__task__{group['task_id']}"))
+            self._row_map.append(_GroupHeader(title, f"__task__{group['task_id']}"))
+            if not expanded:
+                return
+            for sess in group["sessions"]:
+                role = (sess.role or "").lower()
+                glyph = "◇" if role == "reviewer" else "◆"
+                role_label = role.capitalize() if role else "Session"
+                backend = f" · {sess.backend}" if sess.backend else ""
+                child_label = f"      {glyph} {role_label}{backend}"
+                ts_short = sess.updated_at[:10] if sess.updated_at else ""
+                if ts_short:
+                    child_label += f"  [dim]{ts_short}[/]"
+                if muted:
+                    child_label = f"[dim]{child_label}[/]"
+                option_list.add_option(Option(child_label, id=f"__task_session__{sess.id}"))
+                self._row_map.append(_GroupHeader(role_label, f"__task_session__{sess.id}"))
+
+        for group in live_visible:
+            _render_task_group(group, muted=False)
+
+        # DONE bucket
+        if done_visible:
+            option_list.add_option(
+                Option(
+                    f"[dim]── Done ({len(done_visible)}) ──[/]",
+                    id="__done_header__",
+                    disabled=True,
+                )
+            )
+            self._row_map.append(_GroupHeader("Done", "__done_header__"))
+            limit = self.DONE_INITIAL_LIMIT
+            shown_done = done_visible if self._done_show_all else done_visible[:limit]
+            for group in shown_done:
+                _render_task_group(group, muted=True)
+            hidden = len(done_visible) - len(shown_done)
+            if hidden > 0:
+                option_list.add_option(
+                    Option(f"  [dim]Show more ({hidden})[/]", id="__done_more__")
+                )
+                self._row_map.append(_GroupHeader("Show more", "__done_more__"))
+
+        visible_count = len(loose_filtered) + len(live_visible) + len(done_visible)
         if visible_count > 0:
             option_list.display = True
             self.query_one("#workspace-sidebar-empty", Static).display = False
             if needle:
-                subtitle.update(
-                    f"{visible_count} of {len(self._session_items)} conversations + tasks"
-                )
+                subtitle.update(f"{visible_count} matching")
             else:
-                noun = "item" if visible_count == 1 else "items"
+                noun = "session" if visible_count == 1 else "sessions"
                 subtitle.update(f"{visible_count} {noun}")
-            # Highlight active session
-            active_index = 0
-            for index, item in enumerate(filtered):
-                if self._session_key_for_item(item) == active_key:
-                    active_index = index + 2  # offset for new_chat + group header
-                    break
-            if active_index < option_list.option_count:
-                option_list.highlighted = active_index
+            if active_row_index is not None and active_row_index < option_list.option_count:
+                option_list.highlighted = active_row_index
         else:
             option_list.display = False
             empty = self.query_one("#workspace-sidebar-empty", Static)
             empty.update(
-                "No matching conversations. Clear search or press n to start one."
+                "No matching sessions. Clear search or press n to start one."
                 if needle
-                else "No conversations yet. Press n to start one."
+                else "No sessions yet. Press n to start one."
             )
             empty.display = True
-            subtitle.update("No matching conversations" if needle else "No conversations")
+            subtitle.update("No matching sessions" if needle else "No sessions")
 
     async def _poll_unified_sessions(self) -> None:
         while True:
@@ -752,8 +811,8 @@ class WorkspaceScreen(Screen[None]):
         task_btn = self.query_one("#workspace-open-task", Static)
         item = self._active_session_item(active_key)
         if item is None:
-            title.update("No conversation selected")
-            subtitle.update("Select a conversation from the sidebar or press n to start one.")
+            title.update("No session selected")
+            subtitle.update("Select a session from the sidebar or press n to start one.")
             task_btn.display = False
             return
 

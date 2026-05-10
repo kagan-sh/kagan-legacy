@@ -39,6 +39,7 @@ class SessionItem:
     backend: str | None
     project_id: str | None
     task_id: str | None
+    task_status: str | None
     session_id: str | None
     chat_session_id: str | None
     updated_at: str
@@ -70,6 +71,7 @@ def _chat_to_item(chat: ChatSession) -> SessionItem:
         backend=chat.agent_backend,
         project_id=chat.project_id,
         task_id=None,
+        task_status=None,
         session_id=None,
         chat_session_id=chat.id,
         updated_at=_format_dt(chat.updated_at),
@@ -80,6 +82,7 @@ def _chat_to_item(chat: ChatSession) -> SessionItem:
 def _task_session_to_item(session: Session, task: Task) -> SessionItem:
     updated_at_raw = session.ended_at if session.ended_at is not None else session.started_at
     status_value = session.status.value if hasattr(session.status, "value") else str(session.status)
+    task_status_value = task.status.value if hasattr(task.status, "value") else str(task.status)
     capabilities = SessionCapabilities(
         can_chat=False,
         can_stream=False,
@@ -97,6 +100,7 @@ def _task_session_to_item(session: Session, task: Task) -> SessionItem:
         backend=session.agent_backend,
         project_id=task.project_id,
         task_id=task.id,
+        task_status=task_status_value,
         session_id=session.id,
         chat_session_id=None,
         updated_at=_format_dt(updated_at_raw),

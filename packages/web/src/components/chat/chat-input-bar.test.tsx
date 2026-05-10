@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createStore } from "jotai";
 import { renderWithProviders } from "@/test/render";
@@ -317,6 +317,53 @@ describe("ChatInputBar", () => {
                         expect.objectContaining({ name: 'notes.txt', type: 'file', content: 'hello' }),
                     ]),
                 }),
+            );
+        });
+    });
+
+    // ── Clipboard image paste (D7 multimodal) ────────────────────────────────
+    // JSDOM does not implement DataTransfer, so we use fireEvent.paste with a
+    // minimal clipboardData stub that satisfies Array.from(e.clipboardData.items).
+
+    describe('clipboard image paste', () => {
+        function makeClipboardData(fileName: string, mimeType: string) {
+            const buf = new ArrayBuffer(4);
+            const b = new Uint8Array(buf);
+            b.set([0x89, 0x50, 0x4e, 0x47]);
+            const file = new File([new Blob([buf], { type: mimeType })], fileName, { type: mimeType });
+            const item = { kind: 'file' as const, type: mimeType, getAsFile: () => file };
+            return {
+                items: Object.assign(
+                    [item as unknown as DataTransferItem],
+                    { [Symbol.iterator]: function* () { yield item as unknown as DataTransferItem; } },
+                ),
+            };
+        }
+
+        it('shows image chip after pasting an image', async () => {
+            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store: connectedStore() });
+            const textarea = screen.getByPlaceholderText('Type a message or / for commands...');
+
+            fireEvent.paste(textarea, { clipboardData: makeClipboardData('screenshot.png', 'image/png') });
+
+            await waitFor(() => expect(screen.getByText('screenshot.png')).toBeInTheDocument());
+        });
+
+        it('includes image attachment in onSend after paste + submit', async () => {
+            const user = userEvent.setup();
+            const onSend = vi.fn();
+            renderWithProviders(<ChatInputBar onSend={onSend} />, { store: connectedStore() });
+            const textarea = screen.getByPlaceholderText('Type a message or / for commands...');
+
+            fireEvent.paste(textarea, { clipboardData: makeClipboardData('diagram.png', 'image/png') });
+            await waitFor(() => expect(screen.getByText('diagram.png')).toBeInTheDocument());
+
+            await user.type(textarea, 'see attached');
+            await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+            expect(onSend).toHaveBeenCalledWith(
+                'see attached',
+                expect.arrayContaining([expect.objectContaining({ type: 'image', name: 'diagram.png', mimeType: 'image/png' })]),
             );
         });
     });

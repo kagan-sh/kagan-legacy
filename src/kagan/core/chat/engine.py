@@ -153,8 +153,6 @@ class ChatEngine:
         """
         del attachments  # threaded into stream_assistant by callers
         cleaned = text.strip()
-        if not cleaned:
-            raise ValueError("user message text is required")
 
         scan = scan_text_for_injection(cleaned)
         risk = scan.get("risk_level", "SAFE")

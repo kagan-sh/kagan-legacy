@@ -559,6 +559,18 @@ class ChatPanel(Vertical):
     def append_thought_fragment(self, text: str) -> None:
         self._append_stream_fragment("thought", text)
 
+    def finish_thought(self) -> None:
+        """Finalise the thinking phase after a turn ends."""
+        stream = self._stream_output()
+        if stream is not None:
+            stream.finish_thought()
+
+    def set_show_reasoning(self, value: bool) -> None:
+        """Propagate show_reasoning flag to the active StreamingOutput."""
+        stream = self._stream_output()
+        if stream is not None:
+            stream.set_show_reasoning(value)
+
     def upsert_tool_call(
         self,
         tool_id: str,
@@ -1002,6 +1014,19 @@ class ChatPanel(Vertical):
             event.stop()
             return True
         return False
+
+    # ------------------------------------------------------------------ paste
+    # Textual's ``Paste`` event carries only text (``event.text``).  Terminal
+    # emulators report clipboard data as a bracketed-paste sequence which is
+    # decoded as UTF-8 text — raw image bytes are never exposed.  Platform
+    # clipboard APIs that can surface image data (e.g. ``pyperclip``, AppKit,
+    # X selection) are out-of-scope for the TUI surface.
+    #
+    # Gap: image-paste is **not** supported in the TUI.  Users can still
+    # reference images by file path — type the absolute path and the agent
+    # will read it directly from disk.  Web UI users get native clipboard
+    # image paste via the ``onPaste`` handler in ``chat-input-bar.tsx``.
+    # ─────────────────────────────────────────────────────────────────────────
 
     def on_key(self, event: Key) -> None:
         """Intercept arrow keys for slash/mention completion overlay navigation."""

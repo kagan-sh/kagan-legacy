@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect, type KeyboardEvent, useMemo } from 'react';
-import { Send, Plus, Paperclip, X } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect, type KeyboardEvent, useMemo, type ClipboardEvent } from 'react';
+import { Send, Plus, Paperclip, X, Image } from 'lucide-react';
 import { toast } from 'sonner';
 import { PENDING_QUEUE_MAX, type PendingMessage, type PendingMessageInput } from '@/lib/atoms/chat';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { useChatInputHistory } from '@/lib/hooks/use-chat-input-history';
+import { ATTACHMENT_MAX_COUNT, IMAGE_ATTACHMENT_MAX_BYTES } from '@/lib/chat-attachments';
 import type { Attachment } from '@/lib/chat-attachments';
 
 const SLASH_COMMANDS = [
@@ -238,9 +239,17 @@ export function ChatInputBar({
   const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    const available = ATTACHMENT_MAX_COUNT - attachments.length;
+    if (available <= 0) {
+      toast.error(`Max ${ATTACHMENT_MAX_COUNT} attachments per message`);
+      setAttachMenuOpen(false);
+      return;
+    }
+
     const newAttachments: Attachment[] = [];
-    for (const file of Array.from(files)) {
-      const type = file.type.startsWith('image/')
+    for (const file of Array.from(files).slice(0, available)) {
+      const isImage = file.type.startsWith('image/');
+      const type = isImage
         ? 'image'
         : file.name.endsWith('.md') || file.name.endsWith('.markdown')
           ? 'markdown'
@@ -251,10 +260,15 @@ export function ChatInputBar({
         type,
         name: file.name,
         file,
+        ...(isImage ? { mimeType: file.type } : {}),
       };
 
       // Read file content: base64 for images, text for code/markdown
       if (type === 'image') {
+        if (file.size > IMAGE_ATTACHMENT_MAX_BYTES) {
+          toast.error(`Image too large — max ${IMAGE_ATTACHMENT_MAX_BYTES / (1024 * 1024)} MB`);
+          continue;
+        }
         try {
           const buf = await file.arrayBuffer();
           attachment.content = btoa(
@@ -285,6 +299,55 @@ export function ChatInputBar({
   const openFilePicker = () => {
     fileInputRef.current?.click();
   };
+
+  // ── Clipboard image paste ──────────────────────────────────────────────────
+
+  const handlePaste = useCallback(async (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItems = items.filter(
+      (item) => item.kind === 'file' && item.type.startsWith('image/'),
+    );
+    if (imageItems.length === 0) return;
+
+    // Don't preventDefault — let the browser handle text paste normally.
+    // Only process image items.
+
+    const remaining = ATTACHMENT_MAX_COUNT - attachments.length;
+    if (remaining <= 0) {
+      toast.error(`Max ${ATTACHMENT_MAX_COUNT} attachments per message`);
+      return;
+    }
+
+    const toProcess = imageItems.slice(0, remaining);
+    const newAttachments: Attachment[] = [];
+
+    for (const item of toProcess) {
+      const file = item.getAsFile();
+      if (!file) continue;
+
+      if (file.size > IMAGE_ATTACHMENT_MAX_BYTES) {
+        toast.error(`Image too large — max ${IMAGE_ATTACHMENT_MAX_BYTES / (1024 * 1024)} MB`);
+        continue;
+      }
+
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const name = file.name || `pasted-image-${id}.${file.type.split('/')[1] ?? 'png'}`;
+
+      try {
+        const buf = await file.arrayBuffer();
+        const content = btoa(
+          new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ''),
+        );
+        newAttachments.push({ id, type: 'image', name, mimeType: file.type, content, file });
+      } catch {
+        toast.error(`Failed to read pasted image: ${name}`);
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments((prev) => [...prev, ...newAttachments]);
+    }
+  }, [attachments]);
 
   return (
     <div className={cn('relative border-t border-[color:var(--border-subtle)] bg-[var(--card)] p-3', className)}>
@@ -331,13 +394,25 @@ export function ChatInputBar({
 
       {/* Attachments preview */}
       {attachments.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           {attachments.map((att) => (
             <div
               key={att.id}
               className="inline-flex items-center gap-1.5 border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-2 py-1 text-xs"
             >
-              <Paperclip className="size-3 text-[var(--primary)]" />
+              {att.type === 'image' ? (
+                att.file ? (
+                  <img
+                    src={URL.createObjectURL(att.file)}
+                    alt={att.name}
+                    className="size-5 object-cover"
+                  />
+                ) : (
+                  <Image className="size-3 text-[var(--primary)]" />
+                )
+              ) : (
+                <Paperclip className="size-3 text-[var(--primary)]" />
+              )}
               <span className="max-w-24 truncate">{att.name}</span>
               <button
                 onClick={() => removeAttachment(att.id)}
@@ -348,6 +423,9 @@ export function ChatInputBar({
               </button>
             </div>
           ))}
+          <span className="text-[10px] text-[var(--muted-foreground)]">
+            ↗ {attachments.length} attachment{attachments.length !== 1 ? 's' : ''}
+          </span>
         </div>
       )}
 
@@ -385,6 +463,7 @@ export function ChatInputBar({
           value={text}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={placeholder ?? 'Type a message or / for commands...'}
           rows={1}
           className="min-h-9 flex-1 resize-none py-2"

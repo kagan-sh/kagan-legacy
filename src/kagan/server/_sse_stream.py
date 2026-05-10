@@ -101,10 +101,12 @@ async def _unified_sse_stream(
         user_msg = await engine.push_user(session_id, text, attachments=attachment_dicts)
         user_msg_id = getattr(user_msg, "id", None)
 
+        attachment_count = len(attachments) if attachments else 0
         user_event: dict[str, Any] = {
             "t": "CHAT_USER_MESSAGE",
             "message_id": user_msg_id,
-            "content": text,
+            "content": text or "",
+            **({"attachment_count": attachment_count} if attachment_count > 0 else {}),
         }
         broadcast(session_id, user_event)
         yield emit(user_event)

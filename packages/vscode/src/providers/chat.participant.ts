@@ -73,6 +73,26 @@ class ChatParticipantState implements vscode.Disposable {
           }
           this.remoteChunkBuffer = "";
           break;
+        case "agent_lifecycle": {
+          const glyphs: Record<string, string> = {
+            started: "▸",
+            finished: "✓",
+            stopped: "◯",
+            failed: "✗",
+          };
+          const glyph = glyphs[engineEvent.kind] ?? "·";
+          const taskRef = engineEvent.task_id ? `#${engineEvent.task_id.slice(0, 8)}` : "task";
+          let label: string;
+          if (engineEvent.kind === "failed") {
+            label = engineEvent.detail ? `failed: ${engineEvent.detail}` : "failed";
+          } else if (engineEvent.kind === "finished") {
+            label = "finished";
+          } else {
+            label = engineEvent.kind;
+          }
+          void vscode.window.showInformationMessage(`Kagan: ${glyph} ${taskRef} ${label}`);
+          break;
+        }
         default:
           break;
       }

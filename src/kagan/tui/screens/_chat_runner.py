@@ -39,6 +39,7 @@ from kagan.core.chat import TurnInProgressError
 from kagan.core.chat._turn_display import TurnPhaseTracker
 from kagan.core.errors import KaganError
 from kagan.core.events import (
+    AgentLifecycle,
     AssistantChunk,
     AssistantMessagePersisted,
     Error,
@@ -146,18 +147,34 @@ def apply_chat_event_to_panel(panel: ChatPanel, event: Event | PermissionRequest
             pass
         case TurnEnd(reason="done"):
             panel._turn_tracker = None
+            panel.finish_thought()
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
             panel.increment_turn_count()
         case TurnEnd():
             # cancelled or error
             panel._turn_tracker = None
+            panel.finish_thought()
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
         case Error():
             panel.set_runtime_status("error")
             panel.set_stream_action("Orchestrator error", confidence="needs-validation")
             panel.add_system_message(f"Orchestrator error: {event.message}")
+        case AgentLifecycle():
+            _GLYPH = {"started": "▸", "finished": "✓", "stopped": "◯", "failed": "✗"}
+            glyph = _GLYPH.get(event.kind, "·")
+            task_ref = f"#{event.task_id[:8]}" if event.task_id else "task"
+            if event.kind == "failed":
+                detail_suffix = f": {event.detail}" if event.detail else ""
+                label = f"failed{detail_suffix}"
+            elif event.kind == "finished":
+                label = "finished"
+            elif event.kind == "stopped":
+                label = "stopped"
+            else:
+                label = event.kind
+            panel.add_system_message(f"{glyph} {task_ref} {label}")
         case _:
             pass
 
@@ -187,6 +204,9 @@ async def send_chat_message(
     settings = await core.settings.get()
     backend = panel.preferred_agent_backend() or resolve_default_agent_backend(settings)
     panel.set_agent_backend(backend)
+    # Propagate show_reasoning setting to the streaming panel
+    _raw_reasoning = settings.get("chat.show_reasoning", "").strip().lower()
+    panel.set_show_reasoning(_raw_reasoning not in {"", "0", "false", "no", "off"})
 
     app = panel.app
     sessions_ns = getattr(app, "orchestrator_sessions", None)

@@ -311,9 +311,10 @@ async def _notify_chat_on_session_transition(
     always receives the updated Session regardless.
 
     Fires on:
-    - Any → RUNNING (first time entering RUNNING state): kind="agent_started"
-    - Any → terminal (COMPLETED): kind="agent_finished"
-    - Any → terminal (FAILED / CANCELLED): kind="agent_stopped"
+    - Any → RUNNING (first time entering RUNNING state): kind="started"
+    - Any → terminal (COMPLETED): kind="finished"
+    - Any → terminal (FAILED): kind="failed"
+    - Any → terminal (CANCELLED): kind="stopped"
 
     Skips silently when task or project lookup fails.
     """
@@ -327,13 +328,14 @@ async def _notify_chat_on_session_transition(
     try:
         from kagan.core._db_helpers import _db_async as _dba
         from kagan.core.chat._attach import record_agent_lifecycle_event
+        from kagan.core.events import AgentLifecycle
         from kagan.core.models import Task as _Task
 
-        def _lookup(s) -> str | None:
+        def _lookup(s) -> tuple[str, str] | None:
             task = s.get(_Task, session.task_id)
             if task is None:
                 return None
-            return task.title
+            return task.title, task.project_id
 
         task_info = await _dba(client.engine, _lookup)
         if task_info is None:
@@ -344,26 +346,45 @@ async def _notify_chat_on_session_transition(
             )
             return
 
-        task_title = task_info
+        task_title, project_id = task_info
         role_label = f" ({session.agent_role})" if session.agent_role else ""
 
         if entering_running:
-            kind = "agent_started"
+            lc_kind = "started"
+            attach_kind = "agent_started"
             summary = f"{task_title}{role_label} started"
         elif to == SessionStatus.COMPLETED:
-            kind = "agent_finished"
+            lc_kind = "finished"
+            attach_kind = "agent_finished"
             summary = f"{task_title}{role_label} finished"
+        elif to == SessionStatus.FAILED:
+            lc_kind = "failed"
+            attach_kind = "agent_stopped"
+            summary = f"{task_title}{role_label} stopped (failed)"
         else:
-            kind = "agent_stopped"
+            lc_kind = "stopped"
+            attach_kind = "agent_stopped"
             summary = f"{task_title}{role_label} stopped ({to.value.lower()})"
 
         await record_agent_lifecycle_event(
             client.engine,
             task_id=session.task_id,
-            kind=kind,
+            kind=attach_kind,  # type: ignore[arg-type]
             session_id=session.id,
             summary=summary,
         )
+
+        # Broadcast an AgentLifecycle event to live chat-session /watch subscribers
+        # via the hook registered by the server layer (web / VSCode path).
+        broadcast_fn = getattr(client, "_lifecycle_broadcast_fn", None)
+        if broadcast_fn is not None and project_id:
+            lc_event = AgentLifecycle(
+                session_id=session.id,
+                task_id=session.task_id,
+                kind=lc_kind,  # type: ignore[arg-type]
+                detail=summary,
+            )
+            await broadcast_fn(project_id, lc_event)
 
     except Exception:
         logger.opt(exception=True).warning(

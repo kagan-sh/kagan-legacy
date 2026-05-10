@@ -468,3 +468,99 @@ describe('useChatSession — slash commands', () => {
     expect(result.current.editPrefill).toBeNull();
   });
 });
+
+describe('useChatSession — agent_lifecycle', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    capturedOnEvent = null;
+    // Reset getTurnStatus to inactive so no reconnect note is injected on load.
+    const { apiClient } = await import('@/lib/api/client');
+    (apiClient.getTurnStatus as Mock).mockResolvedValue({ active: false });
+  });
+
+  it('appends a note entry with checkmark on agent_lifecycle finished', async () => {
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
+    await act(async () => {});
+
+    fireWatchEvent({
+      type: 'agent_lifecycle',
+      session_id: 'sess-1',
+      task_id: 'abcdef12xyz',
+      kind: 'finished',
+      detail: null,
+    } as ChatWatchEvent);
+
+    const note = result.current.streamEntries.find((e) => e.kind === 'note');
+    expect(note).toBeDefined();
+    if (note?.kind === 'note') {
+      expect(note.message).toContain('✓');
+      expect(note.message).toContain('#abcdef12');
+      expect(note.message).toContain('finished');
+    }
+  });
+
+  it('appends a note entry with cross on agent_lifecycle failed', async () => {
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
+    await act(async () => {});
+
+    fireWatchEvent({
+      type: 'agent_lifecycle',
+      session_id: 'sess-1',
+      task_id: 'abcdef12xyz',
+      kind: 'failed',
+      detail: 'exit code 1',
+    } as ChatWatchEvent);
+
+    const note = result.current.streamEntries.find((e) => e.kind === 'note');
+    expect(note).toBeDefined();
+    if (note?.kind === 'note') {
+      expect(note.message).toContain('✗');
+      expect(note.message).toContain('failed');
+      expect(note.message).toContain('exit code 1');
+    }
+  });
+
+  it('appends a note entry with circle on agent_lifecycle stopped', async () => {
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
+    await act(async () => {});
+
+    fireWatchEvent({
+      type: 'agent_lifecycle',
+      session_id: 'sess-1',
+      task_id: 'abcdef12xyz',
+      kind: 'stopped',
+      detail: null,
+    } as ChatWatchEvent);
+
+    const note = result.current.streamEntries.find((e) => e.kind === 'note');
+    expect(note).toBeDefined();
+    if (note?.kind === 'note') {
+      expect(note.message).toContain('◯');
+      expect(note.message).toContain('stopped');
+    }
+  });
+
+  it('appends a note entry with arrow on agent_lifecycle started', async () => {
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
+    await act(async () => {});
+
+    fireWatchEvent({
+      type: 'agent_lifecycle',
+      session_id: 'sess-1',
+      task_id: 'abcdef12xyz',
+      kind: 'started',
+      detail: null,
+    } as ChatWatchEvent);
+
+    const note = result.current.streamEntries.find((e) => e.kind === 'note');
+    expect(note).toBeDefined();
+    if (note?.kind === 'note') {
+      expect(note.message).toContain('▸');
+      expect(note.message).toContain('started');
+    }
+  });
+});

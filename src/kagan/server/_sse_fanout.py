@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse
 
 from kagan.core import Attachment, AttachmentBody
 from kagan.core.chat import ChatSessionView, chat_session_to_view
-from kagan.core.events import Event, event_to_dict
+from kagan.core.events import AgentLifecycle, Event, event_to_dict
 from kagan.core.permission import PermissionRequest
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err
@@ -164,6 +164,37 @@ async def _load_session_view(client: Any, session_id: str) -> ChatSessionView | 
     return chat_session_to_view(*pair)
 
 
+async def _broadcast_lifecycle_to_project(
+    client: Any, project_id: str, event: AgentLifecycle
+) -> None:
+    """Fan out an AgentLifecycle event to all /watch subscribers for orchestrator
+    and general chat sessions that belong to *project_id*.
+
+    Called via the ``_lifecycle_broadcast_fn`` hook on ``KaganCore`` whenever a
+    session transition fires. Errors are caught so they never block the transition.
+    """
+    try:
+        sessions = await client.chat_sessions.list(project_id=project_id)
+        wire = event_to_dict(event)
+        for session in sessions:
+            _broadcast(session.id, wire)
+    except Exception:
+        pass  # best-effort; transition already committed
+
+
+def register_lifecycle_broadcast(client: Any) -> None:
+    """Wire the server-side AgentLifecycle fan-out into ``client._lifecycle_broadcast_fn``.
+
+    Called once at server startup so that task-agent session transitions push
+    ``AgentLifecycle`` events to all active /watch subscribers.
+    """
+
+    async def _fn(project_id: str, event: AgentLifecycle) -> None:
+        await _broadcast_lifecycle_to_project(client, project_id, event)
+
+    client._lifecycle_broadcast_fn = _fn
+
+
 def _teardown_session_state(ctx: ServerContext, session_id: str) -> None:
     """Clear per-session transport state and ask the engine to detach."""
     _chat_subscribers.pop(session_id, None)
@@ -190,10 +221,10 @@ async def resolve_sse_parameters(
     if not isinstance(body, dict):
         return _err("Request body must be a JSON object", status=400)
     text = cast("str", body.get("text", "")).strip()
-    if not text:
-        return _err("text is required", status=400)
     agent_backend = cast("str | None", body.get("agent_backend"))
     attachments = _parse_attachments(body)
+    if not text and not attachments:
+        return _err("text or at least one attachment is required", status=400)
 
     session = await _load_session_view(ctx.client, session_id)
     if session is None:

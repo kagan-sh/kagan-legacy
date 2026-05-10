@@ -15,7 +15,11 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from sqlalchemy import Engine
+
+    from kagan.core.events import AgentLifecycle
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel
 
@@ -58,6 +62,10 @@ class KaganCore:
         self._closed = False
 
         self.active_project_id: str | None = None
+        # Optional hook registered by the server layer to fan out AgentLifecycle
+        # events to active /watch subscribers for a project's orchestrator sessions.
+        # Signature: async (project_id: str, event: AgentLifecycle) -> None
+        self._lifecycle_broadcast_fn: Callable[[str, AgentLifecycle], Awaitable[None]] | None = None
         # reviews namespace must be built after tasks/worktrees are set
         self.reviews = _make_reviews_ns(self._engine, self)
         logger.info("KaganCore initialized")

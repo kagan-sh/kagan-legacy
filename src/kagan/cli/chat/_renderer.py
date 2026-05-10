@@ -322,6 +322,43 @@ class CLIRenderer:
         self.last_usage = update
 
     # ------------------------------------------------------------------
+    # Agent lifecycle notification
+    # ------------------------------------------------------------------
+
+    def on_agent_lifecycle(self, event: ChatEvent) -> None:
+        """Print a dim one-line banner for a background-task agent lifecycle event."""
+        from kagan.core.events import AgentLifecycle
+
+        if not isinstance(event, AgentLifecycle):
+            return
+
+        _GLYPH: dict[str, str] = {
+            "started": "▸",
+            "finished": "✓",
+            "stopped": "◯",
+            "failed": "✗",
+        }
+        glyph = _GLYPH.get(event.kind, "·")
+        task_ref = f"#{event.task_id[:8]}" if event.task_id else "task"
+
+        if event.kind == "failed":
+            detail_suffix = f": {event.detail}" if event.detail else ""
+            label = f"failed{detail_suffix}"
+        elif event.kind == "finished":
+            label = "finished"
+        elif event.kind == "stopped":
+            label = "stopped"
+        else:
+            label = event.kind
+
+        line = f"  [dim]{glyph} {task_ref} {label}[/dim]"
+
+        def _print() -> None:
+            self._console.print(line, highlight=False)
+
+        print_via_terminal(_print)
+
+    # ------------------------------------------------------------------
     # ChatEvent dispatcher (phase 5c entry point)
     # ------------------------------------------------------------------
 
@@ -346,6 +383,8 @@ class CLIRenderer:
                 self.finalize_pending_markdown()
             case "error" | "assistant_message":
                 self.finalize_pending_markdown()
+            case "agent_lifecycle":
+                self.on_agent_lifecycle(event)
             case _:
                 pass
 

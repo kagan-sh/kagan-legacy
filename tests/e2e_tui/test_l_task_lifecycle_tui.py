@@ -212,6 +212,9 @@ async def test_keyboard_s_starts_managed_run(tui_driver: Any) -> None:
         await wait_for_screen(app, KanbanScreen)
         await pilot.pause()
 
+        # BoardView mounts asynchronously; under xdist load it may not be
+        # in the DOM at the next pause(). Poll for it before querying.
+        await wait_for(lambda: bool(app.screen.query(BoardView)), tries=80, pump_delay=0.05)
         board = app.screen.query_one(BoardView)
         # Wait for board to load the task card so _selected_task_id is set
         await wait_for(lambda: len(list(board.query("TaskCard"))) > 0, tries=80, pump_delay=0.05)

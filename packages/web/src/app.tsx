@@ -8,8 +8,6 @@ import { isAuthenticatedAtom, isAuthLoadingAtom, hydrateAuthAtom } from '@/lib/a
 import { resolvedThemeAtom, initThemeAtom } from '@/lib/atoms/theme';
 import { store } from '@/lib/atoms/store';
 import { Spinner } from '@/components/ui/spinner';
-import { CommandPalette } from '@/components/command-palette/command-palette';
-import { useGlobalShortcuts } from '@/lib/hooks/use-global-shortcuts';
 import { registerBuiltinCommands } from '@/lib/commands/commands';
 
 function AppShell() {
@@ -20,8 +18,6 @@ function AppShell() {
   const initTheme = useSetAtom(initThemeAtom);
   const navigate = useNavigate();
   const location = useLocation();
-
-  useGlobalShortcuts();
 
   useEffect(() => {
     registerBuiltinCommands();
@@ -52,7 +48,6 @@ function AppShell() {
   return (
     <>
       <Outlet />
-      <CommandPalette />
       <Toaster
         theme={resolvedTheme}
         position="bottom-right"

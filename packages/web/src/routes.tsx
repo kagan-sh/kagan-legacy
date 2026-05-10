@@ -24,7 +24,7 @@ export const routes: RouteObject[] = [
         errorElement: <RouteError />,
       },
       {
-        lazy: () => import('@/components/layout/app-layout'),
+        lazy: () => import('@/components/shell/shell-layout'),
         errorElement: <RouteError />,
         children: [
           {

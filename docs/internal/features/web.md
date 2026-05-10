@@ -14,74 +14,66 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 2. IDE-Style App Shell
+## 2. App Shell
 
-- persistent activity bar, contextual header, and desktop utility rail
-- global Quick Actions (`Cmd/Ctrl+Shift+P`) with route-aware task actions and workspace navigation
-- mobile uses bottom tabs instead of the desktop shell rails
+- single 44 px title bar with traffic-light chrome, sidebar toggle, history nav, project glyph, search trigger, daemon pill, settings link, theme toggle
+- title-bar segmented control switches between **Workspace** (`/chat`) and **Kanban** (`/board`); animated indicator slides between the two
+- 252 px sidebar (collapsible via `Cmd/Ctrl+\\`) with primary actions, **Sessions** section (orchestrator/general), **Projects** section (active project tasks grouped by status), and a footer with Settings + version chip
+- **Spotlight** (`Cmd/Ctrl+K` or sidebar search trigger or `/`) is the single command surface — searches tasks, runs registered commands, switches sessions
+- canonical status display labels across the shell: `Backlog`, `In Progress`, `Review`, `Done` (never `RUN` or other variants)
 
 ______________________________________________________________________
 
 ## 3. Board Workspace
 
-- four-lane kanban board: `BACKLOG`, `IN_PROGRESS`, `REVIEW`, `DONE`
+- four-lane kanban board: `Backlog`, `In Progress`, `Review`, `Done` (display labels — DB enum stays `BACKLOG | IN_PROGRESS | REVIEW | DONE`)
 - search plus structured status/mode filters
 - advisory WIP warnings from resolved workflow settings
 - richer task cards with review state, acceptance-criteria count, last activity, workspace state, and live session telemetry
 - task cards can show lightweight watcher counts from live client presence when another web or editor client is actively focused on that task
 - desktop right rail supports task inspection and related chat preview
-- the header repo selector auto-selects an available repo and opens Add Repository when an active project has none
-- `Cmd/Ctrl+Shift+W` toggles to the conversation-first workspace view
+- repo selection lives inside Welcome / Add-Repo flows — the shell title bar no longer hosts a project switcher
+- title-bar tab segmented control switches between Workspace and Kanban; `Cmd/Ctrl+1` / `Cmd/Ctrl+2` are keyboard equivalents
 
 ______________________________________________________________________
 
 ## 3a. Workspace View
 
-- conversation-first alternative to the kanban board, accessible via `/workspace` or `Cmd/Ctrl+Shift+W`
-- left sidebar lists orchestrator conversations only; task streams are not separate primary navigation in this route
-- sidebar search filters across conversation labels and configured backends
-- selecting a conversation opens `OrchestratorChatPanel` full-width as the main workspace surface
-- first visit bootstraps a blank orchestrator session automatically if none exist
-- the workspace route suppresses the global AI rail so users do not get two competing chat surfaces
-- session labels and backend changes propagate back into the sidebar after turns complete or metadata changes
+- the Workspace tab (`/chat`) is the conversation-first surface; sessions live in the shell sidebar
+- selecting a session navigates to `/chat/:id` and renders the conversation full-width inside the shell
+- session creation goes through the **New session** modal (orchestrator vs general kind picker, agent backend dropdown, optional name)
+- session labels and backend changes propagate back into the sidebar list after turns complete or metadata changes
 
 ______________________________________________________________________
 
 ## 4. Task Workspace
 
-- `/task/:id` adapts its default tab by task state and workspace availability
+- `/task/:id` renders inside the shell with a back-button to whichever tab the user came from
 - three tabs: **Overview**, **Changes**, and **Review**
 - tab auto-selection: `REVIEW` with workspace opens Review; `BACKLOG` opens Overview; workspace present opens Changes; otherwise Overview
-- live streaming happens in the **SessionOverlay** overlay (right rail), which auto-opens when a task has an active session
-- the SessionOverlay has a Worker/Reviewer lane toggle in its header, a LIVE indicator, and filters events by the active session ID
-- URL deep-linking via `?lane=worker|reviewer` auto-opens the overlay with the specified lane
-- "Watch stream" on the board inspector opens `/task/:id?lane=worker` (overlay auto-opens)
+- live execution streaming surfaces inline within the task content area when a task has an active session (deep-link via `?lane=worker|reviewer`)
+- "Watch stream" on the board inspector opens `/task/:id?lane=worker`
 - sticky action bar keeps lifecycle controls and run controls visible
 - summary rail surfaces metadata, runtime telemetry, workspace state, and review approval
 
 ______________________________________________________________________
 
-## 5. SessionOverlay Streaming Overlay
+## 5. Live Streaming
 
-- live execution streaming surfaces in the **SessionOverlay**, a right-rail overlay on the task detail page
-- the overlay auto-opens when a task has an active session or when navigating with `?lane=worker|reviewer`
-- Worker/Reviewer lane toggle in the overlay header switches streaming context
-- LIVE indicator and streaming status use the shared animated wave glyph
-- the overlay filters events by the active session ID
-- Session picker navigates to `/task/:id?lane=...` so task overlays open directly.
-- live task event updates over SSE
+- live task event updates flow over SSE through `useEventStream` and `useTaskEvents`
 - AGENT_STATUS events with usage data render an inline metrics row: context window fill bar, percentage, and cost
+- the legacy right-rail SessionOverlay was removed; streams render inline within the active session/task surface
 
 ______________________________________________________________________
 
 ## 6. Chat & Sessions
 
-- **Per-session streaming state** — orchestrator/general chat panels use `useChatSession(sessionId)` with hook-local buffers and queues so multiple sessions cannot overwrite each other when overlays and `/chat` mount together.
-- Session Switcher (`Cmd/Ctrl+K` or `Cmd/Ctrl+Shift+K`) provides a global session index across orchestrator and task-linked sessions
-- `/chat/:id` shows orchestrator conversation history, streaming output, slash commands, and backend metadata
-- task-specific quick-jump entry points open the global SessionOverlay for the selected task session
-- during streaming, the shared animated wave glyph and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift (shape language matches the chat REPL and TUI)
-- session titles are auto-generated after the first exchange via a lightweight ACP call and pushed to the client via `CHAT_SESSION_UPDATED` SSE event
+- **Per-session streaming state** — orchestrator/general chat panels use `useChatSession(sessionId)` with hook-local buffers and queues so multiple sessions cannot overwrite each other.
+- **Spotlight** (`Cmd/Ctrl+K`) is the unified switcher: tasks, commands, and sessions in one fuzzy list; the legacy multi-shortcut split is gone.
+- `/chat/:id` shows orchestrator conversation history, streaming output, slash commands, and backend metadata.
+- Task-specific quick-jump entry points navigate to `/task/:id?lane=worker|reviewer` so the relevant session renders inline within the task content area.
+- during streaming, the shared animated wave glyph and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift (shape language matches the chat REPL and TUI).
+- session titles are auto-generated after the first exchange via a lightweight ACP call and pushed to the client via `CHAT_SESSION_UPDATED` SSE event.
 
 ______________________________________________________________________
 
@@ -97,25 +89,23 @@ ______________________________________________________________________
 
 ## 8. Realtime & Accessibility
 
-- board, task (including SessionOverlay overlay), and chat views react to SSE updates
+- board, task content area, and chat views react to SSE updates
 - visible keyboard focus, strong border contrast, skip link support, and reduced-motion respect
 - typography is split between UI and code surfaces for readability in long work sessions
 
 ______________________________________________________________________
 
-## 8a. Sessions Overlay
+## 8a. Shell Sessions Surface
 
-- the overlay has one active target from `sessionOverlayTargetAtom`:
-  orchestrator, worker/reviewer, or general
-- `SessionOverlay` renders all session types from the same shell and follows
-  `/task/:id?lane=worker|reviewer` for task deep links
-- the workspace route renders orchestrator and general sessions through the
-  same session body components used by the overlay
-- the help overlay keeps `Esc` streaming behavior separate from session
-  switching copy
+- sessions live in the shell **Sidebar**, not in a docked overlay
+- `useSessionList` polls `GET /api/v1/sessions`; the sidebar shows orchestrator and general kinds, with `Add session` triggering `NewSessionDialog`
+- task-bound sessions are reached through the Kanban tab and `/task/:id?lane=…` deep-links
+- workspace and task routes render their respective session bodies through the same components consumed by Spotlight navigation
 
-*Tests:* `packages/web/src/components/session/session-overlay.test.tsx`,
-`packages/web/src/components/layout/app-layout.test.tsx`.
+*Tests:* `packages/web/src/components/shell/title-bar.test.tsx`,
+`packages/web/src/components/shell/sidebar.test.tsx`,
+`packages/web/src/components/shell/spotlight.test.tsx`,
+`packages/web/src/lib/sessions/kind.test.ts`.
 
 ### Preflight gate
 

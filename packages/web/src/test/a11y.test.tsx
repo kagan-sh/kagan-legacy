@@ -35,9 +35,6 @@ const { StatusBadge } = await import('@/components/shared/status-badge');
 const { ChatInputBar } = await import('@/components/chat/chat-input-bar');
 const { ChatMessage } = await import('@/components/chat/chat-message');
 const { EventStream } = await import('@/components/session/event-stream');
-const { ActivityBar } = await import('@/components/layout/activity-bar');
-const { HeaderBar } = await import('@/components/layout/header-bar');
-const { ConnectionCard } = await import('@/components/settings/connection-card');
 const { Empty, EmptyHeader, EmptyTitle, EmptyDescription } = await import('@/components/ui/empty');
 const { ErrorBoundary } = await import('@/components/shared/error-boundary');
 
@@ -153,21 +150,6 @@ describe('Accessibility (axe-core)', () => {
     const { container } = renderWithProviders(
       <EventStream events={events} isRunning />,
     );
-    await expectNoViolations(container);
-  });
-
-  it('ActivityBar has no violations', async () => {
-    const { container } = renderWithProviders(<ActivityBar />);
-    await expectNoViolations(container);
-  });
-
-  it('HeaderBar has no violations', async () => {
-    const { container } = renderWithProviders(<HeaderBar />);
-    await expectNoViolations(container);
-  });
-
-  it('ConnectionCard has no violations', async () => {
-    const { container } = renderWithProviders(<ConnectionCard />);
     await expectNoViolations(container);
   });
 

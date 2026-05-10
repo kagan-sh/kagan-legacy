@@ -34,8 +34,12 @@ export interface ChatViewProps {
   headerSlot?: React.ReactNode;
   /** Empty-state override. Defaults to a generic empty state. */
   emptySlot?: React.ReactNode;
-  /** Footer hint line (keyboard shortcuts etc). */
-  footerHint?: string;
+  /**
+   * Footer hint segments. Each segment is a zero-arg function returning
+   * string | null. Null segments are dropped; the rest are joined with " · ".
+   * Replaces the old flat `footerHint?: string` prop.
+   */
+  footerSegments?: Array<() => string | null>;
   /** If true, disables the send button even when not streaming. */
   disableSend?: boolean;
   /** Placeholder text for the input bar. */
@@ -83,7 +87,7 @@ export function ChatView({
   onLoadMore,
   headerSlot,
   emptySlot,
-  footerHint,
+  footerSegments,
   disableSend,
   placeholder,
   pendingQueue,
@@ -161,11 +165,14 @@ export function ChatView({
         )}
       </div>
 
-      {footerHint ? (
-        <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-          {footerHint}
-        </div>
-      ) : null}
+      {footerSegments && footerSegments.length > 0 ? (() => {
+        const rendered = footerSegments.map((fn) => fn()).filter((v): v is string => v !== null).join(' · ');
+        return rendered ? (
+          <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
+            {rendered}
+          </div>
+        ) : null;
+      })() : null}
 
       <ChatInputBar
         onSend={onSend}

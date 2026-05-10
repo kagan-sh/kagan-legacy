@@ -8,6 +8,7 @@ from kagan.cli.chat.repl import (
     _TOOLBAR_STATE,
     ToolbarState,
     _build_status_text,
+    _render_segments,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -125,3 +126,28 @@ def test_toolbar_state_has_project_id_field() -> None:
     state = ToolbarState()
     assert hasattr(state, "project_id")
     assert state.project_id == ""
+
+
+def test_render_segments_drops_nones_and_joins_in_order() -> None:
+    """_render_segments calls each Segment, skips Nones, joins the rest in order."""
+    segments = [
+        lambda: "alpha",  # always visible
+        lambda: None,  # always hidden
+        lambda: "beta",  # always visible
+        lambda: None,  # always hidden
+        lambda: "gamma",  # always visible
+    ]
+    result = _render_segments(segments)
+    assert result == "alpha · beta · gamma"
+
+
+def test_render_segments_all_none_returns_empty_string() -> None:
+    """When every Segment returns None, _render_segments yields an empty string."""
+    segments: list = [lambda: None, lambda: None]
+    assert _render_segments(segments) == ""
+
+
+def test_render_segments_custom_separator() -> None:
+    """_render_segments respects a custom separator."""
+    segments = [lambda: "x", lambda: "y"]
+    assert _render_segments(segments, sep=" | ") == "x | y"

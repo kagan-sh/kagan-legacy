@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
@@ -79,6 +79,25 @@ class ToolbarState:
 
 
 _TOOLBAR_STATE = ToolbarState()
+
+# ---------------------------------------------------------------------------
+# Segment registry — each Segment is a zero-arg callable returning str | None.
+# None means "hide this segment in the current render frame."
+# The render helpers call each segment, drop Nones, then join the results.
+# ---------------------------------------------------------------------------
+
+Segment = Callable[[], str | None]
+
+
+def _render_segments(segments: list[Segment], sep: str = " · ") -> str:
+    """Call each segment, drop Nones, join the rest with *sep*."""
+    parts: list[str] = []
+    for seg in segments:
+        value = seg()
+        if value is not None:
+            parts.append(value)
+    return sep.join(parts)
+
 
 _ROTATING_TIPS: Final[tuple[str, ...]] = (
     "Ctrl-J newline",
@@ -699,45 +718,80 @@ def build_live_status_inline() -> Text | None:
     return Text(parts[0], style=style, justify="right")
 
 
+def _make_status_left_segments() -> list[Segment]:
+    """Status-line left column: workspace label or cwd."""
+    return [lambda: _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())]
+
+
+def _make_status_right_segments() -> list[Segment]:
+    """Status-line right column: agent mode, approvals, tokens, queue, msg count."""
+    cols = shutil.get_terminal_size().columns
+
+    def _agent() -> str | None:
+        mode = _format_agent_mode(cols)
+        return mode if mode else None
+
+    def _approvals() -> str | None:
+        n = _TOOLBAR_STATE.pending_approvals
+        return f"⚠ {n} approval(s) pending" if n > 0 else None
+
+    def _tool() -> str | None:
+        t = _TOOLBAR_STATE.current_tool
+        return f"tool: {t}" if t else None
+
+    def _tokens() -> str | None:
+        if _TOOLBAR_STATE.token_used_k is not None:
+            return f"~{_TOOLBAR_STATE.token_used_k:.0f}k tok"
+        if _TOOLBAR_STATE.context_pct is not None:
+            return f"ctx {_TOOLBAR_STATE.context_pct:.0%}"
+        return None
+
+    def _queued() -> str | None:
+        n = _TOOLBAR_STATE.queued_count
+        return f"↓ {n} queued" if n > 0 else None
+
+    def _msgs() -> str | None:
+        noun = "msg" if _TOOLBAR_STATE.turn_count == 1 else "msgs"
+        return f"{_TOOLBAR_STATE.turn_count} {noun}"
+
+    return [_agent, _approvals, _tool, _tokens, _queued, _msgs]
+
+
+def _make_tip_left_segments() -> list[Segment]:
+    """Tip-line left column: rotating tip."""
+    return [lambda: f"tip: {_TIP_ROTATOR.current()}"]
+
+
+def _make_tip_right_segments() -> list[Segment]:
+    """Tip-line right column: session type badge + session label."""
+
+    def _type_prefix() -> str | None:
+        session_type = _TOOLBAR_STATE.session_type
+        if session_type == "orchestrator":
+            return "◈ ORCH"
+        if session_type == "general":
+            return "○ GEN"
+        if session_type == "task":
+            return "▸ TASK"
+        return session_type
+
+    def _session_label() -> str | None:
+        return _TOOLBAR_STATE.session_label or None
+
+    return [_type_prefix, _session_label]
+
+
 def _toolbar_status_segments() -> tuple[str, str, str, str]:
     """Compute the four toolbar text segments shared by prompt-toolkit and Rich footers.
 
     Caller is responsible for advancing `_TIP_ROTATOR` (e.g. via `maybe_rotate()`).
+    Each segment column is now built from a list of Segment callables.
     """
-    cols = shutil.get_terminal_size().columns
-
-    status_left = _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())
-    status_right_parts: list[str] = []
-    agent_mode = _format_agent_mode(cols)
-    if agent_mode:
-        status_right_parts.append(agent_mode)
-    if _TOOLBAR_STATE.pending_approvals > 0:
-        status_right_parts.append(f"⚠ {_TOOLBAR_STATE.pending_approvals} approval(s) pending")
-    if _TOOLBAR_STATE.current_tool:
-        status_right_parts.append(f"tool: {_TOOLBAR_STATE.current_tool}")
-    if _TOOLBAR_STATE.token_used_k is not None:
-        status_right_parts.append(f"~{_TOOLBAR_STATE.token_used_k:.0f}k tok")
-    elif _TOOLBAR_STATE.context_pct is not None:
-        status_right_parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
-    if _TOOLBAR_STATE.queued_count > 0:
-        status_right_parts.append(f"↓ {_TOOLBAR_STATE.queued_count} queued")
-    msg_word = "msg" if _TOOLBAR_STATE.turn_count == 1 else "msgs"
-    status_right_parts.append(f"{_TOOLBAR_STATE.turn_count} {msg_word}")
-    status_right = " · ".join(status_right_parts)
-
-    tip_left = f"tip: {_TIP_ROTATOR.current()}"
-    session_type = _TOOLBAR_STATE.session_type
-    if session_type == "orchestrator":
-        type_badge = "◈ ORCH"
-    elif session_type == "general":
-        type_badge = "○ GEN"
-    elif session_type == "task":
-        type_badge = "▸ TASK"
-    else:
-        type_badge = session_type
-    tip_right = f"{type_badge} · {_TOOLBAR_STATE.session_label}"
-
-    return status_left, status_right, tip_left, tip_right
+    status_left = _render_segments(_make_status_left_segments(), sep=" ")
+    status_right = _render_segments(_make_status_right_segments())
+    tip_left = _render_segments(_make_tip_left_segments(), sep=" ")
+    tip_right_raw = _render_segments(_make_tip_right_segments(), sep=" · ")
+    return status_left, status_right, tip_left, tip_right_raw
 
 
 def _build_status_text() -> FormattedText:

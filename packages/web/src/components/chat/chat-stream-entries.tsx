@@ -106,7 +106,7 @@ function StreamToolCard({
 }: {
   id: string;
   name: string;
-  status: 'running' | 'done';
+  status: 'running' | 'done' | 'failed';
   detail?: string;
 }) {
   const rendererStatus = status === 'running' ? 'running' : 'completed';

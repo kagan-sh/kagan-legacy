@@ -7,7 +7,7 @@ import type { Attachment } from '@/lib/chat-attachments';
 export type ChatStreamEntry =
   | { kind: 'text'; content: string }
   | { kind: 'thought'; content: string; startedAt: number }
-  | { kind: 'tool'; id: string; name: string; status: 'running' | 'done'; detail?: string }
+  | { kind: 'tool'; id: string; name: string; status: 'running' | 'done' | 'failed'; detail?: string }
   | { kind: 'note'; message: string }
   | { kind: 'error'; message: string };
 

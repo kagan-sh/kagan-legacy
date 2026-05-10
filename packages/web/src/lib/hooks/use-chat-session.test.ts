@@ -3,13 +3,20 @@
  *
  * Scenarios covered:
  *   - connect: initial load sets messages, label, agentBackend
- *   - chunk dispatch: CHAT_CHUNK events set isStreaming + append stream entries
- *   - tool start / done: CHAT_TOOL_START / CHAT_TOOL_PROGRESS via handleWatchEvent
- *   - error: CHAT_ERROR clears streaming, appends error entry
+ *   - chunk dispatch: assistant_chunk / thinking_chunk engine events set isStreaming + stream entries
+ *   - tool start / done: tool_call / tool_call_update / tool_call_result engine events
+ *   - error: CHAT_ERROR (transport) and error (engine) clear streaming, append error entry
  *   - takeover: CHAT_TURN_TERMINATED with reason=takeover sets takeoverBanner
  *   - 409 conflict: POST /stream returning 409 sets turnConflict
  *
  * All state assertions use result.current.* — no global jotai atoms.
+ *
+ * Event shapes:
+ *   - Engine events (ChatEngineEvent) use ``type`` field: assistant_chunk, thinking_chunk,
+ *     tool_call, tool_call_update, tool_call_result, turn_end, error, etc.
+ *   - Transport frames use ``t`` field: CHAT_USER_MESSAGE, CHAT_ASSISTANT_MESSAGE,
+ *     CHAT_TURN_STARTED, CHAT_TURN_TERMINATED, CHAT_SESSION_UPDATED, CHAT_ERROR,
+ *     CHAT_PERMISSION_REQUEST.
  */
 
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
@@ -129,12 +136,12 @@ describe('useChatSession — chunk dispatch', () => {
     capturedOnEvent = null;
   });
 
-  it('sets isStreaming to true and appends a text entry on CHAT_CHUNK', async () => {
+  it('sets isStreaming to true and appends a text entry on assistant_chunk', async () => {
     const store = createStore();
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'hello', thought: false });
+    fireWatchEvent({ type: 'assistant_chunk', turn_id: 't1', session_id: 's1', message_id: 'm1', delta: 'hello' });
 
     expect(result.current.isStreaming).toBe(true);
     const textEntry = result.current.streamEntries.find((e) => e.kind === 'text');
@@ -142,33 +149,33 @@ describe('useChatSession — chunk dispatch', () => {
     expect((textEntry as { kind: 'text'; content: string } | undefined)?.content).toBe('hello');
   });
 
-  it('appends a thought entry when thought flag is true', async () => {
+  it('appends a thought entry on thinking_chunk', async () => {
     const store = createStore();
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'thinking…', thought: true });
+    fireWatchEvent({ type: 'thinking_chunk', turn_id: 't1', session_id: 's1', message_id: 'm1', delta: 'thinking…' });
 
     expect(result.current.streamEntries.some((e) => e.kind === 'thought')).toBe(true);
   });
 
-  it('resets stream entries and isStreaming on CHAT_DONE', async () => {
+  it('resets stream entries and isStreaming on turn_end with reason=done', async () => {
     const store = createStore();
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
     // Seed streaming state via a chunk event.
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'partial', thought: false });
+    fireWatchEvent({ type: 'assistant_chunk', turn_id: 't1', session_id: 's1', message_id: 'm1', delta: 'partial' });
     expect(result.current.isStreaming).toBe(true);
     expect(result.current.streamEntries.length).toBeGreaterThan(0);
 
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_DONE, full_response: 'final text' });
+    fireWatchEvent({ type: 'turn_end', turn_id: 't1', reason: 'done' });
 
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.streamEntries).toHaveLength(0);
   });
 
-  it('drains queued attachments into the next stream after CHAT_DONE', async () => {
+  it('drains queued attachments into the next stream after turn_end', async () => {
     vi.useFakeTimers();
     try {
       const { streamSSE } = await import('@/lib/api/sse');
@@ -184,7 +191,7 @@ describe('useChatSession — chunk dispatch', () => {
         });
       });
 
-      fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_DONE, full_response: 'final text' });
+      fireWatchEvent({ type: 'turn_end', turn_id: 't1', reason: 'done' });
       await act(async () => {
         vi.runOnlyPendingTimers();
         await Promise.resolve();
@@ -212,18 +219,18 @@ describe('useChatSession — chunk dispatch', () => {
   });
 });
 
-describe('useChatSession — tool start / done', () => {
+describe('useChatSession — tool events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedOnEvent = null;
   });
 
-  it('adds a running tool entry on CHAT_TOOL_START', async () => {
+  it('adds a running tool entry on tool_call', async () => {
     const store = createStore();
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_START, tool: 'shell' });
+    fireWatchEvent({ type: 'tool_call', turn_id: 't1', session_id: 's1', tool_call_id: 'tc1', name: 'shell', args: null, title: 'shell', kind: null });
 
     const tool = result.current.streamEntries.find((e) => e.kind === 'tool');
     expect(tool).toBeDefined();
@@ -233,17 +240,31 @@ describe('useChatSession — tool start / done', () => {
     }
   });
 
-  it('marks a tool as done on CHAT_TOOL_PROGRESS with status=done', async () => {
+  it('marks a tool as done on tool_call_result with is_error=false', async () => {
     const store = createStore();
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_START, tool: 'shell' });
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TOOL_PROGRESS, tool: 'shell', status: 'done' });
+    fireWatchEvent({ type: 'tool_call', turn_id: 't1', session_id: 's1', tool_call_id: 'tc1', name: 'shell', args: null, title: 'shell', kind: null });
+    fireWatchEvent({ type: 'tool_call_result', tool_call_id: 'tc1', output: 'ok', is_error: false });
 
     const tool = result.current.streamEntries.find((e) => e.kind === 'tool');
     if (tool?.kind === 'tool') {
       expect(tool.status).toBe('done');
+    }
+  });
+
+  it('marks a tool as failed on tool_call_result with is_error=true', async () => {
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
+    await act(async () => {});
+
+    fireWatchEvent({ type: 'tool_call', turn_id: 't1', session_id: 's1', tool_call_id: 'tc1', name: 'shell', args: null, title: 'shell', kind: null });
+    fireWatchEvent({ type: 'tool_call_result', tool_call_id: 'tc1', output: null, is_error: true });
+
+    const tool = result.current.streamEntries.find((e) => e.kind === 'tool');
+    if (tool?.kind === 'tool') {
+      expect(tool.status).toBe('failed');
     }
   });
 });
@@ -254,16 +275,30 @@ describe('useChatSession — error', () => {
     capturedOnEvent = null;
   });
 
-  it('appends an error entry and clears isStreaming on CHAT_ERROR', async () => {
+  it('appends an error entry and clears isStreaming on CHAT_ERROR (transport frame)', async () => {
     const store = createStore();
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
     // Seed streaming state first.
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_CHUNK, content: 'partial', thought: false });
+    fireWatchEvent({ type: 'assistant_chunk', turn_id: 't1', session_id: 's1', message_id: 'm1', delta: 'partial' });
     expect(result.current.isStreaming).toBe(true);
 
     fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_ERROR, error: 'backend crashed' });
+
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.streamEntries.some((e) => e.kind === 'error')).toBe(true);
+  });
+
+  it('appends an error entry on fatal engine error event', async () => {
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatSession('session-1'), store);
+    await act(async () => {});
+
+    fireWatchEvent({ type: 'assistant_chunk', turn_id: 't1', session_id: 's1', message_id: 'm1', delta: 'partial' });
+    expect(result.current.isStreaming).toBe(true);
+
+    fireWatchEvent({ type: 'error', turn_id: 't1', code: 'ENGINE_ERROR', message: 'engine exploded', fatal: true });
 
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.streamEntries.some((e) => e.kind === 'error')).toBe(true);
@@ -281,7 +316,7 @@ describe('useChatSession — takeover', () => {
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' } as ChatWatchEvent);
 
     expect(result.current.takeoverBanner).toMatch(/taken over/i);
     expect(result.current.isStreaming).toBe(false);
@@ -292,7 +327,7 @@ describe('useChatSession — takeover', () => {
     const { result } = renderWithStore(() => useChatSession('session-1'), store);
     await act(async () => {});
 
-    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' });
+    fireWatchEvent({ t: CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED, reason: 'takeover' } as ChatWatchEvent);
     expect(result.current.takeoverBanner).not.toBeNull();
 
     act(() => { result.current.onDismissTakeover(); });

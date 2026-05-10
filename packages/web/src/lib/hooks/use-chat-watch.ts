@@ -91,11 +91,13 @@ export function useChatWatch(
 
       for await (const event of parseSSEFrames<ChatWatchEvent>(reader)) {
         if (unmountedRef.current) break;
-        if (
-          (event.t === CHAT_WATCH_TYPE.CHAT_USER_MESSAGE ||
-            event.t === CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE) &&
-          event.message_id > lastSeenIdRef.current
-        ) {
+        // Track the highest persisted message id from transport-layer frames so
+        // a reconnect can catch up via /messages?after_id=N.  Only transport
+        // frames carry ``t`` and ``message_id``; engine events use ``type``.
+        if ('t' in event && (
+          event.t === CHAT_WATCH_TYPE.CHAT_USER_MESSAGE ||
+          event.t === CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE
+        ) && event.message_id > lastSeenIdRef.current) {
           lastSeenIdRef.current = event.message_id;
         }
         onEventRef.current(event);

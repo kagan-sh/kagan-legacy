@@ -7,7 +7,7 @@ import { ApiError } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
 import { CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
 import { formatToolName } from "@kagan/shared-api-client";
-import type { ChatStreamEvent, ChatWatchEvent as LiveChatEvent, TaskStatus } from "@kagan/shared-api-client";
+import type { ChatStreamEvent, ChatWatchEvent as LiveChatEvent, ChatEngineEvent, TaskStatus } from "@kagan/shared-api-client";
 import {
   pickReusableOrchestratorSession,
   resetStickyChatStateIfNewConversation,
@@ -54,13 +54,32 @@ class ChatParticipantState implements vscode.Disposable {
   }
 
   handleWatchEvent(event: LiveChatEvent): void {
+    // Engine events discriminate on ``type``; transport frames on ``t``.
+    if ("type" in event) {
+      const engineEvent = event as ChatEngineEvent;
+      switch (engineEvent.type) {
+        case "assistant_chunk":
+          this.remoteChunkBuffer += engineEvent.delta;
+          break;
+        case "turn_end":
+          this.remoteChunkBuffer = "";
+          break;
+        case "assistant_message":
+          if (engineEvent.terminated) {
+            const preview = engineEvent.content.slice(0, 80).replace(/\n/g, " ");
+            void vscode.window.showInformationMessage(
+              `Kagan: assistant response was interrupted — "${preview}..."`,
+            );
+          }
+          this.remoteChunkBuffer = "";
+          break;
+        default:
+          break;
+      }
+      return;
+    }
+
     switch (event.t) {
-      case CHAT_WATCH_TYPE.CHAT_CHUNK:
-        this.remoteChunkBuffer += event.content;
-        break;
-      case CHAT_WATCH_TYPE.CHAT_DONE:
-        this.remoteChunkBuffer = "";
-        break;
       case CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE:
         if (event.terminated) {
           const preview = event.content.slice(0, 80).replace(/\n/g, " ");

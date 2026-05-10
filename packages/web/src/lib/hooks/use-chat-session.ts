@@ -25,7 +25,7 @@ import {
 } from '@/lib/atoms/chat';
 import { useChatWatch } from '@/lib/hooks/use-chat-watch';
 import { CHAT_WATCH_TYPE } from '@kagan/shared-api-client';
-import type { ChatWatchEvent, WireChatMessage } from '@kagan/shared-api-client';
+import type { ChatWatchEvent, ChatEngineEvent, WireChatMessage } from '@kagan/shared-api-client';
 import type { Attachment } from '@/lib/chat-attachments';
 import type { PermissionRequest } from '@/components/PermissionDialog';
 
@@ -134,24 +134,39 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     });
   }, []);
 
-  const addToolStart = useCallback((payload: { tool: string }) => {
-    const toolId = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const addToolCall = useCallback((payload: { toolCallId: string; name: string }) => {
     setStreamEntries((entries) => [
       ...entries,
-      { kind: 'tool' as const, id: toolId, name: payload.tool, status: 'running' as const },
+      { kind: 'tool' as const, id: payload.toolCallId, name: payload.name, status: 'running' as const },
     ]);
   }, []);
 
-  const updateToolProgress = useCallback((payload: { tool: string; status?: string }) => {
+  const updateToolCallProgress = useCallback((payload: { toolCallId: string; progress?: string | null }) => {
     setStreamEntries((entries) => {
       for (let i = entries.length - 1; i >= 0; i--) {
         const entry = entries[i]!;
-        if (entry.kind === 'tool' && entry.name === payload.tool) {
+        if (entry.kind === 'tool' && entry.id === payload.toolCallId) {
           const updated = entries.slice();
           updated[i] = {
             ...entry,
-            status: payload.status === 'done' ? 'done' : entry.status,
-            detail: payload.status ?? entry.detail,
+            detail: payload.progress ?? entry.detail,
+          };
+          return updated;
+        }
+      }
+      return entries;
+    });
+  }, []);
+
+  const finishToolCall = useCallback((payload: { toolCallId: string; isError: boolean }) => {
+    setStreamEntries((entries) => {
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i]!;
+        if (entry.kind === 'tool' && entry.id === payload.toolCallId) {
+          const updated = entries.slice();
+          updated[i] = {
+            ...entry,
+            status: payload.isError ? 'failed' : 'done',
           };
           return updated;
         }
@@ -314,59 +329,93 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   }, [id]);
 
   // ── /watch event handler ───────────────────────────────────────────────────
+  //
+  // The /watch SSE channel emits two kinds of frames:
+  //   - Engine events (ChatEngineEvent): discriminated on ``type`` field.
+  //   - Transport lifecycle frames (ChatWatch*): discriminated on ``t`` field.
+  //
   const handleWatchEvent = useCallback(
     (event: ChatWatchEvent) => {
-      switch (event.t) {
-        case CHAT_WATCH_TYPE.CHAT_CHUNK: {
-          setIsStreaming(true);
-          const content = event.content ?? '';
-          if (content) {
-            if (event.thought) {
+      // Engine events use the ``type`` discriminator.
+      if ('type' in event) {
+        const engineEvent = event as ChatEngineEvent;
+        switch (engineEvent.type) {
+          case 'assistant_chunk': {
+            setIsStreaming(true);
+            const delta = engineEvent.delta ?? '';
+            if (delta) {
+              thinkingStartRef.current = null;
+              appendChunk({ content: delta, thought: false });
+            }
+            break;
+          }
+          case 'thinking_chunk': {
+            setIsStreaming(true);
+            const delta = engineEvent.delta ?? '';
+            if (delta) {
               if (thinkingStartRef.current === null) {
                 thinkingStartRef.current = Date.now();
               }
-              appendChunk({ content, thought: true, startedAt: thinkingStartRef.current });
-            } else {
-              thinkingStartRef.current = null;
-              appendChunk({ content, thought: false });
+              appendChunk({ content: delta, thought: true, startedAt: thinkingStartRef.current });
             }
+            break;
           }
-          break;
+          case 'tool_call': {
+            setIsStreaming(true);
+            addToolCall({ toolCallId: engineEvent.tool_call_id, name: engineEvent.name });
+            break;
+          }
+          case 'tool_call_update': {
+            updateToolCallProgress({
+              toolCallId: engineEvent.tool_call_id,
+              progress: engineEvent.progress,
+            });
+            break;
+          }
+          case 'tool_call_result': {
+            finishToolCall({
+              toolCallId: engineEvent.tool_call_id,
+              isError: engineEvent.is_error,
+            });
+            break;
+          }
+          case 'turn_end': {
+            if (engineEvent.reason === 'done' || engineEvent.reason === 'cancelled') {
+              resetStream();
+              localStreamingRef.current = false;
+              if (id) {
+                apiClient
+                  .getChatSession(id)
+                  .then((session) => setMessages(session.messages))
+                  .catch(() => {});
+              }
+              // Drain the next queued message (if any) after a brief tick so
+              // that the turn_end state propagates before we kick off the next stream.
+              setTimeout(() => {
+                const next = dequeue();
+                if (next) {
+                  doSendStreamRef.current?.(next.text, next.attachments);
+                }
+              }, 0);
+            }
+            break;
+          }
+          case 'error': {
+            addError({ message: engineEvent.message ?? 'An error occurred' });
+            if (engineEvent.fatal) setIsStreaming(false);
+            break;
+          }
+          default:
+            break;
         }
-        case CHAT_WATCH_TYPE.CHAT_TOOL_START: {
-          setIsStreaming(true);
-          addToolStart({ tool: event.tool ?? 'tool' });
-          break;
-        }
-        case CHAT_WATCH_TYPE.CHAT_TOOL_PROGRESS: {
-          updateToolProgress({
-            tool: event.tool ?? 'tool',
-            status: event.status ?? undefined,
-          });
-          break;
-        }
+        return;
+      }
+
+      // Transport lifecycle frames use the ``t`` discriminator.
+      switch (event.t) {
         case CHAT_WATCH_TYPE.CHAT_ERROR: {
           addError({ message: event.error ?? 'An error occurred' });
           setIsStreaming(false);
-          break;
-        }
-        case CHAT_WATCH_TYPE.CHAT_DONE: {
-          resetStream();
-          localStreamingRef.current = false;
-          if (id) {
-            apiClient
-              .getChatSession(id)
-              .then((session) => setMessages(session.messages))
-              .catch(() => {});
-          }
-          // Drain the next queued message (if any) after a brief tick so that
-          // the CHAT_DONE state propagates before we kick off the next stream.
-          setTimeout(() => {
-            const next = dequeue();
-            if (next) {
-              doSendStreamRef.current?.(next.text, next.attachments);
-            }
-          }, 0);
           break;
         }
         case CHAT_WATCH_TYPE.CHAT_SESSION_UPDATED: {
@@ -425,8 +474,9 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     [
       id,
       appendChunk,
-      addToolStart,
-      updateToolProgress,
+      addToolCall,
+      updateToolCallProgress,
+      finishToolCall,
       addError,
       resetStream,
       dequeue,

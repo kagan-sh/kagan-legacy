@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { ChevronLeft, ChevronRight, Kanban, MessagesSquare, Moon, PanelLeft, Search, Sun } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Kanban, MessagesSquare, Moon, PanelLeft, Search, Sun } from 'lucide-react';
 import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { resolvedThemeAtom, setThemeModeAtom, themeModeAtom } from '@/lib/atoms/theme';
 import { sidebarCollapsedAtom, spotlightOpenAtom } from '@/lib/atoms/shell';
+import { useShellPopover } from '@/components/shell/popover';
 import { useActiveProject } from '@/lib/hooks/use-active-project';
 import { apiClient } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ export function TitleBar() {
   const setThemeMode = useSetAtom(setThemeModeAtom);
   const activeProject = useActiveProject();
   const [agentCount, setAgentCount] = useState<number | null>(null);
+  const activityPopover = useShellPopover('activity', 'right');
 
   const tab = shellTabFor(location.pathname);
 
@@ -129,6 +131,14 @@ export function TitleBar() {
           daemon{agentCount !== null ? ` · ${agentCount} agents` : ''}
         </span>
 
+        <TitleBarIconButton
+          label="Activity"
+          active={activityPopover.isOpen}
+          onClick={activityPopover.openFromEvent}
+        >
+          <Clock className="size-[15px]" />
+        </TitleBarIconButton>
+
         <Link
           to="/settings"
           aria-label="Settings"
@@ -193,7 +203,7 @@ interface IconButtonProps {
   label: string;
   shortcut?: string;
   active?: boolean;
-  onClick: () => void;
+  onClick: React.MouseEventHandler<HTMLButtonElement>;
   children: React.ReactNode;
 }
 

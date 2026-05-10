@@ -4,13 +4,12 @@ import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
 import { Sidebar } from './sidebar';
 import { boardDialogAtom, tasksAtom } from '@/lib/atoms/board';
-import { newSessionModalOpenAtom, sidebarCollapsedAtom } from '@/lib/atoms/shell';
+import { newSessionModalOpenAtom, sidebarCollapsedAtom, shellPopoverAtom } from '@/lib/atoms/shell';
 import { apiClient } from '@/lib/api/client';
 import { mockTask } from '@/test/mocks';
 
 vi.mock('@/lib/api/client', () => ({
   apiClient: {
-    getProjects: vi.fn(),
     getHealth: vi.fn(),
   },
 }));
@@ -31,9 +30,6 @@ vi.mock('@/lib/hooks/use-session-list', () => ({
 }));
 
 beforeEach(() => {
-  vi.mocked(apiClient.getProjects).mockResolvedValue([
-    { id: 'p1', name: 'kagan', active: true },
-  ]);
   vi.mocked(apiClient.getHealth).mockResolvedValue({ status: 'ok', version: '0.14.4' });
 });
 
@@ -72,10 +68,41 @@ describe('Sidebar', () => {
     expect(badges.length).toBeGreaterThan(0);
   });
 
-  it('renders project tasks under the active project', async () => {
+  it('renders tasks in the Tasks section', async () => {
     const store = createStore();
     store.set(tasksAtom, [mockTask({ title: 'Build the thing' })]);
     renderWithProviders(<Sidebar />, { store });
     expect(await screen.findByRole('button', { name: /build the thing/i })).toBeInTheDocument();
+  });
+
+  it('does NOT render an Activity nav link (replaced by title-bar button)', () => {
+    renderWithProviders(<Sidebar />);
+    // Activity as a Link/nav item must be gone — it moved to the title-bar
+    expect(screen.queryByRole('link', { name: /^activity$/i })).toBeNull();
+  });
+
+  it('renders Agents as a button (not a link) that opens the agents popover', () => {
+    const store = createStore();
+    renderWithProviders(<Sidebar />, { store });
+    const agentsBtn = screen.getByRole('button', { name: /agents/i });
+    expect(agentsBtn).toBeInTheDocument();
+    fireEvent.click(agentsBtn);
+    expect(store.get(shellPopoverAtom).kind).toBe('agents');
+  });
+
+  it('renders a Tasks section header', async () => {
+    renderWithProviders(<Sidebar />);
+    expect(await screen.findByText(/^tasks$/i)).toBeInTheDocument();
+  });
+
+  it('groups tasks under per-status subheaders', async () => {
+    const store = createStore();
+    store.set(tasksAtom, [
+      mockTask({ title: 'Backlog task', status: 'BACKLOG' }),
+      mockTask({ title: 'Running task', status: 'IN_PROGRESS' }),
+    ]);
+    renderWithProviders(<Sidebar />, { store });
+    expect(await screen.findByText('Backlog task')).toBeInTheDocument();
+    expect(screen.getByText('Running task')).toBeInTheDocument();
   });
 });

@@ -9,6 +9,16 @@ import { NewSessionDialog } from '@/components/shell/new-session-dialog';
 import { HelpOverlay } from '@/components/layout/help-overlay';
 import { SessionPicker } from '@/components/session/session-picker';
 import { IntegrationImportDialog } from '@/components/board/integration-import-dialog';
+import { AgentsPopover } from '@/components/shell/popovers/agents-popover';
+import { ActivityPopover } from '@/components/shell/popovers/activity-popover';
+import { FilterPopover } from '@/components/shell/popovers/filter-popover';
+import {
+  ConnectedMorePopover,
+  ConnectedAdvancePopover,
+} from '@/components/shell/popovers/connected';
+import { PermissionsPopover } from '@/components/shell/popovers/permissions-popover';
+import { ModelPopover } from '@/components/shell/popovers/model-popover';
+import { LocalityPopover } from '@/components/shell/popovers/locality-popover';
 import { useEventStream } from '@/lib/hooks/use-event-stream';
 import { apiClient } from '@/lib/api/client';
 import {
@@ -118,7 +128,7 @@ function ShellLayout() {
   return (
     <>
       <SkipLink>Skip to content</SkipLink>
-      <div className="grid h-screen grid-rows-[44px_1fr] overflow-hidden bg-[var(--bg)]">
+      <div className="kg-shell-scanline grid h-screen grid-rows-[44px_1fr] overflow-hidden bg-[var(--bg)]">
         <TitleBar />
         <div className="flex min-h-0 min-w-0">
           <Sidebar />
@@ -139,6 +149,15 @@ function ShellLayout() {
         open={integrationImportOpen}
         onOpenChange={setIntegrationImportOpen}
       />
+      {/* Shell popovers — rendered at fixed position outside the grid */}
+      <AgentsPopover />
+      <ActivityPopover />
+      <FilterPopover />
+      <ConnectedMorePopover />
+      <ConnectedAdvancePopover />
+      <PermissionsPopover />
+      <ModelPopover />
+      <LocalityPopover />
     </>
   );
 }

@@ -71,4 +71,49 @@ describe('Spotlight', () => {
     fireEvent.keyDown(screen.getByPlaceholderText(/search tasks/i), { key: 'Escape' });
     expect(store.get(spotlightOpenAtom)).toBe(false);
   });
+
+  it('wraps matching substring in task title with a mark-style element', async () => {
+    const store = createStore();
+    store.set(spotlightOpenAtom, true);
+    store.set(tasksAtom, [mockTask({ title: 'Wire the daemon' })]);
+    renderWithProviders(<Spotlight />, { store });
+
+    const input = screen.getByPlaceholderText(/search tasks/i);
+    fireEvent.change(input, { target: { value: 'Wire' } });
+
+    await waitFor(() => {
+      // The highlighted portion renders inside an <em> element
+      const em = document.querySelector('em');
+      expect(em).toBeTruthy();
+      expect(em?.textContent).toBe('Wire');
+    });
+  });
+
+  it('renders a status dot for task rows', async () => {
+    const store = createStore();
+    store.set(spotlightOpenAtom, true);
+    store.set(tasksAtom, [mockTask({ title: 'Active task', status: 'IN_PROGRESS' })]);
+    renderWithProviders(<Spotlight />, { store });
+
+    await waitFor(() => {
+      const dots = screen.getAllByTestId('spotlight-task-dot');
+      expect(dots.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows empty state with italic styling when query matches nothing', async () => {
+    const store = createStore();
+    store.set(spotlightOpenAtom, true);
+    store.set(tasksAtom, []);
+    renderWithProviders(<Spotlight />, { store });
+
+    const input = screen.getByPlaceholderText(/search tasks/i);
+    fireEvent.change(input, { target: { value: 'zzz-no-match-here' } });
+
+    await waitFor(() => {
+      const empty = screen.getByTestId('spotlight-empty');
+      expect(empty).toBeInTheDocument();
+      expect(empty).toHaveTextContent('No results');
+    });
+  });
 });

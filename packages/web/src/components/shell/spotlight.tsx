@@ -22,6 +22,8 @@ interface ResultItem {
   command?: CommandAction;
   // session
   session?: SessionItemResponse;
+  /** Substring match range for highlighted rendering */
+  matchRange?: [number, number];
 }
 
 const DOT_BY_STATUS: Record<string, string> = {
@@ -30,6 +32,39 @@ const DOT_BY_STATUS: Record<string, string> = {
   REVIEW: 'bg-[var(--kagan-rail-review)]',
   DONE: 'bg-[var(--kagan-rail-running)] opacity-40',
 };
+
+/** Find the first case-insensitive occurrence of `q` in `text`. Returns [start, end] or null. */
+function findMatch(text: string, q: string): [number, number] | null {
+  if (!q) return null;
+  const idx = text.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return null;
+  return [idx, idx + q.length];
+}
+
+/** Render text with a matched substring highlighted via <em>. */
+function HighlightedLabel({
+  text,
+  range,
+}: {
+  text: string;
+  range: [number, number] | null | undefined;
+}) {
+  if (!range) {
+    return <>{text}</>;
+  }
+  const [start, end] = range;
+  return (
+    <>
+      {text.slice(0, start)}
+      <em
+        style={{ fontStyle: 'normal', color: 'var(--primary)', fontWeight: 600 }}
+      >
+        {text.slice(start, end)}
+      </em>
+      {text.slice(end)}
+    </>
+  );
+}
 
 export function Spotlight() {
   const [open, setOpen] = useAtom(spotlightOpenAtom);
@@ -58,7 +93,10 @@ export function Spotlight() {
       .slice(0, q ? 8 : 5);
     if (matchedTasks.length) {
       out.push({ kind: 'head', label: 'Tasks' });
-      matchedTasks.forEach((t) => out.push({ kind: 'task', task: t }));
+      matchedTasks.forEach((t) => {
+        const matchRange = q ? (findMatch(t.title, q) ?? findMatch(t.id, q) ?? undefined) : undefined;
+        out.push({ kind: 'task', task: t, matchRange });
+      });
     }
 
     const cmds = getCommands().filter(
@@ -66,7 +104,10 @@ export function Spotlight() {
     );
     if (cmds.length) {
       out.push({ kind: 'head', label: 'Commands' });
-      cmds.forEach((c) => out.push({ kind: 'command', command: c }));
+      cmds.forEach((c) => {
+        const matchRange = q ? (findMatch(c.title, q) ?? undefined) : undefined;
+        out.push({ kind: 'command', command: c, matchRange });
+      });
     }
 
     const matchedSessions = sessions.filter(
@@ -162,7 +203,12 @@ export function Spotlight() {
 
         <ul role="listbox" className="max-h-[380px] overflow-y-auto">
           {items.length === 0 ? (
-            <li className="px-4 py-7 text-center text-[13px] text-[var(--fg-dim)]">No results</li>
+            <li
+              data-testid="spotlight-empty"
+              className="px-4 py-7 text-center text-[13px] italic text-[var(--fg-dim)]"
+            >
+              No results
+            </li>
           ) : null}
           {items.map((item, i) => {
             if (item.kind === 'head') {
@@ -230,8 +276,14 @@ function SpotlightItem({ item, selected, onMouseEnter, onClick }: ItemProps) {
     >
       {item.kind === 'task' && item.task ? (
         <>
-          <span className={cn('size-1.5 rounded-full', DOT_BY_STATUS[item.task.status] ?? 'bg-[var(--fg-dim)]')} />
-          <span className="flex-1 truncate text-[13px] text-[var(--foreground)]">{item.task.title}</span>
+          <span
+            data-testid="spotlight-task-dot"
+            className={cn('size-1.5 shrink-0 rounded-full', DOT_BY_STATUS[item.task.status] ?? 'bg-[var(--fg-dim)]')}
+            aria-hidden="true"
+          />
+          <span className="flex-1 truncate text-[13px] text-[var(--foreground)]">
+            <HighlightedLabel text={item.task.title} range={item.matchRange} />
+          </span>
           <span className="max-w-[220px] truncate font-code text-[11.5px] text-[var(--fg-dim)]">{item.task.id}</span>
           <span className="flex-shrink-0 rounded bg-[var(--surface-3)] px-1.5 py-px font-code text-[9.5px] uppercase tracking-[0.06em] text-[var(--fg-dim)]">
             {STATUS_LABELS[item.task.status] ?? item.task.status}
@@ -241,7 +293,9 @@ function SpotlightItem({ item, selected, onMouseEnter, onClick }: ItemProps) {
       {item.kind === 'command' && item.command ? (
         <>
           <span className="grid w-4 place-items-center font-code text-[12px] text-[var(--fg-dim)]">›</span>
-          <span className="flex-1 truncate text-[13px] text-[var(--foreground)]">{item.command.title}</span>
+          <span className="flex-1 truncate text-[13px] text-[var(--foreground)]">
+            <HighlightedLabel text={item.command.title} range={item.matchRange} />
+          </span>
           {item.command.section ? (
             <span className="max-w-[160px] truncate text-[11.5px] text-[var(--fg-dim)]">{item.command.section}</span>
           ) : null}

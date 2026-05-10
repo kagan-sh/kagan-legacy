@@ -512,6 +512,12 @@ textarea {
   }
 }
 
+/* Shell popover entrance animation */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Streaming glyph — half-disc rotating at 4fps (◐ ◓ ◑ ◒).
    Uses steps(4) so the rotation snaps rather than interpolates.
    Reduced-motion: component renders a static ◐ and skips this animation. */
@@ -560,4 +566,24 @@ textarea {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ─── CRT scanline atmosphere — dark mode only ──────────────────────────── */
+/* Subtle 2-px repeating-linear-gradient overlay on the shell, mirroring the
+   Claude Design "Kagan Workspace" prototype. Static (no animation), so
+   prefers-reduced-motion is unaffected. */
+.kg-shell-scanline {
+  position: relative;
+}
+.dark .kg-shell-scanline::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 2px,
+    rgba(0, 0, 0, 0.025) 2px 4px
+  );
+  pointer-events: none;
+  z-index: 100;
 }

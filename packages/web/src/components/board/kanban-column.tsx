@@ -89,7 +89,7 @@ export function KanbanColumn({
           </div>
 
           {isOverLimit ? (
-            <div className="inline-flex items-center gap-1.5 border border-amber-400/25 bg-amber-400/12 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-200">
+            <div className="inline-flex items-center gap-1.5 border border-[var(--kagan-rail-warning)]/25 bg-[var(--primary-glow)] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--kagan-rail-warning)]">
               <AlertTriangle className="size-3" />
               Over WIP
             </div>

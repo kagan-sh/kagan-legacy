@@ -158,7 +158,7 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
               ) : ready === true ? (
                 <><span className="inline-block size-2 rounded-full bg-[var(--kagan-rail-running)]" /><span className="text-[var(--muted-foreground)]">GitHub integration ready</span></>
               ) : ready === false ? (
-                <><span className="inline-block size-2 rounded-full bg-amber-500" /><span className="text-[var(--muted-foreground)]">{preflightMsg}</span></>
+                <><span className="inline-block size-2 rounded-full bg-[var(--kagan-rail-warning)]" /><span className="text-[var(--muted-foreground)]">{preflightMsg}</span></>
               ) : null}
             </div>
 

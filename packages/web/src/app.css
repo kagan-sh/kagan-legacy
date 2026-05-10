@@ -74,6 +74,8 @@
   --kagan-info: #6e6458;
   --kagan-accent-copper: #a58f74;
   --kagan-kanban-bg: #ece3d6;
+  --primary-glow: rgb(212 168 75 / 0.18);
+  --primary-glow-strong: rgb(212 168 75 / 0.30);
   --kagan-rail-running: #1a8563;
   --kagan-rail-error: #d04025;
   --kagan-rail-warning: #a87b25;
@@ -190,6 +192,8 @@
   --kagan-info: #6a8fba;
   --kagan-accent-copper: #b0846a;
   --kagan-kanban-bg: hsl(240 6% 6%);
+  --primary-glow: rgb(212 168 75 / 0.18);
+  --primary-glow-strong: rgb(212 168 75 / 0.30);
   --kagan-rail-running: #3fb58e;
   --kagan-rail-error: #ef4444;
   --kagan-rail-warning: #e6c07b;

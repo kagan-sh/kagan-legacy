@@ -356,8 +356,8 @@ function AgentMessage({ text, thought, time }: { text: string; thought: boolean;
   return (
     <div className="flex gap-3 py-2">
       <Avatar className="mt-0.5 size-6 shrink-0">
-        <AvatarFallback className={thought ? 'bg-fuchsia-500/20' : 'bg-[var(--muted)]'}>
-          {thought ? <BrainCircuit className="size-3.5 text-fuchsia-300" /> : <Bot className="size-3.5 text-[var(--muted-foreground)]" />}
+        <AvatarFallback className={thought ? 'bg-[var(--primary-glow)]' : 'bg-[var(--muted)]'}>
+          {thought ? <BrainCircuit className="size-3.5 text-[var(--kagan-thinking)]" /> : <Bot className="size-3.5 text-[var(--muted-foreground)]" />}
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
@@ -477,9 +477,9 @@ function formatCost(cost: number, currency: string | null): string {
 function UsageRow({ used, size, cost, currency, time }: { used: number; size: number; cost: number | null; currency: string | null; time: string }) {
   const pct = size > 0 ? (used / size) * 100 : 0;
   const pctClamped = Math.min(100, Math.max(0, pct));
-  const barColor = pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
-  const dotColor = pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
-  const textColor = pct > 80 ? 'text-red-400' : pct > 60 ? 'text-amber-400' : 'text-[var(--muted-foreground)]';
+  const barColor = pct > 80 ? 'bg-[var(--kagan-rail-error)]' : pct > 60 ? 'bg-[var(--kagan-thinking)]' : 'bg-[var(--kagan-rail-running)]';
+  const dotColor = pct > 80 ? 'bg-[var(--kagan-rail-error)]' : pct > 60 ? 'bg-[var(--kagan-thinking)]' : 'bg-[var(--kagan-rail-running)]';
+  const textColor = pct > 80 ? 'text-[var(--kagan-rail-error)]' : pct > 60 ? 'text-[var(--kagan-thinking)]' : 'text-[var(--muted-foreground)]';
 
   return (
     <div className={cn("flex items-center gap-2 px-3 py-1 text-[11px] font-code whitespace-nowrap", textColor)}>

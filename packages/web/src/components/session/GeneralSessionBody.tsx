@@ -11,7 +11,7 @@ export function GeneralSessionBody({ chatSessionId }: GeneralSessionBodyProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-[color:var(--border-subtle)] bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-400">
+      <div className="border-b border-[color:var(--border-subtle)] bg-[var(--primary-glow)] px-4 py-2 text-xs text-[var(--kagan-rail-warning)]">
         General session — responses use raw backend streaming without orchestrator prompt
         building.
       </div>

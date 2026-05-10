@@ -120,13 +120,13 @@ function StreamThoughtBlock({
   return (
     <div className="flex gap-3 py-3 opacity-70" data-testid="chat-stream-thought">
       <Avatar className="mt-0.5 size-6 shrink-0">
-        <AvatarFallback className="bg-fuchsia-500/15">
-          <BrainCircuit className="size-3.5 text-fuchsia-400" />
+        <AvatarFallback className="bg-[var(--primary-glow)]">
+          <BrainCircuit className="size-3.5 text-[var(--kagan-thinking)]" />
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
-          <span className="text-[11px] font-semibold text-fuchsia-400">
+          <span className="text-[11px] font-semibold text-[var(--kagan-thinking)]">
             thinking…&nbsp;{elapsed}s&nbsp;·&nbsp;{tokens}&nbsp;tok
           </span>
           {/* Per-block toggle — only shown when global showReasoning is off */}
@@ -134,7 +134,7 @@ function StreamThoughtBlock({
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}
-              className="text-[10px] text-fuchsia-400/60 hover:text-fuchsia-400 transition-colors"
+              className="text-[10px] text-[var(--kagan-thinking)]/60 hover:text-[var(--kagan-thinking)] transition-colors"
               aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
               aria-expanded={expanded}
             >
@@ -147,7 +147,7 @@ function StreamThoughtBlock({
         {isExpanded && content.trim().length > 0 && (
           <MarkdownContent
             content={content}
-            className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-fuchsia-400 prose-pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
+            className="text-[var(--muted-foreground)] prose-headings:text-[var(--muted-foreground)] prose-strong:text-[var(--muted-foreground)] prose-code:text-[var(--kagan-thinking)] prose-pre:bg-[var(--muted)] prose-pre:text-[var(--muted-foreground)]"
           />
         )}
       </div>

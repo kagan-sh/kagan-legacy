@@ -4,11 +4,16 @@ import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
 import { Sidebar } from './sidebar';
 import { boardDialogAtom, tasksAtom } from '@/lib/atoms/board';
-import { newSessionModalOpenAtom, sidebarCollapsedAtom, shellPopoverAtom } from '@/lib/atoms/shell';
+import {
+  newSessionModalOpenAtom,
+  sidebarCollapsedAtom,
+  shellPopoverAtom,
+  sessionsSectionOpenAtom,
+} from '@/lib/atoms/shell';
 import { sessionPickerOpenAtom } from '@/lib/atoms/ui';
 import { apiClient } from '@/lib/api/client';
 import { useSessionList } from '@/lib/hooks/use-session-list';
-import type { SessionItemResponse } from '@kagan/shared-api-client';
+import type { SessionItemResponse, TaskSessionResponse } from '@kagan/shared-api-client';
 import { mockTask } from '@/test/mocks';
 
 // All mock factories are self-contained (no outer-scope references) per vitest hoisting rules.
@@ -16,6 +21,8 @@ vi.mock('@/lib/api/client', () => ({
   apiClient: {
     getHealth: vi.fn(),
     closeSession: vi.fn(),
+    getTaskSessions: vi.fn(),
+    runTask: vi.fn(),
   },
 }));
 
@@ -59,6 +66,17 @@ function makeSessions(count: number): SessionItemResponse[] {
   );
 }
 
+function makeTaskSession(overrides: Partial<TaskSessionResponse> = {}): TaskSessionResponse {
+  return {
+    id: 'ts1',
+    status: 'idle',
+    started_at: '2026-05-10T00:00:00Z',
+    agent_backend: 'claude-code',
+    agent_role: 'worker',
+    ...overrides,
+  };
+}
+
 function setSessionListMock(sessions: SessionItemResponse[]) {
   vi.mocked(useSessionList).mockReturnValue({
     sessions,
@@ -72,6 +90,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiClient.getHealth).mockResolvedValue({ status: 'ok', version: '0.14.4' });
   vi.mocked(apiClient.closeSession).mockResolvedValue(undefined);
+  vi.mocked(apiClient.getTaskSessions).mockResolvedValue([]);
+  vi.mocked(apiClient.runTask).mockResolvedValue({} as ReturnType<typeof apiClient.runTask> extends Promise<infer T> ? T : never);
   mockRefresh.mockResolvedValue(undefined);
   // Default: 1 session (≤ 8, no search field)
   setSessionListMock([makeSession()]);
@@ -248,17 +268,135 @@ describe('SessionsSection — per-row delete', () => {
 });
 
 describe('SessionsSection — View all sessions', () => {
-  it('renders "View all sessions" when sessions exist', () => {
+  it('does NOT render "View all sessions" when sessions.length is 1', () => {
+    // Default beforeEach sets 1 session
+    renderWithProviders(<Sidebar />);
+    expect(screen.queryByRole('button', { name: /view all sessions/i })).toBeNull();
+  });
+
+  it('renders "View all sessions" when sessions.length >= 5', () => {
+    setSessionListMock(makeSessions(5));
     renderWithProviders(<Sidebar />);
     expect(screen.getByRole('button', { name: /view all sessions/i })).toBeInTheDocument();
   });
 
   it('sets sessionPickerOpenAtom to true when "View all sessions" is clicked', () => {
+    setSessionListMock(makeSessions(5));
     const store = createStore();
     renderWithProviders(<Sidebar />, { store });
 
     expect(store.get(sessionPickerOpenAtom)).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: /view all sessions/i }));
     expect(store.get(sessionPickerOpenAtom)).toBe(true);
+  });
+});
+
+describe('Sidebar — change 4: empty-state Tasks copy', () => {
+  it('empty-state copy contains "press N"', () => {
+    // tasksAtom default is [] so no tasks
+    const { container } = renderWithProviders(<Sidebar />);
+    // The paragraph with "No tasks · press N" should be present
+    const emptyPara = container.querySelector('p.italic');
+    expect(emptyPara).toBeInTheDocument();
+    expect(emptyPara?.textContent).toMatch(/no tasks/i);
+    expect(emptyPara?.textContent).toMatch(/press/i);
+    // The kbd inside the paragraph
+    const kbd = emptyPara?.querySelector('kbd');
+    expect(kbd).toBeInTheDocument();
+    expect(kbd?.textContent).toBe('N');
+  });
+});
+
+describe('Sidebar — change 5: Agents caret', () => {
+  it('Agents row shows a chevron-down caret with correct testid', () => {
+    renderWithProviders(<Sidebar />);
+    expect(screen.getByTestId('sidebar-agents-caret')).toBeInTheDocument();
+  });
+});
+
+describe('Sidebar — change 5: Sessions section collapsible', () => {
+  it('collapses the session list when the Sessions eyebrow is clicked', async () => {
+    // Ensure Sessions section is open by default
+    const store = createStore();
+    store.set(sessionsSectionOpenAtom, true);
+    renderWithProviders(<Sidebar />, { store });
+
+    // Session badge should be visible
+    expect(screen.getByText('ORCH')).toBeInTheDocument();
+
+    // Click the eyebrow to collapse
+    const eyebrow = screen.getByRole('button', { name: /sessions/i });
+    fireEvent.click(eyebrow);
+
+    await waitFor(() => {
+      expect(screen.queryByText('ORCH')).toBeNull();
+    });
+  });
+});
+
+describe('Sidebar — change 2: task sub-sessions', () => {
+  it('shows W and R badges after expanding a task with worker and reviewer sessions', async () => {
+    const store = createStore();
+    store.set(tasksAtom, [mockTask({ id: 'task-1', title: 'My task', status: 'IN_PROGRESS' })]);
+
+    vi.mocked(apiClient.getTaskSessions).mockResolvedValue([
+      makeTaskSession({ id: 'ts-w', agent_role: 'worker', status: 'running' }),
+      makeTaskSession({ id: 'ts-r', agent_role: 'reviewer', status: 'idle' }),
+    ]);
+
+    renderWithProviders(<Sidebar />, { store });
+
+    // The expand caret button should be present on the task row
+    const caretBtn = await screen.findByRole('button', { name: /expand sessions/i });
+    fireEvent.click(caretBtn);
+
+    // Wait for the API call and sub-session rows to appear
+    await waitFor(() => {
+      expect(screen.getByText('W')).toBeInTheDocument();
+      expect(screen.getByText('R')).toBeInTheDocument();
+    });
+
+    expect(vi.mocked(apiClient.getTaskSessions)).toHaveBeenCalledWith('task-1');
+  });
+});
+
+describe('Sidebar — change 6: per-row hover actions', () => {
+  it('reveals a Run button for backlog tasks via focus-within', async () => {
+    const store = createStore();
+    store.set(tasksAtom, [mockTask({ id: 'task-bl', title: 'Backlog task', status: 'BACKLOG' })]);
+    vi.mocked(apiClient.getTaskSessions).mockResolvedValue([]);
+
+    renderWithProviders(<Sidebar />, { store });
+
+    const runBtn = await screen.findByRole('button', { name: /^run$/i });
+    expect(runBtn).toBeInTheDocument();
+  });
+
+  it('reveals an Open button for non-backlog tasks via focus-within', async () => {
+    const store = createStore();
+    store.set(tasksAtom, [
+      mockTask({ id: 'task-ip', title: 'In progress task', status: 'IN_PROGRESS' }),
+    ]);
+    vi.mocked(apiClient.getTaskSessions).mockResolvedValue([]);
+
+    renderWithProviders(<Sidebar />, { store });
+
+    const openBtn = await screen.findByRole('button', { name: /^open$/i });
+    expect(openBtn).toBeInTheDocument();
+  });
+
+  it('calls runTask when the Run button is clicked on a backlog task', async () => {
+    const store = createStore();
+    store.set(tasksAtom, [mockTask({ id: 'task-bl2', title: 'Run me', status: 'BACKLOG' })]);
+    vi.mocked(apiClient.getTaskSessions).mockResolvedValue([]);
+
+    renderWithProviders(<Sidebar />, { store });
+
+    const runBtn = await screen.findByRole('button', { name: /^run$/i });
+    fireEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.runTask)).toHaveBeenCalledWith('task-bl2');
+    });
   });
 });

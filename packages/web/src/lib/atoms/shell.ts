@@ -67,3 +67,9 @@ export const boardViewModeAtom = atom<BoardViewMode>('board');
  * (not "Model") is canonical: in Kagan we pick the CLI program, not the LLM.
  */
 export const currentAgentCliAtom = atom<string | null>(null);
+
+/** Whether the Sessions section in the sidebar is expanded. Persists for the session. */
+export const sessionsSectionOpenAtom = atom<boolean>(true);
+
+/** Whether the Tasks section in the sidebar is expanded. Persists for the session. */
+export const tasksSectionOpenAtom = atom<boolean>(true);

@@ -18,7 +18,7 @@ ______________________________________________________________________
 
 - single 44 px title bar with traffic-light chrome, sidebar toggle, history nav, project glyph, search trigger, daemon pill, settings link, theme toggle
 - title-bar segmented control switches between **Workspace** (`/chat`) and **Kanban** (`/board`); animated indicator slides between the two
-- 252 px sidebar (collapsible via `Cmd/Ctrl+\\`) with primary actions, **Sessions** section (orchestrator/general), **Projects** section (active project tasks grouped by status), and a footer with Settings + version chip
+- 252 px sidebar (collapsible via `Cmd/Ctrl+\\`) with primary actions (`New task`, `New session`, `Board`, `Agents`; `Agents` opens a popover, not a route), a collapsible **Sessions** section, a collapsible **Tasks** section (active project tasks grouped by status), and a footer with Settings + version chip
 - **Spotlight** (`Cmd/Ctrl+K` or sidebar search trigger or `/`) is the single command surface — searches tasks, runs registered commands, switches sessions
 - canonical status display labels across the shell: `Backlog`, `In Progress`, `Review`, `Done` (never `RUN` or other variants)
 
@@ -98,8 +98,15 @@ ______________________________________________________________________
 ## 8a. Shell Sessions Surface
 
 - sessions live in the shell **Sidebar**, not in a docked overlay
-- `useSessionList` polls `GET /api/v1/sessions`; the sidebar shows orchestrator and general kinds, with `Add session` triggering `NewSessionDialog`
-- task-bound sessions are reached through the Kanban tab and `/task/:id?lane=…` deep-links
+- `useSessionList` polls `GET /api/v1/sessions`; the sidebar Sessions section shows orchestrator and general kinds only; task-bound sessions are nested under their parent task row in the Tasks section, not listed here
+- the Sessions section is collapsible; an eyebrow label acts as the collapse toggle
+- search input appears inside the Sessions section when session count > 8
+- **"View all sessions"** link (opens `SessionPicker`) is visible only when session count > 4; it does not render for small session lists
+- each session row carries a status dot that reflects live streaming state (idle / running / in-review)
+- hovering a session row reveals a delete button; clicking it enters a 2 s confirm mode before calling `apiClient.closeSession` — pressing elsewhere or waiting reverts to idle
+- the Tasks section is collapsible; each task row has a chevron that expands inline to reveal nested worker (`W` badge) and reviewer (`R` badge) session sub-rows; badge colours match the lane colour for the session kind
+- hovering a task row reveals a Run / Open action at the right edge
+- task-bound sessions are reached through expanded task rows in the sidebar or through `/task/:id?lane=…` deep-links
 - workspace and task routes render their respective session bodies through the same components consumed by Spotlight navigation
 
 *Tests:* `packages/web/src/components/shell/title-bar.test.tsx`,

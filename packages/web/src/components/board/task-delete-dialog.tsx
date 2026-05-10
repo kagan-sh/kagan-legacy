@@ -32,19 +32,22 @@ export function TaskDeleteDialog({
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (!task) return;
+    if (!task || deleting) return;
+    const target = task;
 
     setDeleting(true);
     try {
-      await apiClient.deleteTask(task.id);
+      await apiClient.deleteTask(target.id);
+      // Close the dialog before triggering the board re-fetch so the UI
+      // doesn't appear frozen while tasks are reloading.
+      setDeleting(false);
+      onOpenChange(false);
+      onDeleted?.(target);
       fetchTasks();
       toast.success('Task deleted');
-      onOpenChange(false);
-      onDeleted?.(task);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete task');
-    } finally {
       setDeleting(false);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete task');
     }
   };
 

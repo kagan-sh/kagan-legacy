@@ -6,9 +6,9 @@
  * resolve the task from `popoverTaskIdAtom` so triggers don't have to pass
  * props through the layout.
  */
-import { useAtomValue } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { popoverTaskIdAtom } from '@/lib/atoms/shell';
-import { tasksAtom } from '@/lib/atoms/board';
+import { boardDialogAtom, tasksAtom } from '@/lib/atoms/board';
 import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { MorePopover } from './more-popover';
 import { AdvancePopover } from './advance-popover';
@@ -22,7 +22,13 @@ function useContextTask(): WireTask | null {
 
 export function ConnectedMorePopover() {
   const task = useContextTask();
-  return <MorePopover task={task} />;
+  const setBoardDialog = useSetAtom(boardDialogAtom);
+  return (
+    <MorePopover
+      task={task}
+      onDelete={(taskId) => setBoardDialog({ kind: 'delete', taskId })}
+    />
+  );
 }
 
 export function ConnectedAdvancePopover() {

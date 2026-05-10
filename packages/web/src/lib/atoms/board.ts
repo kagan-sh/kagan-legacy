@@ -18,6 +18,8 @@ export interface BoardFilters {
   status: TaskStatus | 'ALL';
   sort: SortOption;
   repoId: string | null;
+  /** Filter by agent backend name. null = all agents. */
+  agent: string | null;
 }
 
 function createEmptyGroups(): TaskGroups {
@@ -32,6 +34,7 @@ export const boardFiltersAtom = atom<BoardFilters>({
   status: 'ALL',
   sort: 'default',
   repoId: null,
+  agent: null,
 });
 export const searchQueryAtom = atom(
   (get) => get(boardFiltersAtom).query,
@@ -48,6 +51,10 @@ export const boardSortAtom = atom(
 export const boardRepoFilterAtom = atom(
   (get) => get(boardFiltersAtom).repoId,
   (_get, set, value: string | null) => set(boardFiltersAtom, (prev) => ({ ...prev, repoId: value })),
+);
+export const boardAgentFilterAtom = atom(
+  (get) => get(boardFiltersAtom).agent,
+  (_get, set, value: string | null) => set(boardFiltersAtom, (prev) => ({ ...prev, agent: value })),
 );
 /**
  * Incremented when the active project changes.
@@ -88,7 +95,7 @@ function sortTasks(tasks: WireTask[], sort: SortOption): WireTask[] {
 
 export const filteredGroupedTasksAtom = atom((get) => {
   const grouped = get(groupedTasksAtom);
-  const { query, status: statusFilter, sort, repoId } = get(boardFiltersAtom);
+  const { query, status: statusFilter, sort, repoId, agent } = get(boardFiltersAtom);
   const normalizedQuery = query.toLowerCase().trim();
 
   const result = createEmptyGroups();
@@ -102,7 +109,8 @@ export const filteredGroupedTasksAtom = atom((get) => {
         (!normalizedQuery ||
           task.title.toLowerCase().includes(normalizedQuery) ||
           task.description?.toLowerCase().includes(normalizedQuery)) &&
-        (!repoId || task.repo_id === repoId),
+        (!repoId || task.repo_id === repoId) &&
+        (!agent || task.active_session?.agent_backend === agent),
     );
     result[status] = sortTasks(filtered, sort);
   }

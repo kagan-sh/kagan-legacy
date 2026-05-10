@@ -24,7 +24,7 @@ export const routes: RouteObject[] = [
         errorElement: <RouteError />,
       },
       {
-        lazy: () => import('@/components/layout/app-layout'),
+        lazy: () => import('@/components/shell/shell-layout'),
         errorElement: <RouteError />,
         children: [
           {
@@ -39,7 +39,12 @@ export const routes: RouteObject[] = [
           },
           {
             path: 'workspace',
-            lazy: () => import('@/pages/workspace-page'),
+            element: <Navigate to="/chat" replace />,
+            errorElement: <RouteError />,
+          },
+          {
+            path: 'analytics',
+            element: <Navigate to="/workspace" replace />,
             errorElement: <RouteError />,
           },
           {
@@ -48,13 +53,13 @@ export const routes: RouteObject[] = [
             errorElement: <RouteError />,
           },
           {
-            path: 'chat/:id',
+            path: 'chat',
             lazy: () => import('@/pages/chat-page'),
             errorElement: <RouteError />,
           },
           {
-            path: 'analytics',
-            lazy: () => import('@/pages/analytics-page'),
+            path: 'chat/:id',
+            lazy: () => import('@/pages/chat-page'),
             errorElement: <RouteError />,
           },
           {

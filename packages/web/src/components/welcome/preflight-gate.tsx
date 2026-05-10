@@ -41,8 +41,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     >
       {copied ? (
         <>
-          <Check className="size-3 text-green-500" />
-          <span className="text-green-500">Copied</span>
+          <Check className="size-3 text-[var(--kagan-rail-running)]" />
+          <span className="text-[var(--kagan-rail-running)]">Copied</span>
         </>
       ) : (
         <>
@@ -62,7 +62,7 @@ function CheckCard({ check }: { check: DoctorCheckResponse }) {
   const status = checkStatus(check);
   const statusColor = status === 'fail'
     ? 'border-l-[var(--destructive)]'
-    : 'border-l-amber-500';
+    : 'border-l-[var(--kagan-rail-warning)]';
 
   return (
     <Card className={`border-l-2 ${statusColor} gap-3 py-4`}>
@@ -72,7 +72,7 @@ function CheckCard({ check }: { check: DoctorCheckResponse }) {
             <CardTitle className="text-sm">{check.name}</CardTitle>
             <CardDescription className="mt-0.5 text-xs">{check.message}</CardDescription>
           </div>
-          <span className={`shrink-0 font-code text-[10px] font-semibold uppercase tracking-wider ${status === 'fail' ? 'text-[var(--destructive)]' : 'text-amber-500'}`}>
+          <span className={`shrink-0 font-code text-[10px] font-semibold uppercase tracking-wider ${status === 'fail' ? 'text-[var(--destructive)]' : 'text-[var(--kagan-rail-warning)]'}`}>
             {check.status}
           </span>
         </div>
@@ -170,9 +170,9 @@ function DegradedBanner({
   const warnNames = checks.filter((c) => checkStatus(c) === 'warn').map((c) => c.name);
 
   return (
-    <Alert className="mb-6 border-amber-500/50 bg-amber-500/10 text-[var(--foreground)]">
-      <AlertTriangle className="size-4 text-amber-500" aria-hidden="true" />
-      <AlertTitle className="text-amber-600 dark:text-amber-400">
+    <Alert className="mb-6 border-[var(--kagan-rail-warning)]/50 bg-[var(--primary-glow)] text-[var(--foreground)]">
+      <AlertTriangle className="size-4 text-[var(--kagan-rail-warning)]" aria-hidden="true" />
+      <AlertTitle className="text-[var(--kagan-rail-warning)]">
         Degraded configuration
       </AlertTitle>
       <AlertDescription>
@@ -190,7 +190,7 @@ function DegradedBanner({
           variant="outline"
           size="sm"
           onClick={onDismiss}
-          className="border-amber-500/50 text-xs hover:bg-amber-500/10"
+          className="border-[var(--kagan-rail-warning)]/50 text-xs hover:bg-[var(--primary-glow)]"
         >
           Dismiss
         </Button>
@@ -211,6 +211,25 @@ type PreflightState =
   | { kind: 'zero-ready'; checks: DoctorCheckResponse[] }
   | { kind: 'error' };
 
+/**
+ * A check is an "optional backend" WARN when:
+ *   1. Its name starts with `agent_backend:` (it is a per-backend check), AND
+ *   2. At least one other agent_backend check is passing — meaning the user has
+ *      at least one working backend and the WARNs are purely informational.
+ *
+ * Mirrors the TUI preflight filter: non-default backend WARNs are suppressed
+ * from the degraded banner when a default backend is healthy.
+ */
+function isOptionalBackendWarn(
+  check: DoctorCheckResponse,
+  allChecks: DoctorCheckResponse[],
+): boolean {
+  if (!check.name.startsWith('agent_backend:')) return false;
+  return allChecks.some(
+    (c) => c.name.startsWith('agent_backend:') && checkStatus(c) === 'pass',
+  );
+}
+
 export function PreflightGate() {
   const [state, setState] = useState<PreflightState>({ kind: 'idle' });
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -230,6 +249,7 @@ export function PreflightGate() {
           return;
         }
 
+        // All non-pass checks (used for the zero-ready dialog — unfiltered).
         const failing = report.checks.filter((c) => {
           const status = checkStatus(c);
           return status === 'fail' || status === 'warn';
@@ -238,8 +258,19 @@ export function PreflightGate() {
 
         if (hasFail) {
           setState({ kind: 'zero-ready', checks: failing });
-        } else {
+          return;
+        }
+
+        // Degraded banner: only show when at least one non-optional-backend check
+        // is not passing. Optional backend WARNs (non-default backends the user
+        // hasn't installed) are informational when another backend is working.
+        const functional = failing.filter(
+          (c) => !isOptionalBackendWarn(c, report.checks),
+        );
+        if (functional.length > 0) {
           setState({ kind: 'degraded', checks: failing });
+        } else {
+          setState({ kind: 'all-green' });
         }
       })
       .catch(() => {

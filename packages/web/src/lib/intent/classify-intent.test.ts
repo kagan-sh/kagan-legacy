@@ -47,7 +47,6 @@ describe('classifyIntent', () => {
   });
 
   it('routes navigation phrases to the matching surface', () => {
-    expect(classifyIntent('open analytics').route).toBe('/analytics');
     expect(classifyIntent('show settings').route).toBe('/settings');
     expect(classifyIntent('go to the board').route).toBe('/board');
     expect(classifyIntent('take me to workspace').route).toBe('/workspace');
@@ -66,7 +65,7 @@ describe('classifyIntent', () => {
   });
 
   it('includes a user-facing label for every non-empty input', () => {
-    for (const input of ['add x', 'how does x work?', 'find x', 'open analytics', 'foo']) {
+    for (const input of ['add x', 'how does x work?', 'find x', 'open settings', 'foo']) {
       const r = classifyIntent(input);
       expect(r.label.length).toBeGreaterThan(0);
     }

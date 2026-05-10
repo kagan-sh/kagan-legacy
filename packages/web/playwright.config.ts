@@ -18,6 +18,19 @@ import { defineConfig, devices } from '@playwright/test';
  */
 
 const useExternalServer = Boolean(process.env.BASE_URL);
+
+// Guard: running against an external server requires explicit opt-in so that
+// developers do not accidentally hit a production / shared DB.
+if (useExternalServer && !process.env.KAGAN_E2E_ISOLATED) {
+  throw new Error(
+    'BASE_URL is set but KAGAN_E2E_ISOLATED is missing.\n' +
+      'When using an external server you MUST ensure it is isolated ' +
+      '(e.g. started with --db /tmp/kagan-e2e-XXXX/kagan.db).\n' +
+      'To opt-in, set KAGAN_E2E_ISOLATED=1 along with BASE_URL.\n' +
+      'To use the auto-managed isolated server, unset BASE_URL.'
+  );
+}
+
 const E2E_PORT = 8766;
 const E2E_BASE = `http://127.0.0.1:${E2E_PORT}`;
 const tempDir = useExternalServer ? '' : mkdtempSync(join(tmpdir(), 'kagan-e2e-'));
@@ -42,12 +55,21 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
+          // KAGAN_FAKE_AGENT=1 registers a deterministic fake-agent backend so
+          // E2E tests can drive tasks to RUNNING state without a real agent.
+          // The flag is safe to pass unconditionally — the server ignores it
+          // when the eng-core fake-agent feature is not yet compiled in.
           command: `uv run poe web-build && uv run kagan web --db "${dbPath}" --no-open --port ${E2E_PORT}`,
           port: E2E_PORT,
           reuseExistingServer: false,
           timeout: 30_000,
           env: {
             KAGAN_E2E_TEMP_DIR: tempDir,
+            KAGAN_FAKE_AGENT: '1',
+            // Keep orchestrator turns short in E2E; default 30s delay would exceed test timeouts.
+            KAGAN_FAKE_AGENT_DELAY_MS: '100',
+            // Pass through coverage flag so vite-plugin-istanbul instruments the build.
+            E2E_COVERAGE: process.env.E2E_COVERAGE ?? '0',
           },
         },
       }),

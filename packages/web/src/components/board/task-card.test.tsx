@@ -126,7 +126,8 @@ describe('TaskCard', () => {
       const row = screen.getByTestId('diff-summary');
       expect(row).toBeVisible();
       expect(row).toHaveTextContent('+47');
-      expect(row).toHaveTextContent('-12');
+      // Design uses Unicode minus sign (−) not hyphen-minus (-)
+      expect(row).toHaveTextContent('−12');
       expect(row).toHaveTextContent('3 files');
     });
 
@@ -238,6 +239,46 @@ describe('TaskCard', () => {
       const ariaHiddenEls = Array.from(btn.querySelectorAll('[aria-hidden="true"]'));
       const glyph = ariaHiddenEls.find((el) => (el.textContent ?? '').trim().length > 0);
       expect(glyph?.textContent?.trim()).toBe('▼');
+    });
+  });
+
+  describe('session progress bar', () => {
+    it('renders progress bar when IN_PROGRESS with active_session', () => {
+      renderWithProviders(
+        <TaskCard
+          task={mockTask({
+            status: 'IN_PROGRESS',
+            active_session: {
+              id: 's1',
+              status: 'running',
+              launcher: null,
+              agent_backend: 'claude-code',
+              started_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+            },
+          })}
+        />,
+      );
+      expect(screen.getByTestId('session-progress-bar')).toBeInTheDocument();
+    });
+
+    it('does NOT render progress bar when IN_PROGRESS without active_session', () => {
+      renderWithProviders(<TaskCard task={mockTask({ status: 'IN_PROGRESS' })} />);
+      expect(screen.queryByTestId('session-progress-bar')).toBeNull();
+    });
+
+    it('does NOT render progress bar when BACKLOG', () => {
+      renderWithProviders(<TaskCard task={mockTask({ status: 'BACKLOG' })} />);
+      expect(screen.queryByTestId('session-progress-bar')).toBeNull();
+    });
+
+    it('does NOT render progress bar when REVIEW', () => {
+      renderWithProviders(<TaskCard task={mockTask({ status: 'REVIEW' })} />);
+      expect(screen.queryByTestId('session-progress-bar')).toBeNull();
+    });
+
+    it('does NOT render progress bar when DONE', () => {
+      renderWithProviders(<TaskCard task={mockTask({ status: 'DONE' })} />);
+      expect(screen.queryByTestId('session-progress-bar')).toBeNull();
     });
   });
 });

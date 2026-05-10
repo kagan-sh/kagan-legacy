@@ -100,7 +100,7 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Task</DialogTitle>
+          <DialogTitle>Edit task</DialogTitle>
           <DialogDescription>Update task details, agent config, and acceptance criteria.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

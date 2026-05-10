@@ -198,7 +198,7 @@ export function TaskFormFields({
       </div>
 
       <div>
-        <Label className="mb-1">Acceptance Criteria</Label>
+        <Label className="mb-1">Acceptance criteria</Label>
         <div className="flex gap-2">
           <Input
             value={criterionInput}

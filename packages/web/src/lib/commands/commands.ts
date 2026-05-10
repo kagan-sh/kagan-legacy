@@ -7,7 +7,6 @@
  */
 import {
   Bot,
-  ChartBar,
   Check,
   CircleQuestionMark,
   Cog,
@@ -51,15 +50,13 @@ function toggleTheme(): void {
  * Resolve the task id implied by the current URL.
  *
  * Kept path-based and framework-agnostic so the registry stays decoupled
- * from the router. Matches `/task/:id` and `/session/:id`.
+ * from the router. Matches only `/task/:id`.
  */
 function currentTaskIdFromPath(): string | null {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname;
   const taskMatch = /^\/task\/([^/?]+)/.exec(path);
   if (taskMatch) return taskMatch[1] ?? null;
-  const sessionMatch = /^\/session\/([^/?]+)/.exec(path);
-  if (sessionMatch) return sessionMatch[1] ?? null;
   return null;
 }
 
@@ -100,7 +97,7 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
   // ─── Navigate ────────────────────────────────────────────────────────────
   {
     id: 'nav-project-picker',
-    title: 'Open Project Picker',
+    title: 'Open project picker',
     section: 'Navigate',
     keywords: ['welcome', 'project', 'projects', 'start', 'open'],
     icon: LayoutDashboard,
@@ -108,7 +105,7 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
   },
   {
     id: 'nav-board',
-    title: 'Go to Board',
+    title: 'Go to board',
     section: 'Navigate',
     keywords: ['board', 'kanban', 'tasks'],
     icon: LayoutDashboard,
@@ -116,23 +113,15 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
   },
   {
     id: 'nav-workspace',
-    title: 'Go to Workspace',
+    title: 'Go to workspace',
     section: 'Navigate',
     keywords: ['workspace', 'sessions', 'agents'],
     icon: MessageSquareText,
     handler: ({ navigate }) => navigate('/workspace'),
   },
   {
-    id: 'nav-analytics',
-    title: 'Go to Analytics',
-    section: 'Navigate',
-    keywords: ['analytics', 'metrics', 'stats', 'charts'],
-    icon: ChartBar,
-    handler: ({ navigate }) => navigate('/analytics'),
-  },
-  {
     id: 'nav-settings',
-    title: 'Go to Settings',
+    title: 'Go to settings',
     section: 'Navigate',
     keywords: ['settings', 'preferences', 'config'],
     icon: Settings,
@@ -140,7 +129,7 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
   },
   {
     id: 'nav-session-switcher',
-    title: 'Open Session Switcher',
+    title: 'Open session switcher',
     section: 'Navigate',
     keywords: ['session', 'switcher', 'picker', 'chat'],
     icon: PanelRight,
@@ -291,7 +280,7 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
   // For now they land on /settings, which is strictly better than nothing.
   {
     id: 'settings-workflow',
-    title: 'Open Workflow settings',
+    title: 'Open workflow settings',
     section: 'Settings',
     keywords: ['workflow', 'review', 'merge', 'planning'],
     icon: Workflow,
@@ -299,7 +288,7 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
   },
   {
     id: 'settings-agents',
-    title: 'Open Agents settings',
+    title: 'Open agents settings',
     section: 'Settings',
     keywords: ['agents', 'backend', 'model'],
     icon: Bot,
@@ -307,7 +296,7 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
   },
   {
     id: 'settings-advanced',
-    title: 'Open Advanced settings',
+    title: 'Open advanced settings',
     section: 'Settings',
     keywords: ['advanced', 'appearance', 'git', 'tooling'],
     icon: Cog,

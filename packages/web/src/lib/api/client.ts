@@ -14,7 +14,14 @@ import {
   KaganApiClient as BaseClient,
   ApiError,
 } from '@kagan/shared-api-client';
-import type { TaskStatus, WireTask, UpdateTaskInput } from '@kagan/shared-api-client';
+import type {
+  TaskStatus,
+  WireTask,
+  UpdateTaskInput,
+  SessionItemResponse,
+  SessionsResponse,
+  CreateSessionRequest,
+} from '@kagan/shared-api-client';
 
 export { ApiError, CHAT_STREAM_EVENT } from '@kagan/shared-api-client';
 export type {
@@ -78,7 +85,7 @@ export class KaganApiClient extends BaseClient {
    * Override to return a relative path (no protocol + host) in bundled mode.
    * The base class always prepends `${protocol}://${host}`.
    */
-  protected override getFullUrl(path: string): string {
+  override getFullUrl(path: string): string {
     if (this._bundledWeb || !super.isConfigured()) return path;
     return super.getFullUrl(path);
   }
@@ -120,6 +127,53 @@ export class KaganApiClient extends BaseClient {
   /** Alias for updateTask (web consumers pass UpdateTaskInput directly). */
   override updateTask(taskId: string, input: UpdateTaskInput): Promise<WireTask> {
     return super.updateTask(taskId, input);
+  }
+
+  /** POST /api/chat/sessions/:sessionId/permission/:futureId */
+  async resolvePermission(sessionId: string, futureId: string, outcome: string, feedback?: string): Promise<void> {
+    await this.post<void>(`/api/chat/sessions/${sessionId}/permission/${futureId}`, { outcome, feedback });
+  }
+
+  // -- Unified sessions API (Agent D) ----------------------------------------
+
+  /** GET /api/v1/sessions */
+  async getSessions(): Promise<SessionsResponse> {
+    return this.get<SessionsResponse>('/api/v1/sessions');
+  }
+
+  /** POST /api/v1/sessions */
+  async createSession(request: CreateSessionRequest): Promise<SessionItemResponse> {
+    return this.post<SessionItemResponse>('/api/v1/sessions', request);
+  }
+
+  /** POST /api/v1/sessions/:sessionId/message */
+  async sendSessionMessage(
+    sessionId: string,
+    text: string,
+    options?: { agent_backend?: string; attachments?: unknown[] },
+  ): Promise<Response> {
+    const response = await this._fetchImpl(this.getFullUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}/message`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders(),
+      },
+      body: JSON.stringify({ text, ...options }),
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, `Session message failed: ${response.status}`);
+    }
+    return response;
+  }
+
+  /** POST /api/v1/sessions/:sessionId/stop */
+  async stopSession(sessionId: string): Promise<void> {
+    await this.post<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/stop`, {});
+  }
+
+  /** POST /api/v1/sessions/:sessionId/close */
+  async closeSession(sessionId: string): Promise<void> {
+    await this.post<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/close`, {});
   }
 }
 

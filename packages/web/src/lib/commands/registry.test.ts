@@ -223,6 +223,16 @@ describe('task-scoped command guards', () => {
     expect(visible.has('run-review-merge')).toBe(false);
   });
 
+  it('does not treat session routes as task routes', () => {
+    window.history.replaceState(null, '', '/session/task-1');
+    store.set(tasksAtom, [makeTask({ status: 'BACKLOG' })]);
+    registerBuiltinCommands();
+
+    const visible = new Set(getCommands().map((c) => c.id));
+    expect(visible.has('nav-task-open')).toBe(false);
+    expect(visible.has('run-start-current-task')).toBe(false);
+  });
+
   it('exposes start + edit + delete when viewing a backlog task', () => {
     window.history.replaceState(null, '', '/task/task-1');
     store.set(tasksAtom, [makeTask({ status: 'BACKLOG' })]);

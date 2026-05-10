@@ -84,7 +84,8 @@ export function Component() {
     : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col px-4 py-10 sm:px-6">
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-2xl flex-col px-4 py-10 sm:px-6">
       {/* Hero */}
       <div className="space-y-2 text-center">
         <div className="mx-auto mb-3 flex size-12 items-center justify-center text-[var(--muted-foreground)]">
@@ -152,6 +153,7 @@ export function Component() {
           <ArrowLeft className="size-3.5" />
           Return to welcome
         </Button>
+      </div>
       </div>
     </div>
   );

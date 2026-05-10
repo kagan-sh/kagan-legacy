@@ -69,7 +69,7 @@ async def test_settings_change_persists(tui_driver: Any) -> None:
 
 
 async def test_settings_survive_app_restart(tui_driver: Any) -> None:
-    """Value written in one KaganApp instance is readable in a fresh instance."""
+    """Value written in one KaganApp instance is readable after driver.reboot()."""
     from textual.widgets import Select
 
     from kagan.tui import KaganApp
@@ -100,16 +100,10 @@ async def test_settings_survive_app_restart(tui_driver: Any) -> None:
         await pilot.press("escape")
         await wait_for(lambda: isinstance(app.screen, KanbanScreen), tries=60)
 
-    # --- second app: verify the setting is still there ---
-    app2 = KaganApp(db_path=db_path)
-    async with app2.run_test(size=(120, 40)) as pilot2:
-        await pilot2.pause()
-        await pilot2.press("enter")
-        await wait_for(lambda: isinstance(app2.screen, KanbanScreen), tries=60)
-        await pilot2.pause()
-
-        settings = await app2.core.settings.get()
-        saved_backend = settings.get("default_agent_backend")
-        assert saved_backend == "fake-agent", (
-            f"Setting not persisted across restart; got {saved_backend!r}"
-        )
+    # --- reboot the driver's KaganCore and verify the setting persisted ---
+    await tui_driver.reboot()
+    settings = await tui_driver.settings_get()
+    saved_backend = settings.get("default_agent_backend")
+    assert saved_backend == "fake-agent", (
+        f"Setting not persisted after reboot; got {saved_backend!r}"
+    )

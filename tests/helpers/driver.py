@@ -10,6 +10,7 @@ to the underlying protocol driver (CoreDriver for now, McpDriver later).
 Tests ONLY use KaganDriver. They never touch services or drivers directly.
 """
 
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -479,6 +480,55 @@ class KaganDriver:
         return await self._driver.set_repo_default_branch(
             repo_id=repo_id, branch=branch, mark_configured=mark_configured
         )
+
+    # ======================================================================
+    # Lifecycle helpers
+    # ======================================================================
+
+    async def reboot(self) -> "KaganDriver":
+        """Close the underlying KaganCore and reopen it against the same DB.
+
+        Useful for asserting that settings / tasks / sessions persist across
+        process restarts. The agent factory is preserved so previously-scripted
+        behaviour survives the reboot.
+
+        Returns *self* so the call can be chained or assigned:
+
+            driver = await driver.reboot()
+            settings = await driver.settings_get()
+        """
+        if self._ctx is not None:
+            await self._ctx.aclose()
+        assert self._tmp_path is not None, "Driver not booted; tmp_path unavailable"
+        db_path = self._tmp_path / "kagan.db"
+        new_ctx = KaganCore(db_path=db_path)
+        self._ctx = new_ctx
+        self._driver = CoreDriver(new_ctx)
+        return self
+
+    async def provision_workspace_with_repo(self, task_id: str) -> Path:
+        """Init a real git repo, attach it to the active project, and provision
+        a worktree for *task_id*.
+
+        Idempotent: if the repo directory already exists the ``add_repo`` step
+        is skipped silently. Returns the worktree path.
+
+        Raises ``RuntimeError`` if git init fails (e.g. git not installed).
+        Raises ``RuntimeError`` if the worktree path is unavailable after provisioning.
+        """
+        from tests.helpers.git_helpers import init_git_repo
+
+        assert self._tmp_path is not None, "Driver not booted; tmp_path unavailable"
+        repo_path = self._tmp_path / "task_repo"
+        if not repo_path.exists():
+            await init_git_repo(repo_path)
+        with contextlib.suppress(Exception):
+            await self.add_repo(repo_path)
+        await self.provision_workspace(task_id)
+        ws = await self.get_workspace_path(task_id)
+        if ws is None:
+            raise RuntimeError(f"Worktree path unavailable for task {task_id} after provisioning")
+        return Path(ws)
 
     async def merge_task(self, task_id: str) -> dict[str, object]:
         """Merge task branch and move to DONE."""

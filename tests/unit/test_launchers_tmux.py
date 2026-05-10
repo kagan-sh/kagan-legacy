@@ -156,3 +156,10 @@ def test_build_launch_command_smoke_all_backends(agent_backend: str) -> None:
     assert cmd is not None
     executable = _agent.get_backend_spec(agent_backend).executable
     assert executable in cmd
+
+
+def test_tmux_session_name_uses_session_id() -> None:
+    """KanbanScreen._tmux_session_name strips the 'session:' prefix."""
+    from kagan.tui.screens.kanban import KanbanScreen
+
+    assert KanbanScreen._tmux_session_name("session:abc123") == "kagan-session-abc123"

@@ -531,6 +531,7 @@ class Sessions:
                     session_id=session_obj.id,
                     task_id=task_id,
                     on_session_update=self._make_acp_callback(task_id, session_obj.id),
+                    worktree=Path(ws.worktree_path),
                 )
             else:
                 pid, reader_task = await spawn_agent_via_acp(

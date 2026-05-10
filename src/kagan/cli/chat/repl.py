@@ -1185,6 +1185,20 @@ async def run_chat_async(
 
     global _settings_cache
 
+    # When KAGAN_FAKE_AGENT=1 is active, auto-register the fake backend so
+    # ``get_backend_spec("fake-agent")`` does not raise, and use the in-process
+    # fake factory instead of LongLivedACPFactory (which would try to spawn a
+    # real ACP subprocess).  This makes ``kg chat --agent fake-agent`` work for
+    # CLI PTY tests without any running external process.
+    fake_agent_active = os.environ.get("KAGAN_FAKE_AGENT") == "1"
+    if fake_agent_active:
+        from kagan.core._fake_agent import make_fake_chat_factory, register_fake_backend
+
+        register_fake_backend()
+        _fake_factory: object | None = make_fake_chat_factory()
+    else:
+        _fake_factory = None
+
     async with KaganCore() as client:
         backend = agent
         settings = await client.settings.get()
@@ -1201,6 +1215,9 @@ async def run_chat_async(
             prefer_session_backend=agent is None,
             show_reasoning=show_reasoning,
         )
+        # Inject the in-process fake factory when available so that
+        # _run_agent_session bypasses LongLivedACPFactory subprocess spawning.
+        controller._acp_factory_override = _fake_factory  # type: ignore[attr-defined]
 
         if not await controller.ensure_project():
             return None

@@ -780,6 +780,45 @@ class ChatController:
 
     async def _run_agent_session(self, *, prompt: str | None = None) -> None:
         cwd = Path.cwd()
+        # _acp_factory_override is set by run_chat_async when KAGAN_FAKE_AGENT=1
+        # so that the fake in-process factory is used instead of
+        # LongLivedACPFactory (which would try to spawn a real ACP subprocess).
+        override = getattr(self, "_acp_factory_override", None)
+        if override is not None:
+            # In-process fake factory: no subprocess spawn, no ACP handshake.
+            self._factory = override  # type: ignore[assignment]
+            self._permission_ui.bind_engine(self.client.chat)
+            try:
+                _console.print("[green]✓[/green] Agent ready.")
+                _TOOLBAR_STATE.agent_backend = self.agent_backend
+                _TOOLBAR_STATE.project_name = Path.cwd().name
+                status_line = build_chat_status_line(
+                    mode="repl",
+                    session_label=self._status_line_session_label(),
+                    message_count=self._turn_count,
+                )
+                _console.print(f"[dim]{status_line}[/dim]")
+                _console.print()
+                if prompt is None:
+                    self._print_restored_messages()
+                await self._watcher.initialize()
+                await self._watcher.subscribe()
+                if prompt is not None:
+                    await self._send(text=prompt)
+                else:
+                    await self._repl_loop()
+            finally:
+                await self._watcher.close()
+                for task in list(self._permission_tasks):
+                    if not task.done():
+                        task.cancel()
+                for task in list(self._permission_tasks):
+                    with contextlib.suppress(BaseException):
+                        await task
+                self._permission_tasks.clear()
+                self._factory = None
+            return
+
         factory = LongLivedACPFactory(
             client=self.client,
             agent_backend=self.agent_backend,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Bot, BrainCircuit, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Bot, BrainCircuit, Check, ChevronRight, Loader2 } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
 import { cn } from '@/lib/utils';
 import type { ChatStreamEntry } from '@/lib/atoms/chat';
@@ -53,6 +53,18 @@ export function ChatStreamEntries({ entries, showReasoning = false }: ChatStream
             return <StreamNoteRow key={key} message={entry.message} />;
           case 'error':
             return <StreamErrorBlock key={key} message={entry.message} />;
+          case 'worked':
+            return (
+              <WorkedAccordion
+                key={key}
+                label={entry.label}
+                steps={entry.steps}
+                done={entry.done}
+                startedAt={entry.startedAt}
+              />
+            );
+          case 'files':
+            return <FilesChangedBlock key={key} items={entry.items} />;
         }
       })}
     </>
@@ -286,5 +298,159 @@ function StreamErrorBlock({ message }: { message: string }) {
 function StreamNoteRow({ message }: { message: string }) {
   return (
     <div className="ml-9 my-1 text-[11px] text-[var(--muted-foreground)]">{message}</div>
+  );
+}
+
+// ── Worked accordion ─────────────────────────────────────────────────────────
+
+/**
+ * Collapsible accordion that groups a batch of tool steps under a
+ * "Worked for Ns" header.  Mirrors the `.worked` / `.worked-steps` design.
+ *
+ * - Closed by default; click toggles `data-open`.
+ * - Live state (done=false) shows a spinning icon; done state shows a check.
+ * - Spin animation is suppressed by the `.worked-icon-live` media rule when
+ *   `prefers-reduced-motion: reduce` is active.
+ */
+function WorkedAccordion({
+  label,
+  steps,
+  done,
+  startedAt: _startedAt,
+}: {
+  label: string;
+  steps: string[];
+  done: boolean;
+  startedAt: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="flex flex-col" data-testid="worked-accordion">
+      {/* Header pill */}
+      <button
+        type="button"
+        data-open={open}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'inline-flex w-fit cursor-pointer select-none items-center gap-2',
+          'rounded-md border border-[var(--border)] bg-[var(--surface-1)]',
+          'px-2.5 py-1 font-code text-[12px] text-[var(--muted-foreground)]',
+          'transition-[border-color] duration-[var(--motion-fast)]',
+          'hover:border-[var(--panel-border-strong)]',
+        )}
+        aria-expanded={open}
+        aria-label={open ? 'Collapse tool steps' : 'Expand tool steps'}
+      >
+        {/* Status icon: spinning Loader2 when live, check when done */}
+        {done ? (
+          <Check
+            className="size-3 shrink-0 text-[var(--kagan-rail-running)]"
+            aria-hidden="true"
+            data-testid="worked-icon-done"
+          />
+        ) : (
+          <Loader2
+            className="worked-icon-live size-3 shrink-0 text-[var(--primary)]"
+            aria-hidden="true"
+            data-testid="worked-icon-live"
+          />
+        )}
+        <span>{label}</span>
+        <ChevronRight
+          className={cn(
+            'size-3 shrink-0 text-[var(--muted-foreground)] transition-transform duration-[var(--motion-fast)]',
+            open && 'rotate-90',
+          )}
+          aria-hidden="true"
+        />
+      </button>
+
+      {/* Steps list */}
+      <div
+        data-open={open}
+        className={cn(
+          'ml-1.5 border-l-2 border-[var(--border)] pl-3.5',
+          'flex flex-col gap-1 overflow-y-auto font-code text-[11.5px] leading-relaxed text-[var(--muted-foreground)]',
+          'transition-[max-height,opacity,padding] duration-[var(--motion-base)]',
+          open ? 'max-h-[280px] pt-3 pb-1 opacity-100' : 'max-h-0 overflow-hidden border-transparent py-0 opacity-0',
+        )}
+        aria-hidden={!open}
+        data-testid="worked-steps"
+      >
+        {steps.map((step, idx) => {
+          // Steps are formatted as "<timestamp>  <action>" — split on double-space
+          const splitIdx = step.indexOf('  ');
+          const ts = splitIdx >= 0 ? step.slice(0, splitIdx) : '';
+          const action = splitIdx >= 0 ? step.slice(splitIdx + 2) : step;
+          return (
+            <div key={idx} className="flex gap-2">
+              {ts && (
+                <span className="shrink-0 text-[var(--muted-foreground)]/60">{ts}</span>
+              )}
+              <span className="text-[var(--primary)]/80">{action}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Files changed block ───────────────────────────────────────────────────────
+
+/**
+ * Renders a list of filenames changed during the agent's last action.
+ * Matches `.msg-assistant ul/li/file` from the design:
+ *   - `›` glyph in `var(--primary)` before each item
+ *   - monospace filename with dashed amber underline
+ *   - click navigates to diff viewer (no-op when no worktree)
+ */
+function FilesChangedBlock({ items }: { items: string[] }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div
+      className="flex flex-col gap-3 pl-0"
+      data-testid="files-changed-block"
+      aria-label="Changed files"
+    >
+      <span className="font-code text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted-foreground)]">
+        Changed
+      </span>
+      <ul className="flex list-none flex-col gap-1.5 p-0">
+        {items.map((filename) => (
+          <li
+            key={filename}
+            className="flex items-center gap-2.5 text-[14px] text-[var(--foreground)]/80"
+          >
+            <span
+              className="font-code font-bold text-[var(--primary)]"
+              aria-hidden="true"
+            >
+              ›
+            </span>
+            {/* Using <a> as the design specifies; href="#" is a no-op placeholder
+                when no worktree diff viewer is active. The caller can swap this
+                to a router link once diff navigation is wired. */}
+            <a
+              href="#"
+              className={cn(
+                'font-code text-[13px] text-[var(--primary)]/80',
+                'border-b border-dashed border-[rgba(240,200,104,0.3)]',
+                'hover:border-[var(--primary)] hover:text-[var(--primary)]',
+                'transition-[color,border-color] duration-[var(--motion-fast)]',
+                'cursor-pointer no-underline',
+              )}
+              data-testid="file-link"
+              onClick={(e) => e.preventDefault()}
+              aria-label={`View diff for ${filename}`}
+            >
+              {filename}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

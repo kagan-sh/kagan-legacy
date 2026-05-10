@@ -8,7 +8,9 @@ test.describe("Navigation", () => {
 
   test("board to settings and back", async ({ page }) => {
     await page.goto("/board");
-    await page.getByRole("link", { name: /^settings$/i }).click();
+    // Sidebar footer link (text "Settings") and title-bar icon link (aria-label="Settings")
+    // both match — use the sidebar one (first) which is the primary nav surface.
+    await page.getByRole("link", { name: /^settings$/i }).first().click();
     await expect(page.getByText(/connection/i)).toBeVisible();
     await page.getByRole("link", { name: /kanban/i }).click();
     await expect(

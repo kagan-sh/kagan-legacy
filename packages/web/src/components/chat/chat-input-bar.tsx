@@ -15,6 +15,7 @@ import {
   shellPopoverAtom,
   composerAccessAtom,
   composerLocalityAtom,
+  composerBranchAtom,
   currentModelAtom,
   type ShellPopover,
 } from '@/lib/atoms/shell';
@@ -138,6 +139,7 @@ export function ChatInputBar({
   const [access] = useAtom(composerAccessAtom);
   const locality = useAtomValue(composerLocalityAtom);
   const model = useAtomValue(currentModelAtom);
+  const selectedBranch = useAtomValue(composerBranchAtom);
   const setPopover = useSetAtom(shellPopoverAtom);
 
   // ── History ────────────────────────────────────────────────────────────────
@@ -368,19 +370,10 @@ export function ChatInputBar({
     });
   };
 
-  const copyBranch = async () => {
-    const branch = activeBranch ?? 'main';
-    try {
-      await navigator.clipboard.writeText(branch);
-      toast.success(`Copied branch: ${branch}`);
-    } catch {
-      toast.error('Clipboard unavailable');
-    }
-  };
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const branch = activeBranch ?? 'main';
+  // composerBranchAtom overrides activeBranch when the user has picked explicitly.
+  const branch = selectedBranch ?? activeBranch ?? 'main';
 
   return (
     <div className={cn('border-t border-[var(--border)] bg-[var(--bg)] px-8 py-3.5', className)}>
@@ -509,7 +502,7 @@ export function ChatInputBar({
             <Chip
               icon={<GitBranch strokeWidth={1.8} />}
               label={branch}
-              onClick={() => { void copyBranch(); }}
+              onClick={openPopover('branch')}
               data-testid="composer-branch-chip"
             />
 

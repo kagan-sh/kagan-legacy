@@ -9,7 +9,11 @@ export type ChatStreamEntry =
   | { kind: 'thought'; content: string; startedAt: number }
   | { kind: 'tool'; id: string; name: string; status: 'running' | 'done' | 'failed'; detail?: string; args: Record<string, unknown> | null; startedAt: number }
   | { kind: 'note'; message: string }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string }
+  /** A collapsible "Worked for Ns" accordion grouping a batch of tool steps. */
+  | { kind: 'worked'; label: string; steps: string[]; done: boolean; startedAt: number }
+  /** A list of filenames changed during the agent's last action. */
+  | { kind: 'files'; items: string[] };
 
 // ---------------------------------------------------------------------------
 // Multi-client / watch state

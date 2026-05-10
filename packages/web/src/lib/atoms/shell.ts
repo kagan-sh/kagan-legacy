@@ -56,3 +56,9 @@ export type ComposerLocality = 'local' | 'remote';
 export const composerAccessAtom = atom<ComposerAccess>('full');
 export const composerLocalityAtom = atom<ComposerLocality>('local');
 export const currentModelAtom = atom<string | null>(null);
+
+/**
+ * Branch selected by the user in the branch popover.
+ * null means "use the active task's base_branch or fall back to 'main'".
+ */
+export const composerBranchAtom = atom<string | null>(null);

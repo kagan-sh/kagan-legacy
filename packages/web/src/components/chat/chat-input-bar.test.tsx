@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
@@ -7,23 +7,13 @@ import {
   shellPopoverAtom,
   composerAccessAtom,
   composerLocalityAtom,
+  composerBranchAtom,
   currentModelAtom,
 } from '@/lib/atoms/shell';
-
-// navigator.clipboard is not available in jsdom — stub it
-const writeTextMock = vi.fn().mockResolvedValue(undefined);
-Object.defineProperty(navigator, 'clipboard', {
-  value: { writeText: writeTextMock },
-  writable: true,
-  configurable: true,
-});
 
 const noop = () => {};
 
 describe('ChatInputBar chip row', () => {
-  beforeEach(() => {
-    writeTextMock.mockClear();
-  });
 
   it('renders all chip-row buttons', () => {
     renderWithProviders(<ChatInputBar onSend={noop} />);
@@ -78,24 +68,32 @@ describe('ChatInputBar chip row', () => {
     expect(popover.kind).toBe('model');
   });
 
-  it('branch chip copies branch to clipboard (default main)', async () => {
-    renderWithProviders(<ChatInputBar onSend={noop} />);
+  it('branch chip opens branch popover via shellPopoverAtom', () => {
+    const store = createStore();
+    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
 
     fireEvent.click(screen.getByTestId('composer-branch-chip'));
 
-    await vi.waitFor(() => {
-      expect(writeTextMock).toHaveBeenCalledWith('main');
-    });
+    const popover = store.get(shellPopoverAtom);
+    expect(popover.kind).toBe('branch');
   });
 
-  it('branch chip copies activeBranch prop when provided', async () => {
-    renderWithProviders(<ChatInputBar onSend={noop} activeBranch="feat/my-task" />);
+  it('branch chip label reflects composerBranchAtom when set', () => {
+    const store = createStore();
+    store.set(composerBranchAtom, 'feat/my-feature');
+    renderWithProviders(<ChatInputBar onSend={noop} />, { store });
+    expect(screen.getByTestId('composer-branch-chip')).toHaveTextContent('feat/my-feature');
+  });
 
-    fireEvent.click(screen.getByTestId('composer-branch-chip'));
+  it('branch chip label falls back to activeBranch prop when composerBranchAtom is null', () => {
+    const store = createStore();
+    renderWithProviders(<ChatInputBar onSend={noop} activeBranch="feat/task-branch" />, { store });
+    expect(screen.getByTestId('composer-branch-chip')).toHaveTextContent('feat/task-branch');
+  });
 
-    await vi.waitFor(() => {
-      expect(writeTextMock).toHaveBeenCalledWith('feat/my-task');
-    });
+  it('branch chip label falls back to main when neither composerBranchAtom nor activeBranch is set', () => {
+    renderWithProviders(<ChatInputBar onSend={noop} />);
+    expect(screen.getByTestId('composer-branch-chip')).toHaveTextContent('main');
   });
 
   it('permissions chip label reflects composerAccessAtom', () => {

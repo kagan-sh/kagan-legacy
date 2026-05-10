@@ -518,6 +518,22 @@ textarea {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Worked-accordion live-spin icon */
+@keyframes worked-icon-spin {
+  to { transform: rotate(360deg); }
+}
+
+.worked-icon-live {
+  display: inline-block;
+  animation: worked-icon-spin 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .worked-icon-live {
+    animation: none;
+  }
+}
+
 /* Streaming glyph — half-disc rotating at 4fps (◐ ◓ ◑ ◒).
    Uses steps(4) so the rotation snaps rather than interpolates.
    Reduced-motion: component renders a static ◐ and skips this animation. */

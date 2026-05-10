@@ -19,6 +19,7 @@ import {
 import { PermissionsPopover } from '@/components/shell/popovers/permissions-popover';
 import { ModelPopover } from '@/components/shell/popovers/model-popover';
 import { LocalityPopover } from '@/components/shell/popovers/locality-popover';
+import { BranchPopover } from '@/components/shell/popovers/branch-popover';
 import { useEventStream } from '@/lib/hooks/use-event-stream';
 import { apiClient } from '@/lib/api/client';
 import {
@@ -158,6 +159,7 @@ function ShellLayout() {
       <PermissionsPopover />
       <ModelPopover />
       <LocalityPopover />
+      <BranchPopover />
     </>
   );
 }

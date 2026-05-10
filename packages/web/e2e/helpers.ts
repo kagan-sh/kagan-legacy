@@ -209,7 +209,8 @@ export async function ensureBoardReady(
   await expect(page.getByRole('heading', { name: 'Backlog', exact: true })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible({
+  // Board toolbar uses aria-label="Create new task" (text "New task") in the new shell.
+  await expect(page.getByRole('button', { name: 'Create new task' })).toBeVisible({
     timeout: 20_000,
   });
 }

@@ -33,7 +33,9 @@ test.describe("Shell layout", () => {
 
   test("sidebar Settings link reaches /settings", async ({ page }) => {
     await page.goto("/board");
-    await page.getByRole("link", { name: /^settings$/i }).click();
+    // Sidebar footer "Settings" link (text) and title-bar "Settings" icon link
+    // (aria-label) both match. Use the sidebar one via first().
+    await page.getByRole("link", { name: /^settings$/i }).first().click();
     await expect(page).toHaveURL(/\/settings/);
   });
 

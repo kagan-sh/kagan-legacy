@@ -31,6 +31,7 @@
   --popover-foreground: #1a1612;
   --primary: #d4a84b;
   --primary-foreground: #0b0a09;
+  --primary-soft: #b89154;
   --secondary: #d8cebf;
   --secondary-foreground: #1a1612;
   --muted: #e5dccf;
@@ -83,7 +84,7 @@
   --border-blurred: #bcae9a80;
   --text-muted: #665c50;
   --text-disabled: #6e6456;
-  --link-color: #316595;
+  --link-color: var(--primary-soft);
   --link-hover-color: #1c6f4e;
   --scrollbar: #2a251f;
   --scrollbar-hover: #d4a84b;

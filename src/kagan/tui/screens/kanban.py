@@ -1045,7 +1045,7 @@ class KanbanScreen(Screen[None]):
             )
             return
         if task.status is not TaskStatus.REVIEW:
-            self.app.notify("Review shortcut is available for REVIEW tasks", severity="information")
+            self.app.notify("Review shortcut requires a task in review", severity="information")
             return
 
         from kagan.tui.screens.task_screen import TaskScreen
@@ -1441,12 +1441,12 @@ class KanbanScreen(Screen[None]):
 
         warning_lines = ["This removes the task from the board and its persisted state."]
         if has_active_session:
-            warning_lines.append("⚠ An active agent session will be stopped.")
+            warning_lines.append("! An active agent session will be stopped.")
         if has_worktree:
-            warning_lines.append("⚠ The git worktree and branch will be removed.")
+            warning_lines.append("! The git worktree and branch will be removed.")
         self.app.push_screen(
             ConfirmModal(
-                title="Delete Task",
+                title="Delete task",
                 message=f"Delete #{task.id[:8]} · {task.title}?",
                 detail="\n".join(warning_lines),
                 confirm_label="Delete",

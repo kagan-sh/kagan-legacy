@@ -195,3 +195,35 @@ ______________________________________________________________________
 | `↓` (from chat input)   | Move focus to running-agents bar            |
 | `Enter` (from bar)      | Attach to highlighted agent                 |
 | `Esc`                   | Detach (when attached) / close overlay      |
+
+______________________________________________________________________
+
+## 9. Design System Compliance
+
+The TUI is the flagship surface and holds to the strictest interpretation of
+the Kagan design system. Canonical spec:
+`kagan-design-system/project/README.md` and `kagan-design-system/project/ui_kits/tui/`.
+
+### Casing rules enforced in this codebase
+
+| Surface                  | Rule          | Token examples                             |
+| ------------------------ | ------------- | ------------------------------------------ |
+| Column headers           | UPPERCASE     | `BACKLOG` `IN PROGRESS` `REVIEW` `DONE`    |
+| Eyebrow / section labels | UPPERCASE     | `CHANGES` `AGENT LOG` `PLAN` `SESSIONS`    |
+| Mode badges              | UPPERCASE     | `AUTO` `PAIR`                              |
+| Modal titles             | Sentence case | `Delete task` `Approve task?` `Kagan help` |
+| Toast / notify text      | Sentence case | `Merged and moved to done`                 |
+| Keybinding descriptions  | lowercase     | `new task` `open` `back` `approve`         |
+
+### Forbidden content
+
+- No emoji (`📋`, etc.). Use `✓` `✗` `▸` `●` or plain ASCII `!` instead.
+- `⚠` (U+26A0) is replaced with `!` throughout.
+- No exclamation marks in toasts or modal copy.
+- No hype words ("blazing", "super-charged", etc.).
+
+### Motion preference
+
+Set `REDUCED_MOTION=1` in the environment to disable spinner / pulse animations.
+`MOTION_REDUCED` in `src/kagan/tui/theme.py` is the authoritative flag; `StatusBar`
+consults it before starting its wave-frame timer.

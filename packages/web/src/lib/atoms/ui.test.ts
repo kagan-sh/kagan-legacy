@@ -4,7 +4,6 @@ import {
   selectedSessionAtom,
   sessionOverlayOpenAtom,
   sessionOverlayLayoutAtom,
-  selectedSessionCapabilitiesAtom,
 } from '@/lib/atoms/ui';
 
 describe('ui atoms', () => {
@@ -57,33 +56,5 @@ describe('ui atoms', () => {
       expect(store.get(sessionOverlayLayoutAtom)).toBe('fullscreen');
     });
 
-    it('derives capabilities from selected session', () => {
-      expect(store.get(selectedSessionCapabilitiesAtom)).toBeNull();
-
-      const session = {
-        id: 'sess-2',
-        type: 'task',
-        role: 'executor',
-        status: 'running',
-        title: 'Runner',
-        backend: 'gpt-4',
-        project_id: 'proj-1',
-        task_id: 'task-99',
-        session_id: null,
-        chat_session_id: null,
-        updated_at: '2026-05-08T12:00:00Z',
-        capabilities: {
-          can_chat: false,
-          can_stream: true,
-          can_replay: false,
-          can_stop: true,
-          can_close: false,
-          has_kagan_tools: false,
-        },
-      };
-
-      store.set(selectedSessionAtom, session);
-      expect(store.get(selectedSessionCapabilitiesAtom)).toEqual(session.capabilities);
-    });
   });
 });

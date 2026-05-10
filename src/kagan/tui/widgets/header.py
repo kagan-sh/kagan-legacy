@@ -233,4 +233,4 @@ class KaganHeader(Horizontal):
                 f"● {self.active_count} active  ◎ {self.review_count} review"
                 f"  ✓ {self.done_count} done"
             )
-        return f"📋 {self.task_count} tasks"
+        return f"▸ {self.task_count} tasks"

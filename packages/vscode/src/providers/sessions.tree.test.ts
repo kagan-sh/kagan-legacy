@@ -93,12 +93,12 @@ describe("SessionsTreeProvider", () => {
       session: makeSession({ type: "orchestrator", title: "Orchestrator" }),
     });
 
-    expect(item.label).toBe("◆ Orchestrator");
+    expect(item.label).toBe("Orchestrator");
     expect(item.description).toBe("RUNNING");
     expect(item.iconPath).toEqual({ id: "dashboard" });
     expect(item.command).toEqual({
       command: "kagan.switchSession",
-      title: "Switch to Session",
+      title: "Switch to session",
       arguments: ["11110000-2222-3333-4444-555555555555"],
     });
     provider.dispose();
@@ -114,7 +114,7 @@ describe("SessionsTreeProvider", () => {
       session: makeSession({ type: "general", title: "General", backend: "gpt-4" }),
     });
 
-    expect(item.label).toBe("◇ General");
+    expect(item.label).toBe("General");
     expect(item.description).toBe("gpt-4 · RUNNING");
     expect(item.iconPath).toEqual({ id: "comment" });
     provider.dispose();
@@ -130,7 +130,7 @@ describe("SessionsTreeProvider", () => {
       session: makeSession({ type: "task", role: "worker", title: "Fix bug" }),
     });
 
-    expect(item.label).toBe("▶ Fix bug");
+    expect(item.label).toBe("Fix bug");
     expect(item.description).toBe("worker · RUNNING");
     expect(item.iconPath).toEqual({ id: "play" });
     provider.dispose();
@@ -146,7 +146,7 @@ describe("SessionsTreeProvider", () => {
       session: makeSession({ type: "task", role: "reviewer", title: "Review PR" }),
     });
 
-    expect(item.label).toBe("◈ Review PR");
+    expect(item.label).toBe("Review PR");
     expect(item.description).toBe("reviewer · RUNNING");
     expect(item.iconPath).toEqual({ id: "eye" });
     provider.dispose();

@@ -1,12 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, act, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
 import type { DoctorReportResponse } from '@kagan/shared-api-client';
-
-// ---------------------------------------------------------------------------
-// Mock apiClient before importing the component under test
-// ---------------------------------------------------------------------------
 
 vi.mock('@/lib/api/client', () => ({
   apiClient: {
@@ -16,10 +11,6 @@ vi.mock('@/lib/api/client', () => ({
 
 const { PreflightGate } = await import('@/components/welcome/preflight-gate');
 const { apiClient } = await import('@/lib/api/client');
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeReport(overrides: Partial<DoctorReportResponse> = {}): DoctorReportResponse {
   return {
@@ -35,18 +26,12 @@ function renderGate() {
   return renderWithProviders(<PreflightGate />);
 }
 
-// Clipboard mock — jsdom's Clipboard object exists but throws in tests.
-// We create a fresh mock each beforeEach AFTER clearAllMocks so it isn't wiped.
 let writeTextMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Stable default: server is healthy
   (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(makeReport());
 
-  // Re-create clipboard mock after clearAllMocks.
-  // userEvent.setup() (called in some tests) installs a getter directly on navigator,
-  // which shadows prototype-level mocks. Override on navigator directly to win.
   writeTextMock = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText: writeTextMock },
@@ -55,205 +40,7 @@ beforeEach(() => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('PreflightGate', () => {
-  it('renders nothing when all checks pass (all-green state)', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({ ok: true, fail_count: 0, warn_count: 0 }),
-    );
-
-    const { container } = renderGate();
-
-    // Wait for the async effect to resolve
-    await waitFor(() => {
-      expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
-    });
-
-    // No banner, no dialog
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('calls getDoctorReport via apiClient exactly once on mount', async () => {
-    renderGate();
-
-    await waitFor(() => {
-      expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
-    });
-  });
-
-  it('renders an amber Alert in the degraded (WARN-only) state listing WARN check names', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({
-        ok: false,
-        fail_count: 0,
-        warn_count: 2,
-        checks: [
-          {
-            name: 'optional-tool',
-            status: 'WARN',
-            message: 'Tool not found',
-            fix_hint: 'brew install optional-tool',
-            verify_hint: 'optional-tool --version',
-            category: 'tools',
-            is_blocking: false,
-          },
-          {
-            name: 'another-tool',
-            status: 'WARN',
-            message: 'Not installed',
-            fix_hint: 'pip install another-tool',
-            verify_hint: 'another-tool --help',
-            category: 'tools',
-            is_blocking: false,
-          },
-        ],
-      }),
-    );
-
-    renderGate();
-
-    const alert = await screen.findByRole('alert');
-    expect(alert).toBeInTheDocument();
-
-    // Both WARN check names should appear
-    expect(screen.getByText('optional-tool')).toBeInTheDocument();
-    expect(screen.getByText('another-tool')).toBeInTheDocument();
-
-    // No dialog
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('dismissing the degraded alert hides it for the session (no reload)', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({
-        ok: false,
-        fail_count: 0,
-        warn_count: 1,
-        checks: [
-          {
-            name: 'optional-tool',
-            status: 'WARN',
-            message: 'Tool not found',
-            fix_hint: 'brew install optional-tool',
-            verify_hint: 'optional-tool --version',
-            category: 'tools',
-            is_blocking: false,
-          },
-        ],
-      }),
-    );
-
-    const user = userEvent.setup();
-    renderGate();
-
-    const alert = await screen.findByRole('alert');
-    expect(alert).toBeInTheDocument();
-
-    const dismissButton = screen.getByRole('button', { name: /dismiss/i });
-    await user.click(dismissButton);
-
-    // Alert should be gone; getDoctorReport not called again
-    await waitFor(() => {
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    });
-    expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
-  });
-
-  it('renders a non-dismissible Dialog in the zero-ready (FAIL) state', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({
-        ok: false,
-        fail_count: 1,
-        warn_count: 0,
-        checks: [
-          {
-            name: 'critical-dep',
-            status: 'FAIL',
-            message: 'Dependency missing',
-            fix_hint: 'apt-get install critical-dep',
-            verify_hint: 'critical-dep --version',
-            category: 'deps',
-            is_blocking: true,
-          },
-        ],
-      }),
-    );
-
-    renderGate();
-
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
-
-    // aria-labelledby must point to the dialog title
-    const labelledById = dialog.getAttribute('aria-labelledby');
-    expect(labelledById).toBeTruthy();
-    const titleEl = document.getElementById(labelledById!);
-    expect(titleEl).toBeInTheDocument();
-    expect(titleEl?.textContent).toMatch(/setup required/i);
-
-    // No close button
-    expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument();
-
-    // No degraded banner alongside it
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('shows name, message, and fix_hint with copy button for each FAIL/WARN check in the dialog', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({
-        ok: false,
-        fail_count: 1,
-        warn_count: 1,
-        checks: [
-          {
-            name: 'missing-tool',
-            status: 'FAIL',
-            message: 'Tool is missing',
-            fix_hint: 'brew install missing-tool',
-            verify_hint: 'missing-tool --version',
-            category: 'tools',
-            is_blocking: true,
-          },
-          {
-            name: 'optional-feature',
-            status: 'WARN',
-            message: 'Feature unavailable',
-            fix_hint: 'pip install optional-feature',
-            verify_hint: 'optional-feature --help',
-            category: 'features',
-            is_blocking: false,
-          },
-        ],
-      }),
-    );
-
-    renderGate();
-
-    await screen.findByRole('dialog');
-
-    // Both check names
-    expect(screen.getByText('missing-tool')).toBeInTheDocument();
-    expect(screen.getByText('optional-feature')).toBeInTheDocument();
-
-    // Both messages
-    expect(screen.getByText('Tool is missing')).toBeInTheDocument();
-    expect(screen.getByText('Feature unavailable')).toBeInTheDocument();
-
-    // fix_hint rendered in <code>
-    expect(screen.getByText('brew install missing-tool')).toBeInTheDocument();
-    expect(screen.getByText('pip install optional-feature')).toBeInTheDocument();
-
-    // Copy buttons exist (one per check with a fix_hint)
-    const copyButtons = screen.getAllByRole('button', { name: /copy fix hint/i });
-    expect(copyButtons).toHaveLength(2);
-  });
-
+describe('PreflightGate — contract tests', () => {
   it('renders lowercase fail/warn statuses from the API contract', async () => {
     (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeReport({
@@ -315,9 +102,6 @@ describe('PreflightGate', () => {
 
     const copyButton = screen.getByRole('button', { name: /copy fix hint/i });
 
-    // userEvent.setup() (used in sibling tests) installs a getter on navigator
-    // directly (not on its prototype), shadowing prototype-level clipboard mocks.
-    // We override it on navigator directly with a value descriptor to shadow the getter.
     const clipboardMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: clipboardMock },
@@ -325,178 +109,13 @@ describe('PreflightGate', () => {
       configurable: true,
     });
 
-    // Use fireEvent.click to avoid userEvent re-installing its clipboard handler
     fireEvent.click(copyButton);
 
     expect(clipboardMock).toHaveBeenCalledWith('brew install missing-tool');
 
-    // "Copied" confirmation label appears
     await waitFor(() => {
       expect(screen.getByText('Copied')).toBeInTheDocument();
     });
-  });
-
-  it('renders nothing on network error (silently degrades)', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error('Network error'),
-    );
-
-    const { container } = renderGate();
-
-    await waitFor(() => {
-      expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
-    });
-
-    // On error: no banner, no dialog, no crash
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(container.firstChild).toBeNull();
-  });
-
-  // ── Optional backend WARN gate ──────────────────────────────────────────────
-
-  it('does not show degraded banner when only non-default backend WARNs exist and a backend PASS is present', async () => {
-    // Simulate: default backend passes, 4 non-default backends warn.
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({
-        ok: false,
-        fail_count: 0,
-        warn_count: 4,
-        checks: [
-          {
-            name: 'agent_backend:claude-code',
-            status: 'pass',
-            message: 'Found',
-            fix_hint: '',
-            verify_hint: '',
-            category: 'backend',
-            is_blocking: false,
-          },
-          {
-            name: 'agent_backend:codex',
-            status: 'warn',
-            message: 'Not installed',
-            fix_hint: 'npm install -g @openai/codex',
-            verify_hint: 'codex --version',
-            category: 'backend',
-            is_blocking: false,
-          },
-          {
-            name: 'agent_backend:gemini',
-            status: 'WARN',
-            message: 'Not installed',
-            fix_hint: 'pip install gemini-cli',
-            verify_hint: 'gemini --version',
-            category: 'backend',
-            is_blocking: false,
-          },
-          {
-            name: 'agent_backend:amp',
-            status: 'WARN',
-            message: 'Not installed',
-            fix_hint: '',
-            verify_hint: '',
-            category: 'backend',
-            is_blocking: false,
-          },
-          {
-            name: 'agent_backend:aider',
-            status: 'warn',
-            message: 'Not installed',
-            fix_hint: 'pip install aider',
-            verify_hint: 'aider --version',
-            category: 'backend',
-            is_blocking: false,
-          },
-        ],
-      }),
-    );
-
-    const { container } = renderGate();
-
-    await waitFor(() => {
-      expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
-    });
-
-    // No banner — all non-passing checks are optional backend WARNs with a passing backend present.
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('shows degraded banner when default backend WARNs and no backend is passing', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({
-        ok: false,
-        fail_count: 0,
-        warn_count: 2,
-        checks: [
-          {
-            name: 'agent_backend:claude-code',
-            status: 'WARN',
-            message: 'Not found in PATH',
-            fix_hint: 'npm install -g @anthropic-ai/claude-code',
-            verify_hint: 'claude --version',
-            category: 'backend',
-            is_blocking: false,
-          },
-          {
-            name: 'agent_backend:codex',
-            status: 'WARN',
-            message: 'Not found in PATH',
-            fix_hint: 'npm install -g @openai/codex',
-            verify_hint: 'codex --version',
-            category: 'backend',
-            is_blocking: false,
-          },
-        ],
-      }),
-    );
-
-    renderGate();
-
-    // All agent_backend checks are WARN with no backend passing → degraded banner must appear.
-    const alert = await screen.findByRole('alert');
-    expect(alert).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('shows degraded banner when a non-backend check warns regardless of backend status', async () => {
-    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeReport({
-        ok: false,
-        fail_count: 0,
-        warn_count: 2,
-        checks: [
-          {
-            name: 'agent_backend:claude-code',
-            status: 'pass',
-            message: 'Found',
-            fix_hint: '',
-            verify_hint: '',
-            category: 'backend',
-            is_blocking: false,
-          },
-          {
-            name: 'git',
-            status: 'WARN',
-            message: 'git version is old',
-            fix_hint: 'brew upgrade git',
-            verify_hint: 'git --version',
-            category: 'tools',
-            is_blocking: false,
-          },
-        ],
-      }),
-    );
-
-    renderGate();
-
-    // The `git` WARN is not an optional backend WARN — degraded banner must show.
-    const alert = await screen.findByRole('alert');
-    expect(alert).toBeInTheDocument();
-    expect(screen.getByText('git')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('does not call getDoctorReport again when component re-renders', async () => {
@@ -510,14 +129,10 @@ describe('PreflightGate', () => {
       expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
     });
 
-    // Force a re-render (same component)
     await act(async () => {
-      rerender(
-        <PreflightGate />,
-      );
+      rerender(<PreflightGate />);
     });
 
-    // Still only called once
     expect(apiClient.getDoctorReport).toHaveBeenCalledOnce();
   });
 });

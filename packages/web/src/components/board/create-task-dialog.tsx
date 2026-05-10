@@ -82,7 +82,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Task</DialogTitle>
+          <DialogTitle>Create task</DialogTitle>
           <DialogDescription>Define task details, priority, and acceptance criteria.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

@@ -420,3 +420,42 @@ ______________________________________________________________________
 ## Data Flow Summary
 
 All screens/widgets call core's namespaced API directly via `self.app.core`. Workers iterate `core.task.events.stream()` — reactive `asyncio.Event` signaling. Data flows down via `data_bind`, messages bubble up via Textual message passing. Watch methods fire on reactive changes.
+
+______________________________________________________________________
+
+## Design System
+
+The TUI is the **flagship** surface and holds to the strictest interpretation of the Kagan design system. The canonical bundle lives at `kagan-design-system/` (design-tool export). HTML/CSS recreations of the TUI are in `kagan-design-system/project/ui_kits/tui/`.
+
+### Content rules
+
+| Context                  | Rule          | Example                                      |
+| ------------------------ | ------------- | -------------------------------------------- |
+| Column headers           | UPPERCASE     | `BACKLOG`, `IN PROGRESS`, `REVIEW`, `DONE`   |
+| Eyebrow / section labels | UPPERCASE     | `CHANGES`, `AGENT LOG`, `PLAN`, `SESSIONS`   |
+| Mode badges              | UPPERCASE     | `AUTO`, `PAIR`                               |
+| Modal titles             | Sentence case | `Delete task`, `Approve task?`, `Kagan help` |
+| Toast / notify messages  | Sentence case | `Merged and moved to done`, `Task approved`  |
+| Keybinding descriptions  | lowercase     | `new task`, `open`, `back`                   |
+| Inline hint rows         | lowercase     | `[a] approve   [e] edit   Esc to close`      |
+
+### No emoji
+
+Emoji are forbidden. Replace with canonical unicode geometric glyphs:
+`✓` `✗` `↗` `∿` `▸` `▾` `●` `○` `◉` `◎` `█▄▀`
+
+`⚠` (U+26A0) is excluded — use `!` instead.
+`📋` (U+1F4CB) and similar emoji code points are strictly forbidden.
+
+### Motion / accessibility
+
+`MOTION_REDUCED` in `src/kagan/tui/theme.py` gates spinner / pulse animations.
+Seeded from `REDUCED_MOTION=1` in the environment. When set, `StatusBar` skips
+the wave-frame animation timer.
+
+### Palette reference (`.tui` scope)
+
+The canonical token values are defined in `colors_and_type.css` under the `.tui` class.
+`KAGAN_THEME` in `src/kagan/tui/theme.py` must stay aligned with those hex values.
+Key tokens: `primary=#d4a84b`, `secondary=#3fb58e`, `accent=#C27C4E`,
+`background=#0B0A09`, `surface=#151311`, `panel=#1E1B17`, `border=#2A251F`.

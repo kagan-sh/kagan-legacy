@@ -40,7 +40,7 @@ class PermissionPrompt(Vertical):
         self._resolved = False
 
     def compose(self) -> ComposeResult:
-        header = Static("⚠ Permission required", classes="permission-header")
+        header = Static("! Permission required", classes="permission-header")
         header.tooltip = "Permission request alert"
         yield header
         text = Static(self._text, id="permission-text", classes="permission-tool")

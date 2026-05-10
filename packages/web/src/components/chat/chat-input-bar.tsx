@@ -454,12 +454,12 @@ export function ChatInputBar({
               data-testid="composer-attach-btn"
               className="grid size-[30px] shrink-0 place-items-center rounded-md border border-[var(--border)] bg-transparent text-[var(--fg-muted)] transition-colors hover:border-[var(--panel-border-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
             >
-              <Paperclip className="size-3.5" strokeWidth={1.8} />
+              <Paperclip className="size-3.5" strokeWidth={1.75} />
             </button>
 
             {/* Agent CLI chip — selects which CLI program runs the model */}
             <Chip
-              icon={<Cpu strokeWidth={1.8} />}
+              icon={<Cpu strokeWidth={1.75} />}
               label={agentCli ?? 'Agent CLI'}
               onClick={openPopover('agent-cli')}
               data-testid="composer-agent-cli-chip"
@@ -492,7 +492,7 @@ export function ChatInputBar({
               data-testid="composer-voice-btn"
               className="grid size-[30px] shrink-0 place-items-center rounded-md border border-[var(--border)] bg-transparent text-[var(--fg-muted)] transition-colors hover:border-[var(--panel-border-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
             >
-              <Mic className="size-3.5" strokeWidth={1.8} />
+              <Mic className="size-3.5" strokeWidth={1.75} />
             </button>
 
             {/* Send */}
@@ -509,7 +509,7 @@ export function ChatInputBar({
                   : 'cursor-not-allowed bg-[var(--surface-3)] text-[var(--fg-dim)]',
               )}
             >
-              <Send className="size-3.5" strokeWidth={1.8} />
+              <Send className="size-3.5" strokeWidth={1.75} />
             </button>
           </div>
         </div>

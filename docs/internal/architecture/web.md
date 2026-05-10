@@ -151,12 +151,51 @@ ______________________________________________________________________
 
 ## Design System
 
-- **UI library:** shadcn/ui + Radix primitives (owned in-repo under `src/components/ui/`). No migration planned — Radix a11y coverage (focus traps, keyboard nav, screen readers) is load-bearing for complex interactive patterns.
-- **Design direction:** Expressive Minimalism (Linear/Vercel-inspired). Monochrome dark base, warm gold primary (`#d4a84b`), generous whitespace, subtle borders via surface shade layers, quiet micro-animations, selective glassmorphism on overlays only, keyboard-first interaction.
-- **Typography:** `IBM Plex Sans` is the UI font; `JetBrains Mono` is reserved for code, IDs, diffs, and telemetry labels.
-- **Tokens:** Global tokens, motion defaults, and shell surfaces live in `src/app.css` (60+ CSS custom properties).
-- **Shared primitives:** `src/components/shared/workspace.tsx` provides reusable headers, panels, sticky action bars, inspector sections, and action-oriented empty states.
-- **Reference apps:** Linear, Vercel Dashboard, Raycast, Cursor, Supabase Dashboard.
+The canonical design system bundle lives at `/Users/aorumbayev/Downloads/kagan-design-system/` (not in version control). The source of truth for web tokens is `packages/web/src/app.css`.
+
+### Token source of truth
+
+`src/app.css` holds all CSS custom properties — color, type, spacing, radius, shadow, motion, and A11y tokens. Do not add color literals inline; always use a named token (`var(--card)`, `var(--primary)`, etc.). The canonical palette is:
+
+- **Amber primary:** `#d4a84b` (`--primary`, `--ring`)
+- **Warm-black foundation** in light: `#f2eee5` (page) / `#ece5d8` (card)
+- **Slate near-black** in dark: `hsl(240 6% 6%)` (page) / `hsl(240 5% 9%)` (card)
+- **Semantic:** danger `#b93125` (light) / `#ef4444` (dark), review `#a8653a` / `#c27c4e`
+
+### Content rules
+
+- **Sentence case** for all UI copy: page headings, buttons, menu items, dialog titles, tooltips.
+- **UPPERCASE only** for terminal-style labels: column headers (`BACKLOG`, `IN PROGRESS`, `REVIEW`, `DONE`), eyebrow tags, section labels (`CHANGES`, `AGENT LOG`), mode badges (`AUTO`, `PAIR`).
+- **Lowercase** for inline TUI-style hints in the web (`press / to open spotlight`, `esc to close`).
+- **No emoji.** Use unicode geometric glyphs (`✓ ✗ ↗ ∿ ▸ ●`) or Lucide icons.
+- **Editorial-technical voice:** no exclamation marks, no hype words, no first-person plural except legal/credit.
+
+### Iconography
+
+Lucide icons at `strokeWidth={1.75}` for all UI affordances. The send button is the sole exception (`strokeWidth={1.75}` maintained). Raw inline SVGs also use `strokeWidth="1.75"`.
+
+### Radius, borders, shadows
+
+- Base radius `--radius: 0.5rem` (8px). Chips: `--radius-sm: 0.375rem` (6px).
+- `rounded-full` is legitimate only for dot indicators, traffic-light chrome, avatar circles, toggle thumbs, and scroll-area thumbs. All other chips and labels use `rounded` or no radius class.
+- Borders are 1 px hairline. No thick borders. No bluish-purple gradients (warm/amber vertical fades on surfaces are acceptable).
+
+### Primitives
+
+- `src/components/ui/eyebrow.tsx` — uppercase eyebrow label (`font-code text-[10px] font-semibold uppercase tracking-[0.22em]`). Use for section labels, column heads, mode badges.
+- `src/components/ui/industrial-frame.tsx` — 12×12 amber L-bracket corner pinning for CRT-viewport framing. At most one per screen.
+
+### UI library
+
+shadcn/ui + Radix primitives (owned in-repo under `src/components/ui/`). Radix a11y coverage (focus traps, keyboard nav, screen readers) is load-bearing — do not replace with custom implementations.
+
+### Typography
+
+`IBM Plex Sans` for UI; `JetBrains Mono` for code, IDs, diffs, telemetry, and eyebrow labels. The `ᘚᘛ` logo glyph is set in `font-family: var(--font-mono)`, `font-weight: 600`, `letter-spacing: -0.04em`, `font-feature-settings: "liga" 0`.
+
+### Animation
+
+Origami-style transitions only: `perspective(800px) rotateX(-3deg)→0` fades. No bounce, spring, or rubber-band. All animations disable cleanly under `prefers-reduced-motion` (global override in `src/app.css`).
 
 ______________________________________________________________________
 

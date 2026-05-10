@@ -6,6 +6,8 @@ from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.widgets import Static
 
+from kagan.tui.theme import MOTION_REDUCED
+
 # A Segment is a zero-arg callable returning str | None.
 # None means "hide this segment in the current render frame."
 Segment = Callable[[], str | None]
@@ -108,13 +110,14 @@ class StatusBar(Horizontal):
         self.turn_count = count
 
     def _start_animation(self) -> None:
-        if self._wave_timer is None:
-            self._frame_index = 0
-            self._wave_timer = self.set_interval(
-                WAVE_INTERVAL_SECONDS,
-                self._next_frame,
-                pause=False,
-            )
+        if MOTION_REDUCED or self._wave_timer is not None:
+            return
+        self._frame_index = 0
+        self._wave_timer = self.set_interval(
+            WAVE_INTERVAL_SECONDS,
+            self._next_frame,
+            pause=False,
+        )
 
     def _stop_animation(self) -> None:
         if self._wave_timer is not None:

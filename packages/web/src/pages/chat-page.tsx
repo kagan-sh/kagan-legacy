@@ -140,7 +140,7 @@ function WsHead({ session, task }: WsHeadProps) {
             data-testid="ws-head-open-task"
             className="grid size-7 place-items-center rounded text-[var(--fg-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
           >
-            <ExternalLink className="size-3.5" strokeWidth={1.8} />
+            <ExternalLink className="size-3.5" strokeWidth={1.75} />
           </Link>
         ) : null}
 
@@ -152,7 +152,7 @@ function WsHead({ session, task }: WsHeadProps) {
           data-testid="ws-head-more-btn"
           className="grid size-7 place-items-center rounded text-[var(--fg-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
         >
-          <MoreHorizontal className="size-4" strokeWidth={1.8} />
+          <MoreHorizontal className="size-4" strokeWidth={1.75} />
         </button>
       </div>
     </div>

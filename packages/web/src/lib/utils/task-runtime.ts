@@ -1,5 +1,5 @@
 import { EVENT_TYPE } from '@kagan/shared-api-client';
-import type { TaskStatus, WireEvent } from '@kagan/shared-api-client';
+import type { WireEvent } from '@kagan/shared-api-client';
 
 export function deriveTaskRunningSince(events: WireEvent[], currentStatus: string): string | null {
   let runningSince: string | null = null;
@@ -9,6 +9,7 @@ export function deriveTaskRunningSince(events: WireEvent[], currentStatus: strin
       continue;
     }
 
+    // payload.to comes from the wire as unknown — normalise before comparing
     const to = event.payload.to;
     const nextStatus = typeof to === 'string' ? to.toUpperCase() : '';
 
@@ -22,6 +23,5 @@ export function deriveTaskRunningSince(events: WireEvent[], currentStatus: strin
     }
   }
 
-  const normalizedCurrentStatus = currentStatus.toUpperCase() as TaskStatus;
-  return normalizedCurrentStatus === 'IN_PROGRESS' ? runningSince : null;
+  return currentStatus.toUpperCase() === 'IN_PROGRESS' ? runningSince : null;
 }

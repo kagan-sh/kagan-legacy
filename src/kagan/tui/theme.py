@@ -1,11 +1,19 @@
 """Textual theme definitions for Kagan."""
 
+import os
+
 from textual.theme import Theme
 
 __all__ = [
     "KAGAN_THEME",
     "KAGAN_THEME_256",
+    "MOTION_REDUCED",
 ]
+
+# Respect the user's motion preference.  Set REDUCED_MOTION=1 in the
+# environment to disable spinner / pulse animations in the TUI — the
+# equivalent of the CSS `prefers-reduced-motion: reduce` media query.
+MOTION_REDUCED: bool = os.environ.get("REDUCED_MOTION", "0") == "1"
 
 KAGAN_THEME = Theme(
     name="kagan",

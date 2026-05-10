@@ -22,8 +22,8 @@ const SHORTCUTS: ShortcutSection[] = [
   {
     title: 'Global',
     rows: [
-      { keys: ['Cmd/Ctrl', 'Shift', 'P'], description: 'Open Quick Actions' },
-      { keys: ['Cmd/Ctrl', 'K'], description: 'Open Session Switcher' },
+      { keys: ['Cmd/Ctrl', 'Shift', 'P'], description: 'Open quick actions' },
+      { keys: ['Cmd/Ctrl', 'K'], description: 'Open session switcher' },
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
       { keys: ['Cmd/Ctrl', '.'], description: 'Toggle Sessions' },
       { keys: ['Cmd/Ctrl', 'Shift', 'F'], description: 'Expand overlay' },
@@ -42,7 +42,7 @@ const SHORTCUTS: ShortcutSection[] = [
   {
     title: 'Task & Session',
     rows: [
-      { keys: ['Open Chat'], description: 'Watch the current task workspace in the chat rail' },
+      { keys: ['Open chat'], description: 'Watch the current task workspace in the chat rail' },
       { keys: ['Worker', 'Reviewer'], description: 'Switch the current task workspace lane view' },
       { keys: ['Cmd/Ctrl', 'K'], description: 'Switch between sessions' },
     ],
@@ -64,7 +64,7 @@ const FLOWS = [
   },
   {
     title: 'Orchestrator Control Flow',
-    body: 'Use Session Switcher (Cmd/Ctrl+K) to open orchestrator sessions for planning, prioritization, and multi-task coordination.',
+    body: 'Use session switcher (Cmd/Ctrl+K) to open orchestrator sessions for planning, prioritization, and multi-task coordination.',
   },
 ];
 
@@ -131,7 +131,7 @@ export function HelpOverlay() {
         <DialogHeader className="border-b border-[color:var(--border-subtle)] px-5 pt-5 pb-4">
           <DialogTitle className="flex items-center gap-2 text-base">
             <HelpCircle className="size-4" />
-            Kagan Help
+            Kagan help
           </DialogTitle>
           <DialogDescription>Search shortcuts, workflows, and concepts.</DialogDescription>
           <Input

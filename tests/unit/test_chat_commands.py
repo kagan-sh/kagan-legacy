@@ -844,7 +844,7 @@ def test_resolve_slash_input_flow_returns_guided_phases() -> None:
     )
 
     assert result.handled is True
-    assert any("Plan -> Execute -> Orchestrate" in line for line in result.info_lines)
+    assert any("Plan → Execute → Orchestrate" in line for line in result.info_lines)
     assert any(line.startswith("Goal: Build onboarding") for line in result.info_lines)
 
 

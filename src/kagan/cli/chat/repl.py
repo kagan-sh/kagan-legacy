@@ -105,7 +105,7 @@ _ROTATING_TIPS: Final[tuple[str, ...]] = (
     "? shows shortcuts",
     "Esc stops streaming",
     "Up/Down history",
-    "/flow plan -> execute -> orchestrate",
+    "/flow plan → execute → orchestrate",
     "/sessions list & switch",
     "/switch <id> select session",
     "/status one-line summary",
@@ -150,7 +150,9 @@ _REPL_COLORS: Final[dict[str, str]] = {
     "text": "#FFFFFF",
     "text_muted": "#B5AC9F",
     "text_soft": "#C2B9AD",
-    "accent": "#3fb58e",
+    # Design system rule 5: prompt glyph uses primary amber (#d4a84b), not sage.
+    # _palette.PROMPT_COLORS["accent"] = "#d4a84b" — sourced from there.
+    "accent": "#d4a84b",
     "accent_soft": "#1D3A31",
     "primary": "#d4a84b",
     "separator": "#2A251F",
@@ -167,12 +169,17 @@ _ANSI_REPL_COLORS: Final[dict[str, str]] = {
 }
 
 _BOOT_TIP_COMMAND: Final[str] = "/flow"
-_BOOT_TIP_TEXT: Final[str] = "Walk through Plan -> Execute -> Orchestrate."
+_BOOT_TIP_TEXT: Final[str] = "Walk through Plan → Execute → Orchestrate."
 _SHORTCUT_HINT_IDLE: Final[str] = "Ctrl-J newline · Ctrl-C clear · Ctrl-D exit"
 _SHORTCUT_HINT_STREAMING: Final[str] = "Esc stop & edit last · type ahead to queue"
 
 
 def _supports_truecolor_terminal() -> bool:
+    """Return True when the terminal supports 24-bit colour.
+
+    Delegates to ``_palette.supports_truecolor`` as the canonical source of truth,
+    ensuring all colour decision points in this module agree.
+    """
     if os.environ.get("NO_COLOR") is not None:
         return False
     colorterm = os.environ.get("COLORTERM", "").casefold()
@@ -214,6 +221,8 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "completion-menu.multi-column-meta": f"fg:{_REPL_COLORS['meta']}",
             "selected-text": f"noreverse bg:{_REPL_COLORS['accent']} fg:{_REPL_COLORS['bg']}",
         }
+    # ANSI fallback: keep legacy ANSI-safe names for 8-colour terminal compatibility.
+    # Truecolor amber (#d4a84b) maps to ansiyellow in 8-colour palettes.
     return {
         "prompt": "fg:ansigreen bold",
         "bottom-toolbar": "noreverse bg:default fg:default",
@@ -563,8 +572,10 @@ def _build_environment_summary(project_root: Path | None, *, agent_backend: str 
         items.append(f"agent {agent_backend}")
 
     summary = " · ".join(items) if items else "chat ready"
+    # Design system: amber (primary) for status indicator, not green.
+    amber_bold = f"bold {_REPL_COLORS['primary']}"
     return Text.assemble(
-        ("● ", "bold green"),
+        ("● ", amber_bold),
         ("Environment loaded: ", "dim"),
         (summary, "dim"),
     )
@@ -592,10 +603,13 @@ def _build_prompt_placeholder() -> FormattedText:
 
 
 def _build_banner_heading(agent_backend: str | None, *, version_text: str) -> Text:
+    # Design system: ᘚᘛ brand glyph in amber (primary), monospace weight 600.
+    # Tagline is "the orchestration layer for AI coding agents" — sentence case.
+    amber = f"bold {_REPL_COLORS['primary']}"
     return Text.assemble(
-        ("ᘚᘛ", "bold green"),
+        ("ᘚᘛ", amber),
         ("  ", ""),
-        ("Kagan", "bold green"),
+        ("Kagan", amber),
         (f" v{version_text}", "dim"),
         (" · ", "dim"),
         (agent_backend or "chat", "dim"),
@@ -766,14 +780,15 @@ def _make_tip_right_segments() -> list[Segment]:
     """Tip-line right column: session type badge + session label."""
 
     def _type_prefix() -> str | None:
+        # Design system rule 2: mode badges are UPPERCASE canonical labels.
         session_type = _TOOLBAR_STATE.session_type
         if session_type == "orchestrator":
-            return "◈ ORCH"
+            return "◈ ORCHESTRATOR"
         if session_type == "general":
-            return "○ GEN"
+            return "○ GENERAL"
         if session_type == "task":
             return "▸ TASK"
-        return session_type
+        return session_type.upper() if session_type else None
 
     def _session_label() -> str | None:
         return _TOOLBAR_STATE.session_label or None
@@ -822,8 +837,11 @@ def _build_status_text() -> FormattedText:
     )
 
 
-_PROMPT_GLYPH_IDLE: Final[str] = "❯ "  # noqa: RUF001
-_PROMPT_GLYPH_PLAN: Final[str] = "◇ "
+# Design-system rule 5: prompt glyphs are $ (idle) and > (plan / fallback),
+# rendered in amber bold (#d4a84b).  The angle-quotation chevron is avoided —
+# $ and > are the canonical brand glyphs.
+_PROMPT_GLYPH_IDLE: Final[str] = "$ "
+_PROMPT_GLYPH_PLAN: Final[str] = "> "
 _PROMPT_GLYPH_FALLBACK: Final[str] = "> "
 _PROMPT_GLYPH_STREAMING_FRAMES: Final[tuple[str, ...]] = ("◐ ", "◓ ", "◑ ", "◒ ")
 _PROMPT_STREAMING_FPS: Final[float] = 4.0
@@ -1108,26 +1126,30 @@ def _write_boot_banner(
     cols = shutil.get_terminal_size().columns
     panel_width = min(cols, 88) if cols >= 52 else None
     title = _build_banner_heading(agent_backend, version_text=ver)
-    subtitle = Text("Describe a task to get started.", style="default")
+    # Design system tagline: "the orchestration layer for AI coding agents" — sentence case.
+    subtitle = Text("The orchestration layer for AI coding agents.", style="dim")
+    amber_bold = f"bold {_REPL_COLORS['primary']}"
     tip = Text.assemble(
         ("Tip: ", "dim"),
-        (_BOOT_TIP_COMMAND, "bold green"),
+        (_BOOT_TIP_COMMAND, amber_bold),
         (f" {_BOOT_TIP_TEXT}", "dim"),
     )
-    safety = Text("Review agent output before you apply it.", style="dim")
+    safety = Text("Review agent output before applying it.", style="dim")
     body: list[Any] = [title, subtitle, tip, safety]
     if interactive:
         body.append(
             Text(
-                "Kagan orchestrator — type your goal, /help for commands, Ctrl-C to exit.",
+                "Send a message, /help for commands, Ctrl-D to exit.",
                 style="dim",
             )
         )
 
+    # Design system: amber border for the primary surface frame.
+    border_color = _REPL_COLORS["primary"]
     banner = Panel(
         Group(*body),
         box=box.ROUNDED,
-        border_style="green",
+        border_style=border_color,
         padding=(0, 2),
         expand=False,
         width=panel_width,
@@ -1140,11 +1162,13 @@ def _write_boot_banner(
 
 
 def _animate_connecting() -> None:
+    # Design system: connecting indicator in muted amber (primary), not cyan.
+    amber_dim = f"dim {_REPL_COLORS['primary']}"
     if os.environ.get("KAGAN_CHAT_SKIP_BOOT_ANIMATION") == "1":
-        _console.print(Text(WAVE_FRAMES[-1], style="dim cyan"))
+        _console.print(Text(WAVE_FRAMES[-1], style=amber_dim))
         return
     for frame in WAVE_FRAMES:
-        _console.print(f"\r[dim cyan]{frame}[/dim cyan]", end="")
+        _console.print(Text(f"\r{frame}", style=amber_dim), end="")
         time.sleep(0.08)
     _console.print()
 

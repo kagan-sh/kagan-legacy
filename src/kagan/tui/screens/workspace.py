@@ -248,7 +248,7 @@ class WorkspaceScreen(Screen[None]):
 
         self.app.push_screen(
             ConfirmModal(
-                title="New chat",
+                title="New chat session",
                 message="Orchestrator session has Kagan tools. General chat is raw agent access.",
                 confirm_label="Orchestrator",
                 cancel_label="General",
@@ -270,7 +270,7 @@ class WorkspaceScreen(Screen[None]):
 
         self.app.push_screen(
             ConfirmModal(
-                title="Delete Session",
+                title="Delete session",
                 message=f"Delete '{selected.label}'?",
                 confirm_label="Delete",
                 cancel_label="Cancel",

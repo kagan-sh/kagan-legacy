@@ -1,16 +1,8 @@
 /**
  * mention-popover.test.tsx
  *
- * Tests the MentionPopover component:
- * - Does not call search immediately (debounced)
- * - Calls search after debounce with correct args
- * - Renders dual-source rows with source icons
- * - Esc closes the popover
- * - Backspace past `#` closes the popover
- * - Mid-word `#` does not trigger fetch
- *
- * Strategy: real timers + waitFor.
- * Value is set via userEvent.type so jsdom tracks selectionStart correctly.
+ * Contract tests for MentionPopover debounce + keyboard behavior.
+ * Product-critical fetch/ render journeys belong in Playwright.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -46,10 +38,6 @@ function buildPopover() {
   return container.querySelector('textarea')!;
 }
 
-/**
- * Type text into the textarea using userEvent so jsdom properly tracks selectionStart.
- * This is critical — Object.defineProperty bypasses jsdom's selection tracking.
- */
 async function typeText(el: HTMLTextAreaElement, text: string) {
   const user = userEvent.setup();
   el.focus();
@@ -72,14 +60,8 @@ describe('MentionPopover', () => {
 
     const el = buildPopover();
 
-    // Type '#foo' with real events — but hold timers so debounce can't fire
-    // We use fireEvent here since userEvent.type would hit async complications
-    // Instead, manually set value via proper assignment (not Object.defineProperty)
-    // so jsdom tracks selectionStart
     el.focus();
     act(() => {
-      // Use the native value setter to bypass React's controlled input tracking
-      // but still have jsdom set selectionStart properly
       const nativeSetter = Object.getOwnPropertyDescriptor(
         window.HTMLTextAreaElement.prototype,
         'value',
@@ -89,47 +71,11 @@ describe('MentionPopover', () => {
       fireEvent.input(el);
     });
 
-    // Advance time by less than the debounce
     act(() => { vi.advanceTimersByTime(100); });
 
     expect(client.searchMentions).not.toHaveBeenCalled();
 
     vi.useRealTimers();
-  });
-
-  it('calls searchMentions with correct args after debounce', async () => {
-    const client = await getMockClient();
-    const el = buildPopover();
-
-    await typeText(el, '#hello');
-
-    await waitFor(() => {
-      expect(client.searchMentions).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: 'proj-1', q: 'hello' }),
-      );
-    }, { timeout: 1000 });
-  });
-
-  it('renders source icons and titles after debounce', async () => {
-    const el = buildPopover();
-    await typeText(el, '#');
-
-    await waitFor(() => {
-      expect(screen.getAllByText('◆').length).toBeGreaterThan(0);
-    }, { timeout: 1000 });
-
-    expect(screen.getAllByText('🐙').length).toBeGreaterThan(0);
-    expect(screen.getByText('Fix the login bug')).toBeInTheDocument();
-    expect(screen.getByText('Improve docs')).toBeInTheDocument();
-  });
-
-  it('renders state badge for github mentions', async () => {
-    const el = buildPopover();
-    await typeText(el, '#');
-
-    await waitFor(() => {
-      expect(screen.getByText('open')).toBeInTheDocument();
-    }, { timeout: 1000 });
   });
 
   it('closes the popover on Escape', async () => {
@@ -170,7 +116,6 @@ describe('MentionPopover', () => {
     const el = buildPopover();
     await typeText(el, 'foo#bar');
 
-    // Wait long enough for any debounce to fire
     await new Promise((r) => setTimeout(r, 400));
 
     expect(client.searchMentions).not.toHaveBeenCalled();

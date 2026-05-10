@@ -470,7 +470,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           if (event.terminated) {
             setMessages((prev) => [
               ...prev,
-              { role: 'assistant', content: `${event.content}\n\n*⚡ interrupted*` },
+              { role: 'assistant', content: `${event.content}\n\n*∿ interrupted*` },
             ]);
           }
           break;

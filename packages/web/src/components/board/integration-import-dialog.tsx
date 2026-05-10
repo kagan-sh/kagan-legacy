@@ -219,7 +219,7 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
                   <span className="min-w-0 truncate leading-5">{issue.title}</span>
                   <span className="col-start-3 flex min-w-0 flex-wrap gap-1 md:col-start-auto md:justify-end">
                     {issue.labels.map((lbl) => (
-                      <span key={lbl} className="max-w-36 truncate rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[10px] text-[var(--accent-foreground)]">{lbl}</span>
+                      <span key={lbl} className="max-w-36 truncate rounded bg-[var(--accent)] px-1.5 py-0.5 text-[10px] text-[var(--accent-foreground)]">{lbl}</span>
                     ))}
                     {issue.already_synced && <span className="text-[10px] leading-5 text-[var(--muted-foreground)]">(synced)</span>}
                   </span>

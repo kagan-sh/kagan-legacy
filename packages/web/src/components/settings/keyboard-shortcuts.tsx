@@ -2,9 +2,9 @@ import { Card } from '@/components/ui/card';
 import { Kbd } from '@/components/ui/kbd';
 
 const SHORTCUTS = [
-  { shortcut: '? / F1', action: 'Help & Shortcuts' },
-  { shortcut: 'Cmd/Ctrl+Shift+P', action: 'Quick Actions' },
-  { shortcut: 'Cmd/Ctrl+K', action: 'Session Switcher' },
+  { shortcut: '? / F1', action: 'Help & shortcuts' },
+  { shortcut: 'Cmd/Ctrl+Shift+P', action: 'Quick actions' },
+  { shortcut: 'Cmd/Ctrl+K', action: 'Session switcher' },
   { shortcut: 'Cmd/Ctrl+.', action: 'Toggle Sessions' },
   { shortcut: 'Cmd/Ctrl+Shift+F', action: 'Expand overlay' },
   { shortcut: 'Esc', action: 'Stop / dismiss' },
@@ -17,7 +17,7 @@ const SHORTCUTS = [
 export function KeyboardShortcuts() {
   return (
     <Card className="p-4">
-      <h3 className="mb-3 text-sm font-medium">Keyboard Shortcuts</h3>
+      <h3 className="mb-3 text-sm font-medium">Keyboard shortcuts</h3>
       <div className="space-y-2">
         {SHORTCUTS.map(({ shortcut, action }) => (
           <div key={shortcut} className="flex items-center justify-between text-sm">

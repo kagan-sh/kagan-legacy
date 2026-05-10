@@ -126,3 +126,32 @@ ______________________________________________________________________
 - "Do not show this guidance again" toggle persists the `skip_attached_instructions_popup` setting
 - task-level launcher override (`task.launcher`) takes priority over global `settings.attached_launcher`
 - if a managed run is active when Attach is clicked, the dialog warns that the background agent will be stopped; on confirmation the managed run is cancelled before the interactive session starts
+
+______________________________________________________________________
+
+## 10. Design System
+
+The canonical design system bundle lives at `/Users/aorumbayev/Downloads/kagan-design-system/` (not in version control). Token source of truth: `packages/web/src/app.css`.
+
+### Content rules (behavioral)
+
+- **Sentence case** everywhere: page headings, buttons, menu items, dialog titles, tooltips. Examples: "New task", "Create task", "Edit task", "Open session switcher".
+- **UPPERCASE** only for terminal-style column headers (`BACKLOG`, `IN PROGRESS`, `REVIEW`, `DONE`), eyebrow tags, section labels, and mode badges (`AUTO`, `PAIR`, `ORCH`).
+- **Lowercase** for inline keyboard hints (`press / to open spotlight`, `esc to close`).
+- **No emoji.** Unicode geometric glyphs (`✓ ✗ ↗ ∿ ▸ ●`) or Lucide icons only.
+- **No hype words.** No exclamation marks. No first-person plural except in legal/credit copy.
+- Agent lifecycle messages use: "started", "finished", "stopped", "failed" — never "thinking" or "feeling".
+
+### Icon and stroke rules
+
+- Lucide icons: `strokeWidth={1.75}` for all UI affordances. Raw inline SVGs: `strokeWidth="1.75"`.
+
+### Radius rules
+
+- `rounded-full` is correct only for: status dot indicators, traffic-light chrome, avatar images, toggle thumb, scroll-area thumb.
+- All other chips and label pills use `rounded` (4px) or no class.
+
+### Primitives added
+
+- `src/components/ui/eyebrow.tsx` — uppercase section label. Collapses repeated `font-code text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted-foreground)]` patterns.
+- `src/components/ui/industrial-frame.tsx` — optional amber L-bracket corner decorator (12×12 px). Maximum one per screen. Does not render automatically anywhere — expose for future use.

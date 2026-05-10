@@ -59,10 +59,14 @@ export function Component() {
   }, [loading, sessions.length, creating, createSession]);
 
   const totalTasks = tasks.length;
-  const inProgressCount = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
-  const reviewCount = tasks.filter((t) => t.status === 'REVIEW').length;
-  const doneCount = tasks.filter((t) => t.status === 'DONE').length;
-  const backlogCount = tasks.filter((t) => t.status === 'BACKLOG').length;
+  const taskCounts = tasks.reduce(
+    (acc, t) => { acc[t.status] = (acc[t.status] ?? 0) + 1; return acc; },
+    {} as Partial<Record<string, number>>,
+  );
+  const inProgressCount = taskCounts['IN_PROGRESS'] ?? 0;
+  const reviewCount = taskCounts['REVIEW'] ?? 0;
+  const doneCount = taskCounts['DONE'] ?? 0;
+  const backlogCount = taskCounts['BACKLOG'] ?? 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center px-6">

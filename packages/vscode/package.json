@@ -42,6 +42,71 @@
     "workspaceContains:.kagan/attach_context.json"
   ],
   "contributes": {
+    "colors": [
+      {
+        "id": "kagan.primary",
+        "description": "Kagan primary accent — aged amber phosphor",
+        "defaults": {
+          "dark": "#d4a84b",
+          "light": "#b89154",
+          "highContrast": "#d4a84b"
+        }
+      },
+      {
+        "id": "kagan.railRunning",
+        "description": "Kagan status rail — running / in progress",
+        "defaults": {
+          "dark": "#3fb58e",
+          "light": "#1a8563",
+          "highContrast": "#3fb58e"
+        }
+      },
+      {
+        "id": "kagan.railWarning",
+        "description": "Kagan status rail — warning",
+        "defaults": {
+          "dark": "#e6c07b",
+          "light": "#a87b25",
+          "highContrast": "#e6c07b"
+        }
+      },
+      {
+        "id": "kagan.railReview",
+        "description": "Kagan status rail — review",
+        "defaults": {
+          "dark": "#c27c4e",
+          "light": "#a8653a",
+          "highContrast": "#c27c4e"
+        }
+      },
+      {
+        "id": "kagan.railIdle",
+        "description": "Kagan status rail — idle / backlog",
+        "defaults": {
+          "dark": "#777777",
+          "light": "#8a7f72",
+          "highContrast": "#777777"
+        }
+      },
+      {
+        "id": "kagan.modeAuto",
+        "description": "Kagan execution mode badge — AUTO",
+        "defaults": {
+          "dark": "#d4a84b",
+          "light": "#b89154",
+          "highContrast": "#d4a84b"
+        }
+      },
+      {
+        "id": "kagan.modePair",
+        "description": "Kagan execution mode badge — PAIR",
+        "defaults": {
+          "dark": "#6fa3d4",
+          "light": "#6fa3d4",
+          "highContrast": "#6fa3d4"
+        }
+      }
+    ],
     "chatParticipants": [
       {
         "id": "kagan.agent",
@@ -97,7 +162,7 @@
     "commands": [
       {
         "command": "kagan.connect",
-        "title": "Connect to Server",
+        "title": "Connect to server",
         "category": "Kagan"
       },
       {
@@ -107,53 +172,53 @@
       },
       {
         "command": "kagan.board.refresh",
-        "title": "Refresh Board",
+        "title": "Refresh board",
         "category": "Kagan",
         "icon": "$(refresh)"
       },
       {
         "command": "kagan.task.create",
-        "title": "Create Task",
+        "title": "Create task",
         "category": "Kagan",
         "icon": "$(add)"
       },
       {
         "command": "kagan.task.run",
-        "title": "Run Task",
+        "title": "Run task",
         "category": "Kagan",
         "icon": "$(play)"
       },
       {
         "command": "kagan.task.cancel",
-        "title": "Cancel Task",
+        "title": "Cancel task",
         "category": "Kagan",
         "icon": "$(debug-stop)"
       },
       {
         "command": "kagan.task.open",
-        "title": "Open Task",
+        "title": "Open task",
         "category": "Kagan"
       },
       {
         "command": "kagan.task.delete",
-        "title": "Delete Task",
+        "title": "Delete task",
         "category": "Kagan",
         "icon": "$(trash)"
       },
       {
         "command": "kagan.task.move",
-        "title": "Move Task to Column",
+        "title": "Move task to column",
         "category": "Kagan"
       },
       {
         "command": "kagan.task.edit",
-        "title": "Edit Task",
+        "title": "Edit task",
         "category": "Kagan",
         "icon": "$(edit)"
       },
       {
         "command": "kagan.task.diff",
-        "title": "View Task Diff",
+        "title": "View task diff",
         "category": "Kagan",
         "icon": "$(diff)"
       },
@@ -177,45 +242,45 @@
       },
       {
         "command": "kagan.events.show",
-        "title": "Show Diagnostic Agent Log",
+        "title": "Show agent log",
         "category": "Kagan",
         "icon": "$(output)"
       },
       {
         "command": "kagan.terminal.attach",
-        "title": "Attach to Agent Terminal",
+        "title": "Attach to agent terminal",
         "category": "Kagan",
         "icon": "$(terminal)"
       },
       {
         "command": "kagan.chat.open",
-        "title": "Open Session in Chat",
+        "title": "Open session in chat",
         "category": "Kagan",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "kagan.settings.agentBackend",
-        "title": "Set Default Agent Backend",
+        "title": "Set default agent backend",
         "category": "Kagan Settings"
       },
       {
         "command": "kagan.settings.reviewStrictness",
-        "title": "Set Review Strictness",
+        "title": "Set review strictness",
         "category": "Kagan Settings"
       },
       {
         "command": "kagan.settings.planningDepth",
-        "title": "Set Planning Depth",
+        "title": "Set planning depth",
         "category": "Kagan Settings"
       },
       {
         "command": "kagan.analytics.show",
-        "title": "Show Analytics Summary",
+        "title": "Show analytics summary",
         "category": "Kagan"
       },
       {
         "command": "kagan.analytics.export",
-        "title": "Export Analytics to JSON",
+        "title": "Export analytics to JSON",
         "category": "Kagan"
       },
       {
@@ -232,24 +297,24 @@
       },
       {
         "command": "kagan.switchSession",
-        "title": "Switch to Session",
+        "title": "Switch to session",
         "category": "Kagan"
       },
       {
         "command": "kagan.stopSession",
-        "title": "Stop Session",
+        "title": "Stop session",
         "category": "Kagan",
         "icon": "$(debug-stop)"
       },
       {
         "command": "kagan.closeSession",
-        "title": "Close Session",
+        "title": "Close session",
         "category": "Kagan",
         "icon": "$(debug-disconnect)"
       },
       {
         "command": "kagan.newGeneralSession",
-        "title": "New General Session",
+        "title": "New general session",
         "category": "Kagan",
         "icon": "$(add)"
       }
@@ -420,7 +485,7 @@
     "viewsWelcome": [
       {
         "view": "kagan.board",
-        "contents": "Not connected to Kagan server.\n[Connect](command:kagan.connect)\n\nNo Kagan CLI on PATH?\n[Install Kagan CLI](command:kagan.openInstallDocs)",
+        "contents": "Not connected to a Kagan server.\n[Connect](command:kagan.connect)\n\nKagan CLI not found on PATH?\n[Install Kagan CLI](command:kagan.openInstallDocs)",
         "when": "!kagan.connected"
       }
     ],

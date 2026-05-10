@@ -280,7 +280,7 @@ class KaganApp(App[None]):
 
         self.push_screen(
             ConfirmModal(
-                title="Quit Kagan",
+                title="Quit kagan",
                 message="Are you sure you want to shut down the TUI?",
                 confirm_label="Quit",
                 cancel_label="Cancel",

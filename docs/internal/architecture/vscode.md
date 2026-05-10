@@ -154,6 +154,43 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+## Design System
+
+The extension applies the [Kagan Design System](../../../packages/web/../../../Downloads/kagan-design-system/project/README.md) within the constraints of the VS Code extension API.
+
+### Theme color contributions
+
+Seven Kagan-specific theme color tokens are declared in `package.json` under `contributes.colors`. Extensions and themes can override these; the defaults are calibrated for dark and light VS Code themes:
+
+| Token               | Dark default | Light default | Usage                     |
+| ------------------- | ------------ | ------------- | ------------------------- |
+| `kagan.primary`     | `#d4a84b`    | `#b89154`     | Amber phosphor accent     |
+| `kagan.railRunning` | `#3fb58e`    | `#1a8563`     | Connected / running state |
+| `kagan.railWarning` | `#e6c07b`    | `#a87b25`     | Degraded / warning state  |
+| `kagan.railReview`  | `#c27c4e`    | `#a8653a`     | Review column accent      |
+| `kagan.railIdle`    | `#777777`    | `#8a7f72`     | Disconnected / idle state |
+| `kagan.modeAuto`    | `#d4a84b`    | `#b89154`     | AUTO execution mode badge |
+| `kagan.modePair`    | `#6fa3d4`    | `#6fa3d4`     | PAIR execution mode badge |
+
+Usage in code:
+
+```typescript
+// Reference via ThemeColor — never hard-coded hex
+item.color = new vscode.ThemeColor("kagan.railRunning");
+```
+
+### Casing rules
+
+- **UPPERCASE:** TreeView section/column labels (`BACKLOG`, `IN PROGRESS`, `REVIEW`, `DONE`), mode badges.
+- **Sentence case:** All command titles, tooltips, status bar text, notifications, button labels.
+- **No emoji.** Use codicon syntax (`$(check)`, `$(pulse)`, etc.) in VS Code surfaces that support it.
+
+### Status bar
+
+The brand glyph `ᘚᘛ` (U+15DA U+15DB) prefixes all status bar states. Color is driven by `kagan.railRunning` (connected) and `kagan.railIdle` (disconnected).
+
+______________________________________________________________________
+
 ## Testing
 
 Three-layer split (see `docs/internal/testing.md` for conventions):

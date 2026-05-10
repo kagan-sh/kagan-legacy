@@ -2,10 +2,48 @@
 
 The `src/kagan/cli/chat/` module implements the chat REPL, the orchestrator chat controller, and the ACP streaming layer. It is one of the more complex subsystems — this document maps the call flow.
 
+## Design System
+
+The chat REPL visual surface follows the [Kagan Design System](../../../../Downloads/kagan-design-system/project/README.md).
+
+### Palette
+
+All colour values are centralized in `_palette.py` (the single source of truth). Hex values come from the `.tui` scope of `colors_and_type.css`. Every file in `cli.chat` **must** import from `_palette` — no inline `Style(color=...)` constructions.
+
+| Token name     | Hex            | Use                                               |
+| -------------- | -------------- | ------------------------------------------------- |
+| `primary`      | `#d4a84b`      | Amber phosphor — prompt glyph, brand mark, border |
+| `rail_running` | `#3fb58e`      | Sage — running state, done checks                 |
+| `rail_warning` | `#e6c07b`      | Warning amber                                     |
+| `rail_review`  | `#c27c4e`      | Review / in-progress                              |
+| `rail_error`   | `#e85535`      | Danger red                                        |
+| `rail_idle`    | `#B5AC9F`      | Muted idle                                        |
+| `fg`           | `#FFFFFF`      | Primary foreground                                |
+| `fg_2`         | `#C2B9AD`      | Secondary foreground (toolbar text)               |
+| `fg_muted`     | `#B5AC9F`      | Muted text                                        |
+| `fg_dim`       | `#A9A094`      | Dim labels                                        |
+| `mode_auto`    | amber bold     | ORCHESTRATOR / AUTO badge                         |
+| `mode_pair`    | `#6fa3d4` bold | PAIR badge (info blue)                            |
+
+### Casing rules
+
+1. **Sentence case** for slash-command descriptions, helper text, error messages.
+1. **UPPERCASE only** for mode badges (`AUTO`, `PAIR`, `ORCHESTRATOR`, `GENERAL`, `TASK`) and eyebrow labels.
+1. **Lowercase** for inline kbd hints in the status bar.
+1. **No emoji** — use unicode geometric glyphs (`✓ ✗ ↗ ∿ ▸ ●`).
+1. **Prompt glyph** — `$` (idle) and `>` (plan/fallback) in amber bold (`#d4a84b`).
+1. **Brand glyph** — `ᘚᘛ` in amber bold in the boot banner.
+1. **Tagline** — "the orchestration layer for AI coding agents" (sentence case, lowercase article).
+
+### Truecolor auto-detection
+
+`_palette.supports_truecolor()` checks `COLORTERM` (`truecolor`/`24bit`) and `TERM` (`direct`), and respects `NO_COLOR`. When truecolor is unavailable, `_build_ansi_palette()` provides named ANSI colour fallbacks.
+
 ## File map
 
 | File                 | Role                                                                                                        |
 | -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `_palette.py`        | **Canonical colour palette** — Rich `Style` objects and prompt_toolkit hex dicts from design-system tokens  |
 | `commands.py`        | Slash command parsing (`/help`, `/agents`, `/sessions`, `/attach`, `/clear`, etc.) — pure data, no I/O      |
 | `controller.py`      | `ChatController` — stateful chat session: ties together commands, streaming, ACP, and the approval batch UI |
 | `acp.py`             | ACP client helpers for orchestrator warmup and legacy spawn-per-turn execution                              |

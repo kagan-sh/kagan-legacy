@@ -93,7 +93,7 @@ class FilePickerModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="file-picker-container"):
-            yield Static("Insert File", classes="modal-title")
+            yield Static("Insert file", classes="modal-title")
             yield Static(
                 "Choose a file from the active project repositories.",
                 id="file-picker-description",

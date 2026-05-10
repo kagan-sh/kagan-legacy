@@ -116,3 +116,25 @@ ______________________________________________________________________
 | `kagan.autoConnect`     | `true`                  | Connect on startup                    |
 | `kagan.autoStartServer` | `true`                  | Start local server if none is running |
 | `kagan.serverCommand`   | `kagan`                 | CLI command for local auto-start      |
+
+______________________________________________________________________
+
+## Design System
+
+The extension applies the Kagan Design System within the constraints of the VS Code extension API.
+
+### Kanban board TreeView
+
+Column labels follow the canonical UPPERCASE taxonomy: **BACKLOG**, **IN PROGRESS**, **REVIEW**, **DONE**. Task item labels are sentence case (the task title as authored).
+
+### Status bar
+
+The brand glyph `ᘚᘛ kagan` is the status bar prefix. Connection state is color-coded via Kagan theme token contributions (`kagan.railRunning`, `kagan.railIdle`), which VS Code themes can override.
+
+### Theme color tokens
+
+Defined in `package.json` under `contributes.colors`. See `docs/internal/architecture/vscode.md` for the full token table and values.
+
+### Voice
+
+All user-facing strings (command titles, tooltips, notifications, button labels) use sentence case. No exclamation marks. No hype words. Declarative: "Task deleted", "Session stopped", not "Task successfully deleted!"

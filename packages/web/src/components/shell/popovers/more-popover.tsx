@@ -53,7 +53,7 @@ export function MorePopover({ task, onDelete }: MorePopoverProps) {
       <PopoverItem
         icon={<span style={{ color: 'var(--primary)' }}>⊞</span>}
         label="Open in board"
-        desc="Jump to Kanban"
+        desc="Open in board"
         onClick={openBoard}
       />
       <PopoverItem

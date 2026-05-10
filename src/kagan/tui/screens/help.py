@@ -51,7 +51,7 @@ class HelpModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="help-container"):
-            yield Label("Kagan Help", classes="modal-title")
+            yield Label("Kagan help", classes="modal-title")
             yield Input(
                 placeholder="Search commands or workflows...",
                 id="help-search-input",

@@ -153,8 +153,8 @@ def build_approval_panel(
     display_name = _tool_display_name(tool_call)
     lines: list[object] = []
 
-    # Header
-    header_text = f"Kagan wants to run [bold]{_rich_escape(display_name)}[/bold]"
+    # Header — declarative: describe what the agent will execute, not its intent.
+    header_text = f"Agent will run [bold]{_rich_escape(display_name)}[/bold]"
     lines.append(Text.from_markup(f"[yellow]{header_text}[/yellow]"))
 
     # Agent metadata (subagent / source task)

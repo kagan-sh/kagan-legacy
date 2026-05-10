@@ -113,7 +113,7 @@ export function ReviewPanel({ taskId, task, className, enableHotkeys = false }: 
               Criteria coverage, evidence, and merge state stay visible before you decide.
             </p>
           </div>
-          <span className="rounded-full border border-[color:var(--border-subtle)] px-2.5 py-1 font-code text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
+          <span className="border border-[color:var(--border-subtle)] px-2.5 py-1 font-code text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
             {reviewSummary.decisionState}
           </span>
         </div>

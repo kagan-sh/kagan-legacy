@@ -194,6 +194,6 @@ class TaskEventHandler:
         self, payload: dict[str, Any], _event_session_id: str | None
     ) -> None:
         self._set_running(True)
-        self._set_status("AI Reviewing...")
+        self._set_status("AI reviewing...")
         self._output.post_note("Auto-review started")
         self._queue_refresh(runtime=True, review=True)

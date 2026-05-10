@@ -401,14 +401,14 @@ def _handle_flow(
         )
     goal = invocation.arg.strip()
     lines: list[str] = [
-        "Structured flow: Plan -> Execute -> Orchestrate",
+        "Structured flow: Plan → Execute → Orchestrate",
         "PLAN: State the outcome, constraints, and acceptance criteria in 1-3 bullets.",
         "EXECUTE: Implement one small step at a time and verify each step.",
         "ORCHESTRATE: Summarize what changed, what was verified, and the next action.",
     ]
     if goal:
         lines.insert(1, f"Goal: {goal}")
-    lines.append("Tip: Start your next message with 'Plan for: <goal>' to begin explicitly.")
+    lines.append("Tip: start your next message with 'Plan for: <goal>' to begin explicitly.")
     return SlashCommandOutcome(handled=True, info_lines=tuple(lines), action=SlashAction.SHOW_INFO)
 
 
@@ -496,7 +496,7 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
     )
     registry.register(
         name="flow",
-        description="Show guided Plan -> Execute -> Orchestrate flow",
+        description="Show guided Plan → Execute → Orchestrate flow",
         handler=_handle_flow,
     )
     # Mark flow as orchestrator-only after registration
@@ -504,7 +504,7 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
     registry._commands["flow"] = SlashCommand(
         spec=SlashCommandSpec(
             name="flow",
-            description="Show guided Plan -> Execute -> Orchestrate flow",
+            description="Show guided Plan → Execute → Orchestrate flow",
             orchestrator_only=True,
         ),
         handler=flow_cmd.handler,

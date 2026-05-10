@@ -76,7 +76,7 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onEdit }: BoardTaskI
   return (
     <div className="space-y-4">
       <InspectorSection
-        title="Quick Actions"
+        title="Quick actions"
       >
         <div className="flex flex-wrap gap-2">
           <AgentControl
@@ -125,12 +125,12 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onEdit }: BoardTaskI
             disabled={!onEdit}
           >
             <Plus className="size-4" />
-            Add Description
+            Add description
           </Button>
         )}
       </InspectorSection>
 
-      <InspectorSection title="Acceptance Criteria">
+      <InspectorSection title="Acceptance criteria">
         {criteria.length > 0 ? (
           <div className="space-y-2">
             {criteria.map((criterion) => (
@@ -151,7 +151,7 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onEdit }: BoardTaskI
             disabled={!onEdit}
           >
             <Plus className="size-4" />
-            Add Acceptance Criteria
+            Add acceptance criteria
           </Button>
         )}
       </InspectorSection>
@@ -166,7 +166,7 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onEdit }: BoardTaskI
         showTaskDataSection={false}
       />
 
-      <InspectorSection title="Recent Activity">
+      <InspectorSection title="Recent activity">
         {recentEvents.length > 0 ? (
           <div className="space-y-0.5">
             {recentEvents.map((event) => (

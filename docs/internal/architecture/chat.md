@@ -4,6 +4,25 @@
 
 ______________________________________________________________________
 
+## Design System
+
+The CLI chat REPL follows the [Kagan Design System](../../../../Downloads/kagan-design-system/project/README.md). The canonical colour palette for the REPL is `src/kagan/cli/chat/_palette.py`.
+
+### Rules summary
+
+| Rule                    | Description                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| Sentence case           | Slash-command descriptions, helper text, error messages                                |
+| UPPERCASE               | Mode badges (`ORCHESTRATOR`, `GENERAL`, `TASK`, `AUTO`, `PAIR`), status column headers |
+| Lowercase               | Inline kbd hints in the status bar                                                     |
+| No emoji                | Use unicode glyphs (`✓ ✗ ↗ ∿ ▸ ●`)                                                     |
+| Prompt glyph            | `$` (idle) · `>` (plan / fallback) — amber bold `#d4a84b`                              |
+| Brand glyph             | `ᘚᘛ` in amber bold in the boot banner                                                  |
+| Tagline                 | "the orchestration layer for AI coding agents"                                         |
+| No anthropomorphisation | Agents "run", "execute", "complete" — never "think" or "feel"                          |
+
+______________________________________________________________________
+
 ## References
 
 | Package            | Repo                                                                                            | Use                                                              |

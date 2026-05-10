@@ -333,7 +333,7 @@ async function handleStatus(
     }
   }
 
-  stream.button({ command: "kagan.board.refresh", title: "Refresh Board" });
+  stream.button({ command: "kagan.board.refresh", title: "Refresh board" });
 }
 
 // ── default: orchestrator chat ─────────────────────────────────────────────

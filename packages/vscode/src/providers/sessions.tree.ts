@@ -66,7 +66,7 @@ export class SessionsTreeProvider
       vscode.TreeItemCollapsibleState.None,
     );
     item.description = description;
-    item.tooltip = `ID: ${session.id}\nType: ${session.type}\nStatus: ${session.status}\nBackend: ${session.backend ?? "—"}`;
+    item.tooltip = `ID: ${session.id}\nType: ${session.type}\nStatus: ${session.status}\nBackend: ${session.backend ?? "none"}`;
     item.iconPath = new vscode.ThemeIcon(icon);
 
     const stopBit = session.capabilities.can_stop ? "1" : "0";
@@ -76,7 +76,7 @@ export class SessionsTreeProvider
 
     item.command = {
       command: "kagan.switchSession",
-      title: "Switch to Session",
+      title: "Switch to session",
       arguments: [session.id],
     };
     return item;
@@ -115,21 +115,20 @@ function formatSession(session: SessionItemResponse): {
   switch (session.type) {
     case "orchestrator":
       return {
-        label: `◆ ${session.title}`,
+        label: session.title,
         icon: "dashboard",
         description: status,
       };
     case "general":
       return {
-        label: `◇ ${session.title}`,
+        label: session.title,
         icon: "comment",
-        description: `${session.backend ?? "—"} · ${status}`,
+        description: `${session.backend ?? "none"} · ${status}`,
       };
     case "task": {
       const role = session.role ?? "worker";
-      const symbol = role === "reviewer" ? "◈" : "▶";
       return {
-        label: `${symbol} ${session.title}`,
+        label: session.title,
         icon: role === "reviewer" ? "eye" : "play",
         description: `${role} · ${status}`,
       };

@@ -10,6 +10,7 @@ import {
   sessionOverlayOpenAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
+import { sessionKind } from '@/lib/sessions/kind';
 import {
   CommandDialog,
   CommandEmpty,
@@ -49,13 +50,13 @@ export function SessionPicker() {
 
   const orchestratorSessions = useMemo(() => {
     return sessions
-      .filter((s) => s.type === 'orchestrator' || s.type === 'general')
+      .filter((s) => { const k = sessionKind(s); return k === 'orchestrator' || k === 'general'; })
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   }, [sessions]);
 
   const taskSessions = useMemo(() => {
     return sessions
-      .filter((s) => s.type === 'task')
+      .filter((s) => sessionKind(s) === 'task')
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   }, [sessions]);
 
@@ -64,7 +65,7 @@ export function SessionPicker() {
       setOpen(false);
       setSelectedSession(session);
       setOverlayOpen(true);
-      if (session.type === 'task') {
+      if (sessionKind(session) === 'task') {
         navigate(`/task/${session.task_id}`);
       } else if (!location.pathname.startsWith('/workspace')) {
         navigate('/board');
@@ -100,7 +101,7 @@ export function SessionPicker() {
     <CommandDialog
       open={open}
       onOpenChange={setOpen}
-      title="Session Switcher"
+      title="Session switcher"
       description="Switch between orchestrator, task, and general sessions"
     >
       <CommandInput placeholder="Search sessions, tasks, or actions..." />
@@ -109,7 +110,7 @@ export function SessionPicker() {
 
         {orchestratorSessions.length > 0 ? (
           <>
-            <CommandGroup heading="Chat Sessions">
+            <CommandGroup heading="Chat sessions">
               {orchestratorSessions.map((session) => (
                 <CommandItem
                   key={session.id}
@@ -140,7 +141,7 @@ export function SessionPicker() {
         {taskSessions.length > 0 ? (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Task Sessions">
+            <CommandGroup heading="Task sessions">
               {taskSessions.map((session) => (
                 <CommandItem
                   key={session.id}

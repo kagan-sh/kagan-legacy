@@ -104,9 +104,9 @@ class TaskScreen(_TaskReviewMixin, Screen[None]):
                             id="ts-detail-changes-summary",
                             classes="ts-detail-changes-summary",
                         )
-                        yield Static("Merge Readiness", classes="ts-section-label")
+                        yield Static("Merge readiness", classes="ts-section-label")
                         yield Static("", id="ts-merge-readiness", classes="ts-detail-review")
-                        yield Static("Verify Criteria", classes="ts-section-label")
+                        yield Static("Verify criteria", classes="ts-section-label")
                         yield Vertical(
                             id="ts-detail-criteria-list",
                             classes="ts-detail-criteria-list",
@@ -343,7 +343,7 @@ class TaskScreen(_TaskReviewMixin, Screen[None]):
             warning_lines.append("The git worktree and branch will be removed.")
         confirmed = await self.app.push_screen_wait(
             ConfirmModal(
-                title="Delete Task",
+                title="Delete task",
                 message=f"Delete #{task.id[:8]} · {task.title}?",
                 detail="\n".join(warning_lines),
                 confirm_label="Delete",

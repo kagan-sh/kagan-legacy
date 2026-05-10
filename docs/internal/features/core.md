@@ -62,7 +62,10 @@ ______________________________________________________________________
 ## 6. Managed Runs
 
 - Run a task → provisions worktree, spawns agent subprocess (ACP over STDIO), returns run
-- Agent streams progress via ACP session updates (text chunks, tool calls, plans, permissions)
+- Agent streams progress via ACP session updates (text chunks, tool calls, plans, permission requests)
+- Permission requests surface as `CHAT_PERMISSION_REQUEST` events; the CLI resolves them via the inline approval panel (trust tiers: once / tool-for-session / all-for-session / deny / deny with feedback), and the web resolves them via `POST /api/chat/sessions/{session_id}/permission/{future_id}`
+- Kagan's own MCP tools (`mcp__kagan*`) are auto-approved — no user prompt is raised when the orchestrator calls back into itself
+- `_tool_action_key` is keyed on the tool base name (not the full invocation string), so session-level approvals correctly cover repeated calls with different arguments
 - Kagan's ACP reader writes events to DB in real-time
 - Events stream reactively to any connected client (near-zero latency)
 - Client reconnects and picks up full event history from offset 0
@@ -158,7 +161,23 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 14. GitHub Integration
+## 14. Orchestrator-chat Foundation
+
+- `client.resolve_active_session(task_id)` returns the most relevant session for
+  a task. Priority: active worker → active reviewer → most-recent reviewer →
+  most-recent worker → most-recent any → `None`. Pure, total — never raises.
+  *Tests:* `tests/unit/core/test_resolve_active_session.py`.
+- `client.list_session_items(project_id=None)` returns orchestrator, task, and
+  general sessions as unified items with action capabilities; optionally scoped
+  to a project. *Tests:* `tests/core/test_session_items.py`.
+- `transition_session` records an `agent_lifecycle` session event for every
+  project chat session when an agent session enters `RUNNING` or a terminal
+  status. Failures are logged and never block the transition.
+  *Tests:* `tests/core/test_session_transition_notifies_chat.py`.
+
+______________________________________________________________________
+
+## 15. GitHub Integration
 
 - Import open / closed / all GitHub issues into a project as kagan tasks; idempotent (re-runs skip already-imported issues, update existing ones with newer GitHub `updatedAt`)
 - Task ↔ issue link stored on `Task.github_issue` as `<owner>/<repo>#<number>`

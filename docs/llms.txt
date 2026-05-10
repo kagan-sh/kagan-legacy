@@ -21,7 +21,7 @@ Kagan runs coding agents (Claude Code, Codex, Gemini CLI, and 11 more) in isolat
 - [Remote Access](https://docs.kagan.sh/guides/remote-access/): Access Kagan from web or phone
 - [CLI Reference](https://docs.kagan.sh/reference/cli/): All CLI commands and flags
 - [Configuration](https://docs.kagan.sh/reference/configuration/): Config.toml reference
-- [Keybindings](https://docs.kagan.sh/reference/keybindings/): TUI keyboard shortcuts
+- [Keybindings](https://docs.kagan.sh/reference/keybindings/): TUI and web shortcuts; orchestrator overlay cycles attached agent streams with `Ctrl+↑` / `Ctrl+↓` (TUI) and `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓` (web). Kanban fullscreen-AI is `Ctrl+F`.
 - [MCP Tools](https://docs.kagan.sh/reference/mcp-tools/): Full MCP tool catalog (23+ tools)
 - [Integrations](https://docs.kagan.sh/guides/github/): GitHub two-way sync
 - [Troubleshooting](https://docs.kagan.sh/troubleshooting/): Common issues and fixes

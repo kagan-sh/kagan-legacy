@@ -36,8 +36,14 @@ ______________________________________________________________________
 src/kagan/server/
 ├── __init__.py          # re-export create_api_server
 ├── server.py            # ApiServer factory, entry point
-├── _routes.py           # Core REST API + SSE event stream (tasks, projects, settings)
-├── _chat_routes.py      # Chat REST + SSE streaming routes (orchestrator sessions)
+├── _task_routes.py      # Task REST API
+├── _project_routes.py   # Project/repo REST API
+├── _system_routes.py    # Settings, preflight, presence, and global SSE stream
+├── _chat_routes.py      # Legacy chat REST + SSE (`/api/chat/...`, permission resolve)
+├── _session_routes.py   # Unified sessions v1 (`/api/v1/sessions`, replay, message SSE)
+├── _sse_fanout.py       # Shared SSE fan-out helpers (resolve params, broadcast, emit)
+├── _sse_stream.py       # Unified turn stream loop shared by chat + v1 session routes
+├── _middleware.py       # ASGI middleware (security headers, Content-Length fixes)
 ├── _integration_routes.py  # Integration-specific REST routes (preflight, preview, sync)
 ├── _sse.py              # SSE streaming helpers (event generator, keepalive)
 ├── _access.py           # Access control helpers (HTTP access tiers for REST routes)
@@ -64,8 +70,10 @@ ______________________________________________________________________
 
 1. Calls `kagan.mcp.server.create_server(opts.mcp_opts)`.
 1. Registers a `/health` endpoint.
-1. Calls `register_routes(mcp)` to add the REST API and SSE event stream.
-1. Calls `register_chat_routes(mcp)` to add chat REST + SSE streaming.
+1. Calls the task, project, system, integration, analytics, and agent route
+   registrars.
+1. Calls `register_chat_routes(mcp)` for legacy `/api/chat/...` REST + SSE.
+1. Calls `register_session_routes(mcp)` for unified `/api/v1/sessions` list/create/replay/message/stop/close.
 
 ______________________________________________________________________
 
@@ -73,41 +81,41 @@ ______________________________________________________________________
 
 All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: string }`.
 
-| Endpoint                             | Method | Description                           |
-| ------------------------------------ | ------ | ------------------------------------- |
-| `/health`                            | GET    | Service health check                  |
-| `/api/tasks`                         | GET    | List tasks (optional `status` filter) |
-| `/api/tasks`                         | POST   | Create a new task                     |
-| `/api/tasks/counts`                  | GET    | Get task counts grouped by status     |
-| `/api/tasks/{id}`                    | GET    | Get task details                      |
-| `/api/tasks/{id}`                    | PATCH  | Update task properties                |
-| `/api/tasks/{id}`                    | DELETE | Delete a task (Admin tier)            |
-| `/api/tasks/{id}/status`             | POST   | Transition task to new status         |
-| `/api/tasks/{id}/events`             | GET    | Get event history for a task          |
-| `/api/tasks/{id}/review`             | GET    | Get review status for a task          |
-| `/api/tasks/{id}/review/decide`      | POST   | Approve, Reject, or Merge a task      |
-| `/api/tasks/{id}/review/conflicts`   | GET    | Get merge conflicts for a task        |
-| `/api/tasks/{id}/diff`               | GET    | Get diff statistics                   |
-| `/api/tasks/{id}/diff/raw`           | GET    | Raw unified diff                      |
-| `/api/tasks/{id}/diff/files`         | GET    | Changed files list                    |
-| `/api/tasks/{id}/worktree`           | GET    | Worktree metadata                     |
-| `/api/tasks/{id}/commits`            | GET    | Commit history                        |
-| `/api/projects`                      | GET    | List all projects                     |
-| `/api/projects`                      | POST   | Create a new project (Admin tier)     |
-| `/api/projects/{id}/activate`        | POST   | Set project as active                 |
-| `/api/projects/{id}`                 | DELETE | Delete a project (Admin tier)         |
-| `/api/settings`                      | GET    | Get current server settings           |
-| `/api/preflight`                     | GET    | Run preflight checks                  |
-| `/api/chat/sessions`                 | POST   | Create a new chat session             |
-| `/api/chat/sessions`                 | GET    | List chat sessions                    |
-| `/api/chat/sessions/{id}`            | GET    | Get chat session details              |
-| `/api/chat/sessions/{id}`            | DELETE | Delete a chat session                 |
-| `/api/chat/sessions/{id}`            | DELETE | Delete a chat session                 |
-| `/api/chat/agents`                   | GET    | List available agent backends         |
-| `/api/integrations`                  | GET    | List enabled integrations             |
-| `/api/integrations/{name}/preflight` | GET    | Run integration preflight checks      |
-| `/api/integrations/{name}/preview`   | GET    | Preview items without importing       |
-| `/api/integrations/{name}/sync`      | POST   | Sync items from integration           |
+| Endpoint                                         | Method | Description                                                                                                                                                     |
+| ------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/health`                                        | GET    | Service health check                                                                                                                                            |
+| `/api/tasks`                                     | GET    | List tasks (optional `status` filter)                                                                                                                           |
+| `/api/tasks`                                     | POST   | Create a new task                                                                                                                                               |
+| `/api/tasks/counts`                              | GET    | Get task counts grouped by status                                                                                                                               |
+| `/api/tasks/{id}`                                | GET    | Get task details                                                                                                                                                |
+| `/api/tasks/{id}`                                | PATCH  | Update task properties                                                                                                                                          |
+| `/api/tasks/{id}`                                | DELETE | Delete a task (Admin tier)                                                                                                                                      |
+| `/api/tasks/{id}/status`                         | POST   | Transition task to new status                                                                                                                                   |
+| `/api/tasks/{id}/events`                         | GET    | Get event history for a task                                                                                                                                    |
+| `/api/tasks/{id}/review`                         | GET    | Get review status for a task                                                                                                                                    |
+| `/api/tasks/{id}/review/decide`                  | POST   | Approve, Reject, or Merge a task                                                                                                                                |
+| `/api/tasks/{id}/review/conflicts`               | GET    | Get merge conflicts for a task                                                                                                                                  |
+| `/api/tasks/{id}/diff`                           | GET    | Get diff statistics                                                                                                                                             |
+| `/api/tasks/{id}/diff/raw`                       | GET    | Raw unified diff                                                                                                                                                |
+| `/api/tasks/{id}/diff/files`                     | GET    | Changed files list                                                                                                                                              |
+| `/api/tasks/{id}/worktree`                       | GET    | Worktree metadata                                                                                                                                               |
+| `/api/tasks/{id}/commits`                        | GET    | Commit history                                                                                                                                                  |
+| `/api/projects`                                  | GET    | List all projects                                                                                                                                               |
+| `/api/projects`                                  | POST   | Create a new project (Admin tier)                                                                                                                               |
+| `/api/projects/{id}/activate`                    | POST   | Set project as active                                                                                                                                           |
+| `/api/projects/{id}`                             | DELETE | Delete a project (Admin tier)                                                                                                                                   |
+| `/api/settings`                                  | GET    | Get current server settings                                                                                                                                     |
+| `/api/preflight`                                 | GET    | Run preflight checks                                                                                                                                            |
+| `/api/chat/sessions`                             | POST   | Create a new chat session                                                                                                                                       |
+| `/api/chat/sessions`                             | GET    | List chat sessions                                                                                                                                              |
+| `/api/chat/sessions/{id}`                        | GET    | Get chat session details                                                                                                                                        |
+| `/api/chat/sessions/{id}`                        | DELETE | Delete a chat session                                                                                                                                           |
+| `/api/chat/sessions/{id}/permission/{future_id}` | POST   | Resolve a pending tool-call permission request (body: `{"outcome": "allow_once"\|"allow_always"\|"deny"\|"deny_feedback", "feedback": str\|null}`; returns 204) |
+| `/api/chat/agents`                               | GET    | List available agent backends                                                                                                                                   |
+| `/api/integrations`                              | GET    | List enabled integrations                                                                                                                                       |
+| `/api/integrations/{name}/preflight`             | GET    | Run integration preflight checks                                                                                                                                |
+| `/api/integrations/{name}/preview`               | GET    | Preview items without importing                                                                                                                                 |
+| `/api/integrations/{name}/sync`                  | POST   | Sync items from integration                                                                                                                                     |
 
 ______________________________________________________________________
 
@@ -130,14 +138,15 @@ Keepalive comments (`: keepalive\n\n`) are sent every 25 seconds.
 
 Per-turn SSE connection. Streams chunks for a single chat turn:
 
-| `t` field              | Payload                 | Description                |
-| ---------------------- | ----------------------- | -------------------------- |
-| `CHAT_CHUNK`           | `{ content, thought? }` | Agent text streaming chunk |
-| `CHAT_TOOL_START`      | `{ tool }`              | Tool call initiated        |
-| `CHAT_TOOL_PROGRESS`   | `{ tool, status }`      | Tool call status update    |
-| `CHAT_DONE`            | `{ full_response }`     | Turn completed             |
-| `CHAT_ERROR`           | `{ error }`             | Turn error                 |
-| `CHAT_SESSION_UPDATED` | `{ session_id, label }` | Title generated            |
+| `t` field                 | Payload                                    | Description                                                                                                     |
+| ------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `CHAT_CHUNK`              | `{ content, thought? }`                    | Agent text streaming chunk                                                                                      |
+| `CHAT_TOOL_START`         | `{ tool }`                                 | Tool call initiated                                                                                             |
+| `CHAT_TOOL_PROGRESS`      | `{ tool, status }`                         | Tool call status update                                                                                         |
+| `CHAT_DONE`               | `{ full_response }`                        | Turn completed                                                                                                  |
+| `CHAT_ERROR`              | `{ error }`                                | Turn error                                                                                                      |
+| `CHAT_SESSION_UPDATED`    | `{ session_id, label }`                    | Title generated                                                                                                 |
+| `CHAT_PERMISSION_REQUEST` | `{ future_id, tool, preview, session_id }` | Agent is requesting permission to run a tool; resolve via `POST /api/chat/sessions/{id}/permission/{future_id}` |
 
 ### REST Commands (replace former WS messages)
 
@@ -147,6 +156,30 @@ Per-turn SSE connection. Streams chunks for a single chat turn:
 | `POST /api/tasks/{id}/cancel`    | WS `RUN_CANCEL`     | Cancel a running agent         |
 | `POST /api/tasks/{id}/follow-up` | WS `TASK_FOLLOW_UP` | Cancel + restart with new text |
 | `POST /api/chat/{id}/interrupt`  | WS `CHAT_INTERRUPT` | Interrupt a running chat turn  |
+
+______________________________________________________________________
+
+## Session Endpoints
+
+The SessionOverlay surfaces in TUI, web, VS Code, and CLI use the versioned
+session routes. Wire shapes live in `kagan.server.responses`
+(`SessionsResponse`, `SessionItemResponse`, `SessionReplayPage`,
+`SessionReplayEvent`) and are re-emitted as TypeScript via
+`scripts/generate_wire_types.py`.
+
+| Method | Path                            | Purpose                                                                                   |
+| ------ | ------------------------------- | ----------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/sessions`              | Unified orchestrator, task, and general session list; optional `?project_id=`.            |
+| POST   | `/api/v1/sessions`              | Create a new orchestrator or general session.                                             |
+| GET    | `/api/v1/sessions/{id}/replay`  | Paginated session history; `?cursor=`, `?limit=` (≤1000), `?direction=forward\|backward`. |
+| POST   | `/api/v1/sessions/{id}/message` | Send a message to a chat-capable session.                                                 |
+| POST   | `/api/v1/sessions/{id}/stop`    | Stop a session when its capabilities allow it.                                            |
+| POST   | `/api/v1/sessions/{id}/close`   | Close a session when its capabilities allow it.                                           |
+
+The replay cursor is a stable `created_at|id` composite — it survives random
+hex IDs, and ascending vs descending traversal is selected via `direction`.
+Read routes are scoped behind `AccessTier.READ`; mutating actions require the
+route-specific write tier.
 
 ______________________________________________________________________
 

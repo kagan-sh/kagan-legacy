@@ -10,7 +10,7 @@ tags:
 
 # Chat & REPL
 
-Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI AI Panel** (`Ctrl+.` in Kanban/Task screens). Both share the same slash commands and session persistence.
+Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI SessionOverlay** (`Ctrl+.` from Kanban, Task, or Session Dashboard, or global `Ctrl+Space` from anywhere). Both share the same slash commands and session persistence.
 
 ______________________________________________________________________
 
@@ -21,7 +21,6 @@ kagan chat                         # interactive REPL
 kagan chat --prompt "Plan a refactor"  # single-shot (send, print, exit)
 kagan chat --session-id <id>       # resume a previous session
 kagan chat --agent opencode        # override agent backend
-kagan chat --yolo                  # auto-approve every tool call
 ```
 
 The REPL persists conversation history across restarts. Type a message and press Enter to send. Agent responses stream into the terminal as chunks arrive, then the completed turn is kept in history. `Ctrl+D` or `/exit` to quit.
@@ -40,37 +39,41 @@ The bottom toolbar shows the active backend, session, pending approval count, cu
 
 A rotating tip line (eight tips, 30 s cadence; advances on submit) sits beneath the toolbar.
 
-### Yolo mode
-
-`--yolo` skips the per-tool-call permission prompt and auto-approves every request for the session. On boot it shows a disclaimer and requires you to type `I ACCEPT` exactly; anything else aborts. The boot banner border turns red and a `YOLO` badge appears in the bottom toolbar while it is active. Each auto-approved call is still logged as `● yolo auto-approve: <tool>` so you can see what ran. Use only inside disposable worktrees or sandboxes you trust the agent to operate on unattended.
-
 ### Approval panel
 
-When the agent requests permission to run a tool, the REPL surfaces a yellow-bordered panel with the tool name, a short preview (syntax-highlighted for shell commands, key arguments otherwise), and four options:
+When the agent requests permission to run a tool, the REPL surfaces a yellow-bordered panel with the tool name, a short preview (syntax-highlighted for shell commands, key arguments otherwise), and five options:
 
-| #   | Option                             | Effect                                                                |
-| --- | ---------------------------------- | --------------------------------------------------------------------- |
-| 1   | Approve once                       | Allow this single call.                                               |
-| 2   | Approve for this session           | Allow this and any future call to the same tool until the REPL exits. |
-| 3   | Reject                             | Deny without explanation.                                             |
-| 4   | Reject — tell the model what to do | Deny and forward an inline feedback message back to the agent.        |
+| #   | Option                             | Effect                                                         |
+| --- | ---------------------------------- | -------------------------------------------------------------- |
+| 1   | Approve once                       | Allow this single call.                                        |
+| 2   | Approve tool for session           | Allow every call to this tool (by name) until the REPL exits.  |
+| 3   | Allow all for session              | Auto-approve every tool call for the rest of the session.      |
+| 4   | Reject                             | Deny without explanation.                                      |
+| 5   | Reject — tell the model what to do | Deny and forward an inline feedback message back to the agent. |
 
-| Key                           | Action                                            |
-| ----------------------------- | ------------------------------------------------- |
-| ++up++ / ++down++             | Move selection                                    |
-| ++1++ / ++2++ / ++3++ / ++4++ | Jump to option and confirm                        |
-| ++enter++                     | Confirm the highlighted option                    |
-| ++ctrl+e++                    | Open the full preview in a pager (when truncated) |
-| ++esc++ / ++ctrl+c++          | Cancel (= reject)                                 |
+Kagan's own MCP tools (`mcp__kagan*`) are auto-approved and never raise a prompt.
+
+The old `--yolo` CLI flag is gone; choose session trust from this panel when a
+tool asks for approval.
+
+Session-level approvals (options 2 and 3) are keyed on the tool base name, so a session approval covers the same tool called with different arguments.
+
+| Key                                   | Action                                            |
+| ------------------------------------- | ------------------------------------------------- |
+| ++up++ / ++down++                     | Move selection                                    |
+| ++1++ / ++2++ / ++3++ / ++4++ / ++5++ | Jump to option and confirm                        |
+| ++enter++                             | Confirm the highlighted option                    |
+| ++ctrl+e++                            | Open the full preview in a pager (when truncated) |
+| ++esc++ / ++ctrl+c++                  | Cancel (= reject)                                 |
 
 Use `/approvals` to list session-granted approvals or revoke one (`/approvals revoke <name>`).
 
 #### Batched approvals
 
-When the agent issues several tool calls at once, the REPL collects them inside a 100 ms debounce window and renders a single combined panel listing every pending tool. Per-item options 1–4 work exactly as above; two extra options operate on the entire batch:
+When the agent issues several tool calls at once, the REPL collects them inside a 100 ms debounce window and renders a single combined panel listing every pending tool. Per-item options 1–5 work exactly as above; two extra options operate on the entire batch:
 
-- Option 5 — **Approve all remaining**
-- Option 6 — **Reject all remaining**
+- Option 6 — **Approve all remaining**
+- Option 7 — **Reject all remaining**
 
 Use ++tab++ / ++shift+tab++ to move between items in the header.
 
@@ -78,19 +81,22 @@ Tune the debounce window and item cap via [`KAGAN_BATCH_APPROVAL_DEBOUNCE_MS` an
 
 ______________________________________________________________________
 
-## AI Panel
+## SessionOverlay
 
-| Key                 | Action             |
-| ------------------- | ------------------ |
-| ++f4++ / ++ctrl+i++ | Toggle AI Panel    |
-| ++space++           | Cycle split layout |
-| ++ctrl+f++          | Fullscreen chat    |
-| ++ctrl+k++          | Session Switcher   |
-| ++esc++             | Close Panel        |
+| Key                         | Action                  |
+| --------------------------- | ----------------------- |
+| ++ctrl+period++             | Sessions overlay        |
+| ++ctrl+f++                  | Expand AI (dock)        |
+| ++ctrl+shift+f++            | Fullscreen (in overlay) |
+| ++ctrl+up++ / ++ctrl+down++ | Cycle selected session  |
+| ++ctrl+k++                  | Session Switcher        |
+| ++esc++                     | Close overlay           |
 
-The AI Panel runs as an orchestrator session with access to all project tasks via MCP tools. Messages are persisted per-session.
+The SessionOverlay can show orchestrator, task, and general sessions. Orchestrator sessions have access to project tasks via MCP tools; general sessions are raw backend chats without Kagan project tools or task context. Messages are persisted per-session.
 
-In Kanban and Task screens, `Ctrl+.` opens or closes the panel. `Space` cycles `vertical -> horizontal -> vertical` while the AI Panel stays open. Use `Esc` to close it.
+In Kanban and Task screens, `Ctrl+.` toggles the **Sessions** overlay (unified orchestrator and session chat). Global `Ctrl+Space` toggles the same surface as **Orchestrator** from any screen. Use `Esc` or `Ctrl+Space` again while the overlay is focused to close it. Docked split and fullscreen behavior for the chat surface are driven from **AI expand** (`Ctrl+F`) and **AI fullscreen** (`Ctrl+Shift+F`) where those bindings apply (see the [keybindings reference](../reference/keybindings.md#kanban-board)).
+
+`Ctrl+Up` / `Ctrl+Down` step through available sessions by stable session ID rather than list position. The web dashboard exposes the same cycle as `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓`. See [keybindings reference](../reference/keybindings.md#sessionoverlay) for the full table.
 
 ______________________________________________________________________
 
@@ -113,7 +119,7 @@ Type `/` followed by a command name. All commands work in both the CLI REPL and 
 | `/delete`    |       | Delete the current session                                             |
 | `/tool`      |       | Inspect recent tool calls (`/tool <id>` for full input/output)         |
 | `/flow`      | `/f`  | Toggle plan/execution flow modes                                       |
-| `/analytics` |       | Print backend analytics for this project (mirrors the web tab)         |
+| `/analytics` |       | Print backend analytics for this project                               |
 
 ### `/sessions` usage
 
@@ -186,6 +192,8 @@ ______________________________________________________________________
 
 ## Input behavior
 
+### CLI REPL (`kagan chat`)
+
 | Key             | Action              |
 | --------------- | ------------------- |
 | ++enter++       | Send message        |
@@ -195,6 +203,17 @@ ______________________________________________________________________
 | ++ctrl+c++      | Clear input         |
 | ++esc++         | Stop agent          |
 | ++ctrl+k++      | Session Switcher    |
+
+### TUI SessionOverlay chat input
+
+| Key             | Action            |
+| --------------- | ----------------- |
+| ++enter++       | Send message      |
+| ++shift+enter++ | Insert newline    |
+| ++tab++         | Accept completion |
+| ++ctrl+c++      | Clear input       |
+| ++esc++         | Stop agent        |
+| ++ctrl+k++      | Session Switcher  |
 
 ______________________________________________________________________
 

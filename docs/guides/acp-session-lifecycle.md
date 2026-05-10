@@ -30,12 +30,14 @@ Important: chat session ID and ACP runtime session ID are different.
 1. On normal exit (`Ctrl+D`, `/exit`), ACP is closed, temporary `.mcp.json` is removed, and process resources are released.
 1. If you switch backend in-session, Kagan restarts the ACP runtime but keeps the same persisted chat session.
 
-## TUI orchestrator chat (`Space` split cycle / `Ctrl+F` fullscreen while open)
+## TUI orchestrator chat
 
 1. TUI keeps a persisted orchestrator chat session list (`source: tui-orchestrator`).
 1. Each orchestrator message runs as a fresh ACP turn (`run_orchestrator_turn`).
 1. A turn writes `.mcp.json`, handshakes, streams updates, then removes `.mcp.json`.
 1. History is persisted after orchestrator messages and when switching/creating orchestrator sessions.
+
+Open the unified chat surface from the app with `Ctrl+Space` (**Orchestrator**) or from Kanban / Task / Session Dashboard with `Ctrl+.` (**Sessions**).
 
 ## What happens when clients close
 

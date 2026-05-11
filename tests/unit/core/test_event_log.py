@@ -119,9 +119,13 @@ async def test_subscribe_yields_snapshot_then_live(
     # Start consumer; it will block waiting for live frames after backlog
     task = asyncio.create_task(_consume())
 
-    # Let consumer drain the backlog
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    deadline = asyncio.get_running_loop().time() + 3.0
+    while asyncio.get_running_loop().time() < deadline:
+        if len(collected) >= 2:
+            break
+        await asyncio.sleep(0)
+    else:
+        pytest.fail("consumer did not drain backlog within timeout")
 
     # Emit two live frames
     await event_log.append(session_id, "chat", {"phase": "live", "i": 2})
@@ -283,9 +287,13 @@ async def test_subscribe_two_clients_see_identical_frames(
     task_a = asyncio.create_task(_consumer(client_a))
     task_b = asyncio.create_task(_consumer(client_b))
 
-    # Let both consumers drain backlog
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    deadline = asyncio.get_running_loop().time() + 3.0
+    while asyncio.get_running_loop().time() < deadline:
+        if len(client_a) >= 1 and len(client_b) >= 1:
+            break
+        await asyncio.sleep(0)
+    else:
+        pytest.fail("subscribers did not finish backlog within timeout")
 
     # Emit two live frames
     await event_log.append(session_id, "chat", {"slot": 1})

@@ -49,6 +49,7 @@ async def empty_board(tmp_path):
 async def test_task_screen_opens_without_app_active_task_id(board: KaganDriver) -> None:
     """TaskScreen receives task_id via constructor; no _active_task_id fallback needed."""
     from kagan.tui import KaganApp
+    from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
     from kagan.tui.screens.task_screen import TaskScreen
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
@@ -58,6 +59,10 @@ async def test_task_screen_opens_without_app_active_task_id(board: KaganDriver) 
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
+        # BACKLOG tasks auto-push OrchestratorOverlay; dismiss it to reach TaskScreen
+        if isinstance(app.screen, OrchestratorOverlay):
+            await pilot.press("escape")
+            await pilot.pause()
         assert isinstance(app.screen, TaskScreen)
         assert app.screen._task_id is not None
         assert not hasattr(app, "_active_task_id")
@@ -68,92 +73,9 @@ async def test_task_screen_opens_without_app_active_task_id(board: KaganDriver) 
 # ---------------------------------------------------------------------------
 
 
-async def test_layout_mode_reactive_drives_css_on_vertical(board: KaganDriver) -> None:
-    """Setting _chat_overlay_layout_mode=vertical updates chat-overlay-vertical class."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen, LayoutMode
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        await pilot.press("ctrl+i")
-        await pilot.pause()
-        screen._chat_overlay_layout_mode = LayoutMode.VERTICAL
-        await pilot.pause()
-        assert screen.has_class("chat-overlay-vertical")
-        assert not screen.has_class("chat-overlay-horizontal")
-
-
-async def test_layout_mode_reactive_drives_css_on_horizontal(board: KaganDriver) -> None:
-    """Setting _chat_overlay_layout_mode=horizontal updates chat-overlay-horizontal class."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen, LayoutMode
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        await pilot.press("ctrl+i")
-        await pilot.pause()
-        screen._chat_overlay_layout_mode = LayoutMode.HORIZONTAL
-        await pilot.pause()
-        assert screen.has_class("chat-overlay-horizontal")
-        assert not screen.has_class("chat-overlay-vertical")
-
-
-# ---------------------------------------------------------------------------
-# TUI 8 — _apply_panel_visibility helper keeps state consistent
-# ---------------------------------------------------------------------------
-
-
-async def test_apply_panel_visibility_hides_panel(board: KaganDriver) -> None:
-    """_apply_panel_visibility(visible=False) removes chat CSS classes."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen
-    from kagan.tui.widgets.chat import ChatPanel
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        panel = screen.query_one(ChatPanel)
-        await pilot.press("ctrl+i")
-        await pilot.pause()
-        assert panel.has_class("visible")
-        screen._apply_panel_visibility(panel, visible=False, fullscreen=False)
-        await pilot.pause()
-        assert not panel.has_class("visible")
-        assert not screen.has_class("chat-overlay-visible")
-
-
-async def test_apply_panel_visibility_shows_fullscreen(board: KaganDriver) -> None:
-    """_apply_panel_visibility(visible=True, fullscreen=True) applies fullscreen."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.kanban import KanbanScreen
-    from kagan.tui.widgets.chat import ChatPanel
-
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, KanbanScreen)
-        screen: KanbanScreen = app.screen
-        panel = screen.query_one(ChatPanel)
-        screen._apply_panel_visibility(panel, visible=True, fullscreen=True)
-        await pilot.pause()
-        assert panel.has_class("visible")
-        assert panel.has_class("fullscreen")
+# Removed: layout_mode and apply_panel_visibility tests.
+# KanbanScreen no longer has embedded chat, LayoutMode, or _apply_panel_visibility
+# after the Unified Sessions Refactor. Chat is now handled via OrchestratorOverlay.
 
 
 # ---------------------------------------------------------------------------
@@ -236,10 +158,8 @@ async def test_reduce_motion_off_does_not_apply_css_class(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_build_agent_backend_options_installed_before_unavailable() -> None:
+def test_build_agent_backend_options_installed_before_unavailable(monkeypatch) -> None:
     """Available backends come before unavailable ones in the picker options."""
-    from unittest.mock import patch
-
     from kagan.tui.screens.setup import _build_agent_backend_options
 
     mock_availability = {"claude-code": True, "codex": False, "gemini": True}
@@ -258,11 +178,15 @@ def test_build_agent_backend_options_installed_before_unavailable() -> None:
         "gemini": _MockSpec("Gemini"),
     }
 
-    with (
-        patch("kagan.tui.screens.setup.list_available_backends", return_value=mock_availability),
-        patch("kagan.tui.screens.setup.list_backend_specs", return_value=mock_specs),
-    ):
-        options = _build_agent_backend_options()
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_available_backends",
+        lambda *a, **kw: mock_availability,
+    )
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_backend_specs",
+        lambda *a, **kw: mock_specs,
+    )
+    options = _build_agent_backend_options()
 
     values = [v for _, v in options]
     available_indices = [i for i, v in enumerate(values) if v in {"claude-code", "gemini"}]
@@ -277,10 +201,8 @@ def test_build_agent_backend_options_installed_before_unavailable() -> None:
     assert separator_indices[0] < unavailable_indices[0], "Separator before unavailable group"
 
 
-def test_build_agent_backend_options_no_separator_when_all_available() -> None:
+def test_build_agent_backend_options_no_separator_when_all_available(monkeypatch) -> None:
     """No separator is added when all backends are installed."""
-    from unittest.mock import patch
-
     from kagan.tui.screens.setup import _build_agent_backend_options
 
     mock_availability = {"claude-code": True, "codex": True}
@@ -298,10 +220,14 @@ def test_build_agent_backend_options_no_separator_when_all_available() -> None:
         "codex": _MockSpec("Codex"),
     }
 
-    with (
-        patch("kagan.tui.screens.setup.list_available_backends", return_value=mock_availability),
-        patch("kagan.tui.screens.setup.list_backend_specs", return_value=mock_specs),
-    ):
-        options = _build_agent_backend_options()
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_available_backends",
+        lambda *a, **kw: mock_availability,
+    )
+    monkeypatch.setattr(
+        "kagan.tui.screens.setup.list_backend_specs",
+        lambda *a, **kw: mock_specs,
+    )
+    options = _build_agent_backend_options()
 
     assert all(v != "---" for _, v in options), "No separator when all available"

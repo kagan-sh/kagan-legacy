@@ -663,7 +663,7 @@ class ChatPanel(Vertical):
         Used by :func:`~kagan.tui.screens._chat_runner.send_chat_message` when the
         orchestrator stream yields :class:`~kagan.core.chat.events.PermissionRequest`.
         """
-        from kagan.cli.chat._permission_ui import _format_permission_tool
+        from kagan.core.permission_ui import format_permission_tool
 
         loop = asyncio.get_running_loop()
         fut = loop.create_future()
@@ -671,7 +671,7 @@ class ChatPanel(Vertical):
         self._permission_meta = (event.future_id, session_id, dict(event.tool_call))
         try:
             self.request_permission(
-                _format_permission_tool(event.tool_call),
+                format_permission_tool(event.tool_call),
                 timeout_seconds=30,
             )
             await fut
@@ -871,22 +871,22 @@ class ChatPanel(Vertical):
         core = getattr(self.app, "core", None)
 
         async def _finish() -> None:
-            from kagan.cli.chat._permission_ui import _session_approvals, _tool_action_key
+            from kagan.core.permission_ui import session_approvals, tool_action_key
 
             try:
                 if core is not None:
-                    key = _tool_action_key(tool_call)
+                    key = tool_action_key(tool_call)
                     if event.decision == "allow":
                         await core.chat.resolve_permission(
                             session_id, future_id, outcome="allow_once"
                         )
                     elif event.decision == "allow_session":
-                        _session_approvals.grant(key)
+                        session_approvals.grant(key)
                         await core.chat.resolve_permission(
                             session_id, future_id, outcome="allow_always"
                         )
                     elif event.decision == "allow_all":
-                        _session_approvals.grant_all()
+                        session_approvals.grant_all()
                         await core.chat.resolve_permission(
                             session_id, future_id, outcome="allow_always"
                         )

@@ -227,9 +227,9 @@ async def send_chat_message(
                 agent_backend=backend,
             ):
                 if isinstance(event, PermissionRequest):
-                    from kagan.cli.chat._permission_ui import _tool_action_key
+                    from kagan.core.permission_ui import tool_action_key
 
-                    if _tool_action_key(event.tool_call).startswith("mcp__kagan"):
+                    if tool_action_key(event.tool_call).startswith("mcp__kagan"):
                         await core.chat.resolve_permission(
                             chat_session_id, event.future_id, outcome="allow_once"
                         )

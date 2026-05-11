@@ -2,19 +2,25 @@
 
 Breaking the circular import: both modules import from here instead of from
 each other.
+
+The pure helpers (``_tool_action_key``, ``_SessionApprovals``,
+``_session_approvals``) are re-exported from :mod:`kagan.core.permission_ui`
+so the TUI can consume them without crossing the CLI package boundary.
 """
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 from rich.measure import Measurement
 from rich.text import Text
 
 from kagan.cli.chat._renderer import _modal_active as _modal_active  # re-export
 from kagan.cli.chat.repl import WAVE_FRAMES
+from kagan.core.permission_ui import SessionApprovals as _SessionApprovals
+from kagan.core.permission_ui import session_approvals as _session_approvals
+from kagan.core.permission_ui import tool_action_key as _tool_action_key
 
 # ---------------------------------------------------------------------------
 # Shared dataclasses
@@ -48,59 +54,18 @@ class _WaveIndicator:
         return Measurement(len(WAVE_FRAMES[0]), len(WAVE_FRAMES[0]))
 
 
-# ---------------------------------------------------------------------------
-# Tool action key
-# ---------------------------------------------------------------------------
-
-
-def _tool_action_key(tool_call: Any) -> str:
-    """Return the base tool name for session-allow tracking (no args embedded).
-
-    Accepts both ACP tool-call objects (with ``title`` / ``name`` attrs) and
-    plain dicts (used by the engine's :class:`PermissionRequest` event).
-    Strips any trailing ': {...}' argument suffix from the title field so that
-    repeated calls to the same tool with different arguments share one key.
-    """
-    if isinstance(tool_call, dict):
-        raw = tool_call.get("title") or tool_call.get("name") or "tool"
-    else:
-        raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or "tool"
-    base = str(raw).split(":")[0].split("{")[0].strip().casefold()
-    return base or "tool"
-
-
-# ---------------------------------------------------------------------------
-# Session-allow cache (module-level singleton)
-# ---------------------------------------------------------------------------
-
-
-class _SessionApprovals:
-    """Track tool actions approved for the lifetime of this REPL session."""
-
-    def __init__(self) -> None:
-        self._allowed: set[str] = set()
-        self._all_allowed: bool = False
-
-    def is_allowed(self, action_key: str) -> bool:
-        return self._all_allowed or action_key in self._allowed
-
-    def grant(self, action_key: str) -> None:
-        self._allowed.add(action_key)
-
-    def grant_all(self) -> None:
-        """Trust all tool calls for the rest of this session."""
-        self._all_allowed = True
-
-    def revoke(self, action_key: str) -> None:
-        self._allowed.discard(action_key)
-
-    def list_granted(self) -> list[str]:
-        return sorted(self._allowed)
-
-
-_session_approvals = _SessionApprovals()
-
-
 def get_session_approvals() -> _SessionApprovals:
     """Return the module-level session approval tracker."""
     return _session_approvals
+
+
+__all__ = [
+    "_DecisionTuple",
+    "_SendResult",
+    "_SessionApprovals",
+    "_WaveIndicator",
+    "_modal_active",
+    "_session_approvals",
+    "_tool_action_key",
+    "get_session_approvals",
+]

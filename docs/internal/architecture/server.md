@@ -74,8 +74,15 @@ ______________________________________________________________________
 1. Registers a `/health` endpoint.
 1. Calls the task, project, system, integration, analytics, and agent route
    registrars.
-1. Calls `register_chat_routes(mcp)` for legacy `/api/chat/...` REST + SSE.
+1. Calls `register_chat_routes(mcp)` for `/api/chat/...` REST routes that
+   survived the W9a sweep: `POST /api/chat/{id}/stream` (turn trigger with
+   single-flight 409), `GET /api/chat/sessions/{id}` (session fetch),
+   and the permission-resolve endpoints. The legacy `/watch`,
+   `/turn-status`, and `/messages?after_id=` SSE routes were removed —
+   subscribe via `GET /api/sessions/{id}/events` instead.
 1. Calls `register_session_routes(mcp)` for unified `/api/v1/sessions` list/create/replay/message/stop/close.
+1. Calls `register_event_routes(mcp)` for frame-stream SSE:
+   `GET /api/sessions/{id}/events` (chat) and `GET /api/tasks/{id}/sse` (task).
 
 ______________________________________________________________________
 

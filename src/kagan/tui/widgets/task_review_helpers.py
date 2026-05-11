@@ -184,7 +184,7 @@ def build_merge_readiness_text(
         criteria_count = len(task.criteria)
         verdicts = review_verdicts_by_index(task, criteria_count)
         pass_count = sum(1 for v in verdicts.values() if v.verdict.lower() == "pass")
-        return f"Review summary (merged)\n  ✓ {pass_count}/{criteria_count} criteria passed"
+        return f"Review Summary (merged)\n  ✓ {pass_count}/{criteria_count} criteria passed"
     if task.status is not TaskStatus.REVIEW:
         return ""
 

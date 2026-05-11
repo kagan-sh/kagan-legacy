@@ -93,13 +93,14 @@ def _permission_choice_matches(value: str, option: Any, index: int) -> bool:
 
 
 def _format_permission_tool(tool_call: Any) -> str:
-    title = getattr(tool_call, "title", None) or getattr(tool_call, "name", None)
-    kind = getattr(tool_call, "kind", None)
-    if title and kind:
-        return f"{title} ({kind})"
-    if title:
-        return str(title)
-    return "tool call"
+    """Return a short human-readable label for a tool-call.
+
+    Delegates to :func:`kagan.core.permission_ui.format_permission_tool`.
+    Kept here so existing CLI-internal callers are not disrupted.
+    """
+    from kagan.core.permission_ui import format_permission_tool
+
+    return format_permission_tool(tool_call)
 
 
 def _get_modal_depth() -> int:  # pragma: no cover — diagnostic helper

@@ -48,6 +48,9 @@ dependencies = [
   "platformdirs>=4.3.0",
   "pydantic>=2.0.0",
   "prompt-toolkit>=3.0.0",
+  # Direct constraint to pin past Snyk advisory SNYK-PYTHON-PYTHONMULTIPART-16438952
+  # (resource-allocation DoS); mcp 1.26.x pulls 0.0.22 transitively.
+  "python-multipart>=0.0.27",
   "qrcode>=8.2",
   "rich>=14.0.0",
   # Explicit dependency - imported directly in 11+ files, not just via sqlmodel
@@ -134,6 +137,12 @@ max-complexity = 20
 "src/kagan/server/_system_routes.py" = [
   "C901",
 ] # Route registration nests all handlers inside one function
+"src/kagan/cli/chat/_approval_batch.py" = [
+  "C901",
+] # Interactive prompt_toolkit dispatch over j/k/space/y/n/a/r/Esc/? + feedback mode
+"src/kagan/tui/screens/workspace.py" = [
+  "C901",
+] # Grouped session rendering (Active/Idle/Archived) with filter + prefer-key + per-row badges
 "tests/helpers/echo_agent.py" = [
   "TC002",
 ] # Vendored ACP example script run as subprocess — imports must resolve at runtime

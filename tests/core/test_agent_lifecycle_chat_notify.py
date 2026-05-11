@@ -16,8 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from kagan.core import KaganCore
-from kagan.core._db_helpers import _db_async
+from kagan.core import KaganCore, db_async
 from kagan.core.enums import SessionStatus
 from kagan.core.events import AgentLifecycle
 from kagan.core.models import Session
@@ -38,7 +37,7 @@ async def _seed_session(
         s.expunge(session)
         return session
 
-    result = await _db_async(engine, _w, commit=True)
+    result = await db_async(engine, _w, commit=True)
     return result.id
 
 

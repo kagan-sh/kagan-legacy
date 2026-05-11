@@ -6,9 +6,9 @@ reconstructed entry list plus the highest seq seen.
 
 Design notes
 ------------
-- ``FrameRow.idx`` is the *log row's own* idx counter, NOT the entry idx.
-  Entry idx is always extracted from the ``path`` field: ``/entries/{N}`` or
-  ``/entries/{N}/text``.
+- ``FrameRow.idx`` mirrors the logical entry index for W2 patch rows (same as
+  ``path``).  Legacy or non-patch rows may use idx only as a row counter; entry
+  reconstruction always uses ``path`` for patch ops.
 - For ``create`` ops the entry's initial text and role come from ``value``.
 - For ``append`` ops the delta is appended to the existing text.
 - For ``finalize`` ops the entry's ``finalized`` flag is set to ``True``.

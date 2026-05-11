@@ -55,7 +55,7 @@ import asyncio
 import contextlib
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
@@ -236,6 +236,27 @@ async def _sse_generator(
     async def _drain_live() -> AsyncIterator[str]:
         nonlocal last_keepalive
         live_iter = event_log.subscribe(session_id, kind, from_seq=live_from)
+        queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+
+        async def _pump() -> None:
+            try:
+                async for row in live_iter:
+                    await queue.put(("row", row))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "EventLog subscribe pump failed session={} kind={}",
+                    session_id,
+                    kind,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    await live_iter.aclose()
+                with contextlib.suppress(Exception):
+                    await queue.put(("end", None))
+
+        pump = asyncio.create_task(_pump())
         try:
             while True:
                 if shutdown_event is not None and shutdown_event.is_set():
@@ -246,24 +267,27 @@ async def _sse_generator(
                 remaining_keepalive = max(0.0, _KEEPALIVE_INTERVAL - elapsed)
 
                 try:
-                    row = await asyncio.wait_for(
-                        live_iter.__anext__(),
+                    kind_msg, payload = await asyncio.wait_for(
+                        queue.get(),
                         timeout=remaining_keepalive + 0.1,
                     )
-                    frame_data = json.dumps(row.frame)
-                    yield _sse_event(row.seq, "patch", frame_data)
                 except TimeoutError:
                     now = datetime.now(UTC)
                     if (now - last_keepalive).total_seconds() >= _KEEPALIVE_INTERVAL:
                         last_keepalive = now
                         yield _sse_comment()
-                except StopAsyncIteration:
-                    return
+                else:
+                    if kind_msg == "end":
+                        return
+                    row = payload
+                    frame_data = json.dumps(row.frame)
+                    yield _sse_event(row.seq, "patch", frame_data)
         except (GeneratorExit, asyncio.CancelledError, ConnectionError):
             return
         finally:
-            with contextlib.suppress(Exception):
-                await live_iter.aclose()
+            pump.cancel()
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(pump, timeout=5.0)
 
     async for chunk in _drain_live():
         yield chunk

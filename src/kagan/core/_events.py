@@ -471,9 +471,8 @@ class Events:
         append/finalize frame routing.
 
         Frame semantics: create op, role="assistant", text="", finalized=False.
-        The FrameRow.idx field is the canonical stable address for this entry;
-        the path embedded in the frame dict is informational (set after the fact
-        since idx is assigned by the EventLog counter on append).
+        The FrameRow.idx field stores the same logical index as the resolved
+        path; the path placeholder is rewritten after append once idx is known.
         """
         if self._event_log is None:
             return

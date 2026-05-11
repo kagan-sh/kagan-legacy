@@ -671,7 +671,12 @@ async def test_resume_frame_from_orphan_reap_visible_to_first_subscriber(setup) 
 
 @pytest.mark.asyncio
 async def test_keepalive_comment_emitted_during_idle(setup) -> None:
-    """When idle for keepalive interval, a comment line is emitted."""
+    """When idle for keepalive interval, comment lines are emitted on every cycle.
+
+    Regression: ``wait_for(live_iter.__anext__())`` must not cancel the
+    subscribe generator on timeout, or the stream dies after the first
+    keepalive.
+    """
     import kagan.server._event_routes as event_routes_module
 
     original_interval = event_routes_module._KEEPALIVE_INTERVAL
@@ -682,7 +687,6 @@ async def test_keepalive_comment_emitted_during_idle(setup) -> None:
         source="test", label="keepalive-test", project_id=project_id
     )
 
-    comment_seen = asyncio.Event()
     all_text: list[str] = []
 
     endpoint = get_http_endpoint(mcp, "/api/sessions/{session_id}/events", "GET")
@@ -698,8 +702,8 @@ async def test_keepalive_comment_emitted_during_idle(setup) -> None:
             async for chunk in resp.body_iterator:
                 text = chunk.decode() if isinstance(chunk, bytes) else str(chunk)
                 all_text.append(text)
-                if any(": keepalive" in t for t in all_text):
-                    comment_seen.set()
+                joined = "".join(all_text)
+                if joined.count(": keepalive") >= 2:
                     ctx.shutdown_event.set()
                     break
     except TimeoutError:
@@ -707,8 +711,10 @@ async def test_keepalive_comment_emitted_during_idle(setup) -> None:
     finally:
         event_routes_module._KEEPALIVE_INTERVAL = original_interval
 
-    assert comment_seen.is_set(), (
-        f"No keepalive comment received. Seen text: {''.join(all_text)[:200]}"
+    joined = "".join(all_text)
+    assert joined.count(": keepalive") >= 2, (
+        f"Expected at least 2 keepalive cycles; got {joined.count(': keepalive')}. "
+        f"Preview: {joined[:400]!r}"
     )
 
 

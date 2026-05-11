@@ -216,7 +216,9 @@ class EventLogEntry(SQLModel, table=True):
     """Append-only frame store for chat and task event streams.
 
     seq   — per-(session_id, kind) monotonic counter; assigned by EventLog.
-    idx   — per-(session_id, kind) entry index; seeded from max(idx) on attach.
+    idx   — logical entry index for patch frames (matches ``/entries/{idx}``);
+            append/finalize rows reuse the target entry's idx.  Seeded from
+            max(create-patch idx) on restart (legacy rows fall back to max(idx)).
     ts    — UTC timestamp of insertion.
     frame — arbitrary JSON payload.
 

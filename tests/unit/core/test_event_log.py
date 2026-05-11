@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from kagan.core._event_log import EventLog, FrameRow
+from kagan.core._event_log import EntryIndexProvider, EventLog, FrameRow
 
 pytestmark = [pytest.mark.unit]
 
@@ -110,18 +110,21 @@ async def test_subscribe_yields_snapshot_then_live(
 
     collected: list[FrameRow] = []
 
+    live_ready = asyncio.Event()
+
     async def _consume() -> None:
-        async for row in event_log.subscribe(session_id, "chat"):
+        async for row in event_log.subscribe(
+            session_id,
+            "chat",
+            queue_registered=live_ready,
+        ):
             collected.append(row)
             if len(collected) >= 4:
                 break
 
-    # Start consumer; it will block waiting for live frames after backlog
+    # Start consumer; await registration before appending live frames
     task = asyncio.create_task(_consume())
-
-    # Let consumer drain the backlog
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    await asyncio.wait_for(live_ready.wait(), timeout=3.0)
 
     # Emit two live frames
     await event_log.append(session_id, "chat", {"phase": "live", "i": 2})
@@ -187,6 +190,55 @@ async def test_index_provider_recovers_max_idx_after_restart(
     assert rows2[seq].idx == 3
 
 
+async def test_index_provider_seeds_from_create_idx_not_append_noise(
+    event_log_engine,
+    session_id: str,
+) -> None:
+    """After restart, next auto idx follows logical create entries, not append rows."""
+    log1 = EventLog(event_log_engine)
+    await log1.append(
+        session_id,
+        "chat",
+        {
+            "type": "patch",
+            "op": "create",
+            "path": "/entries/0",
+            "value": {"idx": 0, "role": "user", "text": "hi", "finalized": True, "ts": ""},
+        },
+    )
+    await log1.append(
+        session_id,
+        "chat",
+        {
+            "type": "patch",
+            "op": "create",
+            "path": "/entries/1",
+            "value": {
+                "idx": 1,
+                "role": "assistant",
+                "text": "",
+                "finalized": False,
+                "ts": "",
+            },
+        },
+    )
+    for _ in range(5):
+        await log1.append(
+            session_id,
+            "chat",
+            {
+                "type": "patch",
+                "op": "append",
+                "path": "/entries/1/text",
+                "value": "x",
+            },
+        )
+
+    idxp = EntryIndexProvider(event_log_engine)
+    n = await idxp.next(session_id, "chat")
+    assert n == 2
+
+
 # ---------------------------------------------------------------------------
 # Concurrent appends
 # ---------------------------------------------------------------------------
@@ -225,18 +277,22 @@ async def test_subscribe_two_clients_see_identical_frames(
 
     target = 3  # backlog(1) + live(2)
 
-    async def _consumer(sink: list[FrameRow]) -> None:
-        async for row in event_log.subscribe(session_id, "chat"):
+    reg_a = asyncio.Event()
+    reg_b = asyncio.Event()
+
+    async def _consumer(sink: list[FrameRow], registered: asyncio.Event) -> None:
+        async for row in event_log.subscribe(
+            session_id,
+            "chat",
+            queue_registered=registered,
+        ):
             sink.append(row)
             if len(sink) >= target:
                 break
 
-    task_a = asyncio.create_task(_consumer(client_a))
-    task_b = asyncio.create_task(_consumer(client_b))
-
-    # Let both consumers drain backlog
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    task_a = asyncio.create_task(_consumer(client_a, reg_a))
+    task_b = asyncio.create_task(_consumer(client_b, reg_b))
+    await asyncio.wait_for(asyncio.gather(reg_a.wait(), reg_b.wait()), timeout=3.0)
 
     # Emit two live frames
     await event_log.append(session_id, "chat", {"slot": 1})

@@ -29,13 +29,15 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from acp import start_tool_call, text_block, update_agent_message, update_tool_call
 from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from sqlalchemy import Engine
 
 from kagan.core._agent import (
     _BACKEND_SPECS,
@@ -417,3 +419,46 @@ def _cues_to_json(cues: list[FakeCue]) -> str:
     ``KAGAN_FAKE_AGENT_SCRIPT_FILE`` injection."""
     items = [{k: v for k, v in asdict(c).items() if v is not None} for c in cues]
     return json.dumps(items)
+
+
+# ---------------------------------------------------------------------------
+# Resume-frame injection (test-only)
+# ---------------------------------------------------------------------------
+
+
+async def emit_resume_frame(
+    engine: Engine,
+    session_id: str,
+    kind: Literal["chat", "task"] = "task",
+    turn_active: bool = True,
+) -> int:
+    """Append a ``FrameResume`` to the EventLog for the given session.
+
+    This is the server-side knob used by E2E and behavioral tests to
+    deterministically trigger the resume-notice UX without orchestrating a
+    real orphan reap.  Never call this from production code paths.
+
+    Args:
+        engine: The SQLAlchemy engine from the live ``KaganCore`` instance.
+        session_id: Target session to receive the frame.
+        kind: Frame kind — ``"chat"`` or ``"task"``.
+        turn_active: Forwarded to ``FrameResume.turn_active``; controls whether
+            the client shows an "agent still working" spinner.
+
+    Returns:
+        The assigned ``seq`` for the new frame.
+    """
+    from kagan.core._event_log import EventLog
+    from kagan.server.responses import FrameResume
+
+    frame = FrameResume(kind=kind, turn_active=turn_active).model_dump()
+    event_log = EventLog(engine)
+    seq = await event_log.append(session_id, kind, frame)
+    logger.debug(
+        "FakeAgent.emit_resume_frame: session={} kind={} turn_active={} seq={}",
+        session_id,
+        kind,
+        turn_active,
+        seq,
+    )
+    return seq

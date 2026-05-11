@@ -573,6 +573,36 @@ class KaganDriver:
         assert self._ctx is not None, "Driver not booted"
         return await reap_orphan_sessions(self._ctx)
 
+    async def emit_resume_frame(
+        self,
+        session_id: str,
+        kind: str = "task",
+        turn_active: bool = True,
+    ) -> int:
+        """Append a ``FrameResume`` to the EventLog for behavioral tests.
+
+        Calls the fake-agent emission helper directly so Python behavioral tests
+        can assert on the resume-notice UX path without running a full server or
+        orchestrating an actual orphan reap.
+
+        Args:
+            session_id: Target session that will receive the frame.
+            kind: ``"chat"`` or ``"task"`` (default ``"task"``).
+            turn_active: Whether the agent turn is still active.
+
+        Returns:
+            The assigned ``seq`` for the new frame.
+        """
+        from kagan.core._fake_agent import emit_resume_frame as _emit
+
+        assert self._ctx is not None, "Driver not booted"
+        return await _emit(
+            self._ctx.engine,
+            session_id=session_id,
+            kind=kind,  # type: ignore[arg-type]  # narrowed to Literal at runtime
+            turn_active=turn_active,
+        )
+
     async def read_frames(
         self,
         session_id: str,

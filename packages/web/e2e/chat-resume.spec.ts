@@ -16,6 +16,7 @@ import { expect, test, type APIRequestContext, type Page } from './coverage-fixt
 import {
   chatEcho,
   clearScenario,
+  emitResumeFrame,
   ensureProjectReady,
   scheduleScenario,
   type FakeScenario,
@@ -204,34 +205,36 @@ test.describe('Chat resume — useEntryStream', () => {
     await clearScenario(request, sessionId);
   });
 
-  test('resume notice toast appears when orphan reap signals turn still active', async ({
+  test('resume notice toast appears when fake agent emits FrameResume', async ({
     page,
     request,
   }) => {
     await ensureProjectReady(request);
     const sessionId = await createSession(request, 'entry-stream-resume-notice');
 
-    // Navigate to the session so the entry stream is open.
+    // Navigate to the session so the entry stream SSE is open and listening.
     await gotoChat(page, sessionId);
-
-    // Simulate a resume frame arriving from the server (e.g. after orphan reap).
-    // We inject it directly via the fake-agent endpoint by scheduling a scenario
-    // that the server will use to drive the SSE session events endpoint.
-    // Since the fake-agent doesn't directly emit FrameResume frames in the current
-    // test harness, we verify the toast mechanism by checking the /events endpoint
-    // exists and that the UI is in the expected idle state first.
     await expect(composer(page)).toBeVisible({ timeout: 5_000 });
 
-    // Verify the entry stream has connected (session loads cleanly).
-    const healthResp = await request.get('/health');
-    expect(healthResp.ok()).toBeTruthy();
-
-    // Send a quick message to confirm the stream is operational.
-    await scheduleScenario(request, chatEcho(sessionId, 'stream operational'));
-    await sendMessage(page, 'health check');
-    await expect(lastAssistantMessage(page)).toContainText('stream operational', {
+    // Send a turn first so the stream is known-good (isLive=true) before
+    // we inject the resume frame.
+    await scheduleScenario(request, chatEcho(sessionId, 'stream ready'));
+    await sendMessage(page, 'ping');
+    await expect(lastAssistantMessage(page)).toContainText('stream ready', {
       timeout: 15_000,
     });
+
+    // Inject a FrameResume via the fake-agent endpoint.  The EventLog append
+    // fans out to all live SSE subscribers, so the open entry-stream connection
+    // on this page will receive the 'resume' event immediately.
+    await emitResumeFrame(request, sessionId, { kind: 'chat', turnActive: true });
+
+    // The resume-notice toast should render in the Sonner toaster.
+    // Sonner renders toasts as [role="status"] or [data-sonner-toast] elements.
+    // We match on the known toast text set by use-chat-session.ts.
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: 'Agent is still working' }),
+    ).toBeVisible({ timeout: 10_000 });
 
     await clearScenario(request, sessionId);
   });

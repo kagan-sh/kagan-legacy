@@ -26,7 +26,6 @@ from sqlmodel import select
 
 from kagan.core._db_helpers import _db_async
 from kagan.core._event_log import EventLog, FrameRow
-from kagan.core.models import SessionEvent
 from tests.helpers.driver import KaganDriver
 from tests.helpers.fake_agent_backend import (
     FakeCue,

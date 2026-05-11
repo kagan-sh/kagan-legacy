@@ -756,8 +756,9 @@ async def test_all_emitted_frames_parse_as_pydantic_frame_union(setup) -> None:
     Validates that the 'type' discriminator is present and that Pydantic can
     construct the appropriate Frame subtype from the data.
     """
-    from kagan.server.responses import Frame, FramePatch, FrameReady, FrameResume, FrameSnapshot
     from pydantic import TypeAdapter
+
+    from kagan.server.responses import Frame
 
     frame_adapter: TypeAdapter[Frame] = TypeAdapter(Frame)
 
@@ -785,6 +786,6 @@ async def test_all_emitted_frames_parse_as_pydantic_frame_union(setup) -> None:
         except Exception as exc:
             parse_failures.append(f"data={data!r}: {exc}")
 
-    assert not parse_failures, f"Frames that failed Pydantic Frame union validation:\n" + "\n".join(
+    assert not parse_failures, "Frames that failed Pydantic Frame union validation:\n" + "\n".join(
         parse_failures
     )

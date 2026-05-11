@@ -372,3 +372,29 @@ export async function clearScenario(request: APIRequestContext, targetId: string
   });
   await expectOk(resp, 'clear fake-agent scenario');
 }
+
+/**
+ * Inject a FrameResume into the EventLog for a chat or task session.
+ *
+ * Only available when the server is started with ``KAGAN_FAKE_AGENT=1``.
+ * Triggers the resume-notice toast in the web UI without requiring an actual
+ * orphan reap or server restart.
+ *
+ * Returns the assigned ``seq`` for the new frame.
+ */
+export async function emitResumeFrame(
+  request: APIRequestContext,
+  sessionId: string,
+  opts?: { kind?: 'chat' | 'task'; turnActive?: boolean },
+): Promise<number> {
+  const resp = await request.post('/api/fake-agent/emit-resume', {
+    data: {
+      session_id: sessionId,
+      kind: opts?.kind ?? 'chat',
+      turn_active: opts?.turnActive ?? true,
+    },
+  });
+  await expectOk(resp, 'emit resume frame');
+  const body = (await resp.json()) as { ok: boolean; seq: number };
+  return body.seq;
+}

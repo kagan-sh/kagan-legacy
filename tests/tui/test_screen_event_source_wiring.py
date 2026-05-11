@@ -184,7 +184,6 @@ async def test_overlay_reopen_shows_live_assistant_tail(board: KaganDriver) -> N
     from kagan.core.models import Project, Session, Task
     from kagan.tui import KaganApp
     from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
-    from kagan.tui.widgets.session_list import SessionList
 
     db_path = board.tmp_path / "kagan.db"
     engine = create_db_engine(db_path)

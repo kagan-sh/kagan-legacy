@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse
 
-from kagan.core._fake_agent import FakeCue, FakeScript, director
+from kagan.core._fake_agent import FakeCue, FakeScript, director, emit_resume_frame
+from kagan.server.mcp.server import get_server_context
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -61,3 +62,44 @@ def register_fake_agent_routes(mcp: Any) -> None:
     async def director_state(_request: Request) -> JSONResponse:
         """Debug peek — lists scheduled target IDs only (no cue payloads)."""
         return JSONResponse({"targets": list(director._scripts.keys())})
+
+    @mcp.custom_route("/api/fake-agent/emit-resume", methods=["POST"])
+    async def emit_resume(request: Request) -> JSONResponse:
+        """Inject a FrameResume into the EventLog for a given session.
+
+        Body:
+            session_id (str): The target session id.
+            kind (str): ``"chat"`` or ``"task"`` — defaults to ``"task"``.
+            turn_active (bool): Whether the agent turn is still active.
+
+        Returns ``{"ok": true, "seq": N}`` on success.
+        Refuses with 403 unless the server was started with ``KAGAN_FAKE_AGENT=1``.
+        """
+        import os as _os
+
+        if not _os.environ.get("KAGAN_FAKE_AGENT"):
+            return JSONResponse({"error": "fake-agent not enabled"}, status_code=403)
+
+        ctx = get_server_context(mcp)
+        if ctx is None:
+            return JSONResponse({"error": "server not ready"}, status_code=503)
+
+        body = await request.json()
+        session_id = str(body.get("session_id", ""))
+        if not session_id:
+            return JSONResponse({"error": "session_id required"}, status_code=400)
+
+        raw_kind = str(body.get("kind", "task"))
+        if raw_kind not in ("chat", "task"):
+            return JSONResponse({"error": "kind must be 'chat' or 'task'"}, status_code=400)
+        kind: Any = raw_kind  # narrowed to Literal["chat","task"] at runtime
+
+        turn_active = bool(body.get("turn_active", True))
+
+        seq = await emit_resume_frame(
+            ctx.client.engine,
+            session_id=session_id,
+            kind=kind,
+            turn_active=turn_active,
+        )
+        return JSONResponse({"ok": True, "seq": seq})

@@ -18,6 +18,7 @@ from kagan.core._db_helpers import (
     _sa_col,
     _utc_now,
 )
+from kagan.core._event_log import EventLog
 from kagan.core._events import BoardEvent, Events, list_events
 from kagan.core._security import scan_text_for_injection
 from kagan.core._session_helpers import DetachResult
@@ -87,6 +88,13 @@ _DIRECT_MOVES: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
 )
 
 
+def _eager_load_criteria(task: Task) -> None:
+    """Eagerly load acceptance criteria and their verdicts while session is open."""
+    _ = list(task.criteria)
+    for _c in task.criteria:
+        _ = list(_c.verdicts)
+
+
 class Tasks:
     def __init__(
         self,
@@ -100,9 +108,11 @@ class Tasks:
         self._active_project_id: str | None = None
         self._client = client
         self._db_path = db_path
+        _event_log = EventLog(engine)
         self.events = Events(
             engine,
             signals,
+            event_log=_event_log,
         )
         self.sessions = Sessions(
             engine,
@@ -449,8 +459,7 @@ class Tasks:
                         )
                 s.commit()
                 s.refresh(task)
-                # Eagerly load the criteria relationship while the session is open
-                _ = list(task.criteria)
+                _eager_load_criteria(task)
                 logger.debug("Task created id={} type={}", task.id, task.task_type)
                 return task
             except IntegrityError as exc:
@@ -480,7 +489,7 @@ class Tasks:
         def _get_with_criteria(s) -> Task | None:
             t = s.get(Task, task_id)
             if t is not None:
-                _ = list(t.criteria)  # Eagerly load criteria while session is open
+                _eager_load_criteria(t)
             return t
 
         task = await _db_async(self._engine, _get_with_criteria)
@@ -504,7 +513,7 @@ class Tasks:
         def _list_with_criteria(s) -> list[Task]:
             tasks = list(s.exec(stmt).all())
             for t in tasks:
-                _ = list(t.criteria)  # Eagerly load criteria while session is open
+                _eager_load_criteria(t)
             return tasks
 
         return await _db_async(self._engine, _list_with_criteria)
@@ -602,7 +611,7 @@ class Tasks:
             s.add(db_task)
             s.commit()
             s.refresh(db_task)
-            _ = list(db_task.criteria)  # Eagerly load criteria while session is open
+            _eager_load_criteria(db_task)
             return db_task
 
         updated = await _db_async(self._engine, op)
@@ -661,7 +670,7 @@ class Tasks:
             s.add(task)
             s.commit()
             s.refresh(task)
-            _ = list(task.criteria)  # Eagerly load criteria while session is open
+            _eager_load_criteria(task)
             logger.info("Task {} moved to {}", task_id, status.value)
             return task
 
@@ -725,7 +734,7 @@ class Tasks:
                 if q in t.title.lower() or q in t.id[:8].lower() or q in t.description.lower()
             ][:limit]
             for t in matched:
-                _ = list(t.criteria)
+                _eager_load_criteria(t)
             return matched
 
         return await _db_async(self._engine, _search_with_criteria)

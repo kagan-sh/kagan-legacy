@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -164,19 +163,23 @@ def test_emit_json_preserves_all_field_values(capsys) -> None:
 # ── doctor_warned telemetry payload shape tests ───────────────────────
 
 
-def test_emit_doctor_warned_not_called_for_all_pass() -> None:
+def test_emit_doctor_warned_not_called_for_all_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     """No telemetry emitted when all checks pass."""
     checks = [
         _make_check("git", "pass"),
         _make_check("db", "pass"),
     ]
 
-    with patch("kagan.cli.doctor.emit_telemetry") as mock_emit:
-        _emit_doctor_warned_telemetry(checks)
-        mock_emit.assert_not_called()
+    async def _should_not_run(*_a: Any, **_k: Any) -> None:
+        raise AssertionError("emit_telemetry must not be called")
+
+    monkeypatch.setattr("kagan.cli.doctor.emit_telemetry", _should_not_run)
+    _emit_doctor_warned_telemetry(checks)
 
 
-def test_emit_doctor_warned_payload_shape_with_warn() -> None:
+def test_emit_doctor_warned_payload_shape_with_warn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Payload has failing_check_names, warn_count, fail_count for WARN checks."""
     import asyncio
 
@@ -191,16 +194,16 @@ def test_emit_doctor_warned_payload_shape_with_warn() -> None:
     async def capturing_emit(engine, event_type, payload):
         captured_payloads.append({"event_type": event_type, "payload": payload})
 
-    with (
-        patch("kagan.cli.doctor.create_db_engine"),
-        patch("kagan.cli.doctor.default_db_path"),
-        patch("kagan.cli.doctor.emit_telemetry", new=capturing_emit),
-        patch(
-            "kagan.cli.doctor.run_async",
-            side_effect=lambda coro: asyncio.run(coro),
-        ),
-    ):
-        _emit_doctor_warned_telemetry(checks)
+    engine = _make_engine(tmp_path)
+    monkeypatch.setattr("kagan.cli.doctor.default_db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr("kagan.cli.doctor.create_db_engine", lambda *_a, **_kw: engine)
+    monkeypatch.setattr("kagan.cli.doctor.emit_telemetry", capturing_emit)
+    monkeypatch.setattr(
+        "kagan.cli.doctor.run_async",
+        lambda coro: asyncio.run(coro),
+    )
+
+    _emit_doctor_warned_telemetry(checks)
 
     assert len(captured_payloads) == 1
     ev = captured_payloads[0]
@@ -214,7 +217,9 @@ def test_emit_doctor_warned_payload_shape_with_warn() -> None:
     assert set(payload["failing_check_names"]) == {"ide", "agent backend"}
 
 
-def test_emit_doctor_warned_payload_shape_with_fail() -> None:
+def test_emit_doctor_warned_payload_shape_with_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Payload correctly differentiates warn vs fail counts."""
     import asyncio
 
@@ -228,16 +233,16 @@ def test_emit_doctor_warned_payload_shape_with_fail() -> None:
     async def capturing_emit(engine, event_type, payload):
         captured_payloads.append({"event_type": event_type, "payload": payload})
 
-    with (
-        patch("kagan.cli.doctor.create_db_engine"),
-        patch("kagan.cli.doctor.default_db_path"),
-        patch("kagan.cli.doctor.emit_telemetry", new=capturing_emit),
-        patch(
-            "kagan.cli.doctor.run_async",
-            side_effect=lambda coro: asyncio.run(coro),
-        ),
-    ):
-        _emit_doctor_warned_telemetry(checks)
+    engine = _make_engine(tmp_path)
+    monkeypatch.setattr("kagan.cli.doctor.default_db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr("kagan.cli.doctor.create_db_engine", lambda *_a, **_kw: engine)
+    monkeypatch.setattr("kagan.cli.doctor.emit_telemetry", capturing_emit)
+    monkeypatch.setattr(
+        "kagan.cli.doctor.run_async",
+        lambda coro: asyncio.run(coro),
+    )
+
+    _emit_doctor_warned_telemetry(checks)
 
     assert len(captured_payloads) == 1
     payload = captured_payloads[0]["payload"]

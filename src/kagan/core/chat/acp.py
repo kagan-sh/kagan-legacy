@@ -23,11 +23,13 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from loguru import logger
 
-from kagan.core.chat.events import (
+from kagan.core.events import (
     AssistantChunk,
-    ChatEvent,
-    ToolCallProgress,
-    ToolCallStart,
+    Event,
+    ThinkingChunk,
+    ToolCall,
+    ToolCallResult,
+    ToolCallUpdate,
     UsageUpdate,
 )
 
@@ -116,23 +118,39 @@ class ACPSessionFactory(Protocol):
 # ---------------------------------------------------------------------------
 
 
-def acp_update_to_chat_event(update: Any) -> ChatEvent | None:
-    """Translate one ACP ``session_update`` payload into a :class:`ChatEvent`.
+def acp_update_to_chat_event(
+    update: Any,
+    *,
+    turn_id: str = "",
+    session_id: str = "",
+) -> Event | None:
+    """Translate one ACP ``session_update`` payload into an :class:`Event`.
 
     Pure / side-effect-free — safe to call from any context. Returns ``None``
     for ACP updates that don't have a chat-level analogue (e.g. keepalive).
     Lifted from ``server._chat_routes._bridge_acp_update``.
 
+    ``turn_id`` and ``session_id`` are forwarded into the returned events;
+    they default to empty strings when called from contexts (e.g. tests) that
+    don't have turn-scoped IDs.
+
     Dispatches on the ``session_update`` literal that every ACP schema type
     carries as its discriminator field.
     """
+    import uuid as _uuid
+
     match getattr(update, "session_update", None):
         case "agent_message_chunk":
             content = getattr(update, "content", None)
             if content and getattr(content, "type", None) == "text":
                 text = getattr(content, "text", "") or ""
                 if text:
-                    return AssistantChunk(text=text, thought=False)
+                    return AssistantChunk(
+                        turn_id=turn_id,
+                        session_id=session_id,
+                        message_id=_uuid.uuid4().hex,
+                        delta=text,
+                    )
             return None
 
         case "agent_thought_chunk":
@@ -140,33 +158,52 @@ def acp_update_to_chat_event(update: Any) -> ChatEvent | None:
             if content and getattr(content, "type", None) == "text":
                 text = getattr(content, "text", "") or ""
                 if text:
-                    return AssistantChunk(text=text, thought=True)
+                    return ThinkingChunk(
+                        turn_id=turn_id,
+                        session_id=session_id,
+                        message_id=_uuid.uuid4().hex,
+                        delta=text,
+                    )
             return None
 
         case "tool_call":
             title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
-            tool_id = _coerce_tool_id(update)
+            tool_call_id = _coerce_tool_id(update)
             args = _coerce_tool_args(update)
-            return ToolCallStart(
-                tool_id=tool_id,
+            return ToolCall(
+                turn_id=turn_id,
+                session_id=session_id,
+                tool_call_id=tool_call_id,
+                name=str(getattr(update, "name", None) or title),
                 title=str(title),
-                kind_hint=getattr(update, "kind", None),
+                kind=getattr(update, "kind", None),
                 args=args,
             )
 
         case "tool_call_update":
-            tool_id = _coerce_tool_id(update)
+            tool_call_id = _coerce_tool_id(update)
             status_raw = getattr(update, "status", None)
-            status = _normalize_tool_status(status_raw)
-            result = _coerce_tool_result(update)
-            return ToolCallProgress(tool_id=tool_id, status=status, result=result)
+            normalized = _normalize_tool_status(status_raw)
+            result_text = _coerce_tool_result(update)
+            if normalized in ("completed", "failed"):
+                return ToolCallResult(
+                    tool_call_id=tool_call_id,
+                    output=result_text,
+                    is_error=normalized == "failed",
+                )
+            return ToolCallUpdate(
+                tool_call_id=tool_call_id,
+                content=None,
+                progress=normalized,
+            )
 
         case "usage_update":
             return UsageUpdate(
-                used=getattr(update, "used", None),
-                size=getattr(update, "size", None),
+                turn_id=turn_id,
+                input=getattr(update, "used", None),
+                output=None,
+                cached=None,
                 cost=getattr(update, "cost", None),
-                cost_currency=getattr(update, "cost_currency", None),
             )
 
         case _:
@@ -227,12 +264,16 @@ def make_spawn_per_turn_acp_factory(
     default_agent_backend: str | None = None,
     cwd: Path | None = None,
     attachments: list[dict[str, str]] | None = None,
+    raw: bool = False,
 ) -> ACPSessionFactory:
     """Return an ``ACPSessionFactory`` backed by one fresh ACP process per turn.
 
     The private wrapper exists only because pyrefly cannot prove protocol
     compatibility for dynamic objects with a ``prompt`` attribute. The public
     API is the helper function, and all spawn state lives in this closure.
+
+    When ``raw`` is True, the backend receives user blocks verbatim — no
+    orchestrator system prompt and no MCP tools.
     """
 
     async def prompt(
@@ -250,6 +291,7 @@ def make_spawn_per_turn_acp_factory(
             default_agent_backend=default_agent_backend,
             cwd=cwd,
             attachments=attachments,
+            raw=raw,
             session_id=session_id,
             prompt_blocks=prompt_blocks,
             on_update=on_update,
@@ -296,6 +338,7 @@ async def run_spawn_per_turn_acp_prompt(
     default_agent_backend: str | None = None,
     cwd: Path | None = None,
     attachments: list[dict[str, str]] | None = None,
+    raw: bool = False,
     session_id: str,
     prompt_blocks: list[Any],
     on_update: Callable[[Any], Awaitable[None]],
@@ -322,6 +365,7 @@ async def run_spawn_per_turn_acp_prompt(
             on_update=on_update,
             attachments=attachments,
             cwd=cwd,
+            lightweight=raw,
             permission_resolver=permission_resolver,
         )
     )

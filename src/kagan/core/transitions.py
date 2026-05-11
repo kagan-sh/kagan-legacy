@@ -53,6 +53,90 @@ class IllegalTransition(InvalidTransitionError):
     """
 
 
+_TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
+    [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]
+)
+
+_ALLOWED_SESSION_TRANSITIONS: frozenset[tuple[SessionStatus, SessionStatus]] = frozenset(
+    {
+        (SessionStatus.PENDING, SessionStatus.RUNNING),
+        (SessionStatus.PENDING, SessionStatus.CANCELLED),
+        (SessionStatus.PENDING, SessionStatus.FAILED),
+        (SessionStatus.RUNNING, SessionStatus.COMPLETED),
+        (SessionStatus.RUNNING, SessionStatus.FAILED),
+        (SessionStatus.RUNNING, SessionStatus.CANCELLED),
+    }
+)
+
+
+def _session_transition_allowed(
+    src: SessionStatus,
+    to: SessionStatus,
+    *,
+    allow_pending_completed: bool = False,
+) -> bool:
+    if allow_pending_completed and src == SessionStatus.PENDING and to == SessionStatus.COMPLETED:
+        return True
+    return (src, to) in _ALLOWED_SESSION_TRANSITIONS
+
+
+def transition_session_in_db(
+    db_session,
+    session_id: str,
+    to: SessionStatus,
+    *,
+    strict: bool = True,
+    allow_pending_completed: bool = False,
+) -> tuple[Session, SessionStatus] | None:
+    """Sync-safe session transition primitive for code already inside _db_async.
+
+    ``transition_session`` is the public async funnel. Internal lifecycle code
+    that already owns a SQLModel session uses this helper so the same transition
+    matrix is enforced without nesting async DB calls inside a sync transaction.
+    Non-strict mode preserves legacy best-effort behavior for monitor callbacks:
+    missing, same-status, or already-terminal sessions become no-ops.
+    """
+    obj = db_session.get(Session, session_id)
+    if obj is None:
+        if strict:
+            raise NotFoundError("Session", session_id)
+        return None
+
+    src = obj.status
+    if src == to:
+        if strict:
+            raise IllegalTransition(src, to)
+        return None
+
+    if not _session_transition_allowed(
+        src,
+        to,
+        allow_pending_completed=allow_pending_completed,
+    ):
+        if strict:
+            raise IllegalTransition(src, to)
+        return None
+
+    obj.status = to
+    if to in _TERMINAL_STATUSES:
+        obj.ended_at = _utc_now()
+    db_session.add(obj)
+    return obj, src
+
+
+_ALLOWED_TASK_TRANSITIONS: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
+    {
+        (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),
+        (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
+        (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG),
+        (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),
+        (TaskStatus.REVIEW, TaskStatus.BACKLOG),
+        (TaskStatus.REVIEW, TaskStatus.DONE),
+        (TaskStatus.DONE, TaskStatus.BACKLOG),
+    }
+)
+
+
 async def _has_passing_review(client: KaganCore, task_id: str) -> bool:
     """Return True if every acceptance criterion has a passing verdict.
 
@@ -91,53 +175,11 @@ async def transition_task(
     if src == to:
         raise IllegalTransition(src, to)
 
-    match (src, to):
-        # ── Happy paths (no guard needed) ──────────────────────────────────
-        case (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS):
-            pass
-
-        case (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW):
-            pass
-
-        case (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG):
-            pass
-
-        case (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS):
-            pass
-
-        case (TaskStatus.REVIEW, TaskStatus.BACKLOG):
-            pass
-
-        case (TaskStatus.DONE, TaskStatus.BACKLOG):
-            pass
-
-        # ── Guarded path: review gate ───────────────────────────────────────
-        case (TaskStatus.REVIEW, TaskStatus.DONE):
-            if not await _has_passing_review(client, task_id):
-                raise IllegalTransition(
-                    src,
-                    to,
-                )
-
-        # ── Explicitly forbidden shortcuts ─────────────────────────────────
-        case (TaskStatus.IN_PROGRESS, TaskStatus.DONE):
+    if (src, to) == (TaskStatus.REVIEW, TaskStatus.DONE):
+        if not await _has_passing_review(client, task_id):
             raise IllegalTransition(src, to)
-
-        case (TaskStatus.BACKLOG, TaskStatus.DONE):
-            raise IllegalTransition(src, to)
-
-        case (TaskStatus.BACKLOG, TaskStatus.REVIEW):
-            raise IllegalTransition(src, to)
-
-        case (TaskStatus.DONE, TaskStatus.IN_PROGRESS):
-            raise IllegalTransition(src, to)
-
-        case (TaskStatus.DONE, TaskStatus.REVIEW):
-            raise IllegalTransition(src, to)
-
-        # ── Catch-all: any other (from, to) pair is rejected ───────────────
-        case _:
-            raise IllegalTransition(src, to)
+    elif (src, to) not in _ALLOWED_TASK_TRANSITIONS:
+        raise IllegalTransition(src, to)
 
     logger.debug(
         "transition_task: task={} {} → {} (by={})",
@@ -220,21 +262,8 @@ async def transition_session(
     if src == to:
         raise IllegalTransition(src, to)
 
-    match (src, to):
-        case (SessionStatus.PENDING, SessionStatus.RUNNING):
-            pass
-        case (SessionStatus.PENDING, SessionStatus.CANCELLED):
-            pass
-        case (SessionStatus.PENDING, SessionStatus.FAILED):
-            pass
-        case (SessionStatus.RUNNING, SessionStatus.COMPLETED):
-            pass
-        case (SessionStatus.RUNNING, SessionStatus.FAILED):
-            pass
-        case (SessionStatus.RUNNING, SessionStatus.CANCELLED):
-            pass
-        case _:
-            raise IllegalTransition(src, to)
+    if not _session_transition_allowed(src, to):
+        raise IllegalTransition(src, to)
 
     logger.debug(
         "transition_session: session={} {} → {} (by={})",
@@ -248,15 +277,118 @@ async def transition_session(
         obj = s.get(Session, session_id)
         if obj is None:
             raise NotFoundError("Session", session_id)
-        # TOCTOU guard: abort if status drifted between the read above and now.
+        # TOCTOU guard: status must not have drifted between the initial read
+        # and this write transaction.
         if obj.status != src:
             raise IllegalTransition(obj.status, to)
+        # Apply the mutation directly on the already-loaded row rather than
+        # delegating to transition_session_in_db, which would redundantly call
+        # s.get(Session, session_id) again on the same SQLModel session.
         obj.status = to
-        if to in {SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED}:
+        if to in _TERMINAL_STATUSES:
             obj.ended_at = _utc_now()
         s.add(obj)
         s.commit()
         s.refresh(obj)
         return obj  # type: ignore[return-value]  # SQLModel refresh returns None
 
-    return await _db_async(client.engine, _write)
+    updated = await _db_async(client.engine, _write)
+    await _notify_chat_on_session_transition(client, updated, src=src, to=to)
+    return updated
+
+
+async def _notify_chat_on_session_transition(
+    client: KaganCore,
+    session: Session,
+    *,
+    src: SessionStatus,
+    to: SessionStatus,
+) -> None:
+    """Fire an agent lifecycle notification into orchestrator chat sessions.
+
+    Runs after the DB commit so chat-injection failures never block the
+    transition.  All errors are caught and logged as warnings — the caller
+    always receives the updated Session regardless.
+
+    Fires on:
+    - Any → RUNNING (first time entering RUNNING state): kind="started"
+    - Any → terminal (COMPLETED): kind="finished"
+    - Any → terminal (FAILED): kind="failed"
+    - Any → terminal (CANCELLED): kind="stopped"
+
+    Skips silently when task or project lookup fails.
+    """
+    # Only notify on meaningful lifecycle boundaries.
+    entering_running = to == SessionStatus.RUNNING and src != SessionStatus.RUNNING
+    entering_terminal = to in _TERMINAL_STATUSES
+
+    if not (entering_running or entering_terminal):
+        return
+
+    try:
+        from kagan.core._db_helpers import _db_async as _dba
+        from kagan.core.chat._attach import record_agent_lifecycle_event
+        from kagan.core.events import AgentLifecycle
+        from kagan.core.models import Task as _Task
+
+        def _lookup(s) -> tuple[str, str] | None:
+            task = s.get(_Task, session.task_id)
+            if task is None:
+                return None
+            return task.title, task.project_id
+
+        task_info = await _dba(client.engine, _lookup)
+        if task_info is None:
+            logger.warning(
+                "_notify_chat: task {} not found for session {}; skipping",
+                session.task_id,
+                session.id,
+            )
+            return
+
+        task_title, project_id = task_info
+        role_label = f" ({session.agent_role})" if session.agent_role else ""
+
+        if entering_running:
+            lc_kind = "started"
+            attach_kind = "agent_started"
+            summary = f"{task_title}{role_label} started"
+        elif to == SessionStatus.COMPLETED:
+            lc_kind = "finished"
+            attach_kind = "agent_finished"
+            summary = f"{task_title}{role_label} finished"
+        elif to == SessionStatus.FAILED:
+            lc_kind = "failed"
+            attach_kind = "agent_stopped"
+            summary = f"{task_title}{role_label} stopped (failed)"
+        else:
+            lc_kind = "stopped"
+            attach_kind = "agent_stopped"
+            summary = f"{task_title}{role_label} stopped ({to.value.lower()})"
+
+        await record_agent_lifecycle_event(
+            client.engine,
+            task_id=session.task_id,
+            kind=attach_kind,  # type: ignore[arg-type]
+            session_id=session.id,
+            summary=summary,
+        )
+
+        # Broadcast an AgentLifecycle event to live chat-session /watch subscribers
+        # via the hook registered by the server layer (web / VSCode path).
+        broadcast_fn = getattr(client, "_lifecycle_broadcast_fn", None)
+        if broadcast_fn is not None and project_id:
+            lc_event = AgentLifecycle(
+                session_id=session.id,
+                task_id=session.task_id,
+                kind=lc_kind,  # type: ignore[arg-type]
+                detail=summary,
+            )
+            await broadcast_fn(project_id, lc_event)
+
+    except Exception:
+        logger.opt(exception=True).warning(
+            "_notify_chat: failed to inject notification for session {}; "
+            "transition already committed",
+            session.id,
+        )

@@ -13,7 +13,7 @@ from loguru import logger
 from sqlalchemy import Connection, Engine, event
 from sqlmodel import create_engine
 
-_HEAD_REVISION = "a3f9d1c2e4b5"
+_HEAD_REVISION = "823ad30ac625"
 _LEGACY_REVISION_REMAP = {
     "5b95758fdb4d": "base",
     "0001_v060_to_latest": "0001_v060_to_latest",
@@ -94,6 +94,15 @@ def default_db_path() -> Path:
     from platformdirs import user_data_dir
 
     return Path(user_data_dir("kagan", "kagan")) / "kagan.db"
+
+
+def default_config_path() -> Path:
+    kagan_override = os.environ.get("KAGAN_CONFIG_DIR")
+    if kagan_override:
+        return Path(kagan_override) / "config.toml"
+    from platformdirs import user_config_dir
+
+    return Path(user_config_dir("kagan", "kagan")) / "config.toml"
 
 
 def create_db_engine(db_path: str | Path | None = None) -> Engine:

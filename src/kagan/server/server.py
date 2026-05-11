@@ -17,8 +17,10 @@ from uvicorn.server import HANDLED_SIGNALS
 
 from kagan.server._analytics_routes import register_analytics_routes
 from kagan.server._chat_routes import register_chat_routes
+from kagan.server._event_routes import register_event_routes
 from kagan.server._integration_routes import register_integration_routes
 from kagan.server._project_routes import register_project_routes
+from kagan.server._session_routes import register_session_routes
 from kagan.server._system_routes import register_system_routes
 from kagan.server._task_routes import register_task_routes
 from kagan.server._web_ui import register_web_ui
@@ -43,6 +45,7 @@ class ApiServerOptions:
     enable_tls: bool = False  # generate self-signed cert and serve HTTPS
     web_ui: bool = False  # mount bundled local web UI at /
     dev_mode: bool = False
+    fake_agent: bool = False  # register fake-agent backend and control routes
 
 
 class _KaganUvicornServer(uvicorn.Server):
@@ -128,6 +131,13 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
     register_analytics_routes(mcp)
     register_chat_routes(mcp)
     register_integration_routes(mcp)
+    register_session_routes(mcp)
+    register_event_routes(mcp)
+
+    if opts.fake_agent:
+        from kagan.server._fake_agent_routes import register_fake_agent_routes
+
+        register_fake_agent_routes(mcp)
 
     # Web UI must be last — it mounts a catch-all SPA fallback at /
     if opts.web_ui:
@@ -166,6 +176,7 @@ async def serve_http(
         enable_tls=opts.enable_tls,
         web_ui=opts.web_ui,
         dev_mode=opts.dev_mode,
+        fake_agent=opts.fake_agent,
     )
     mcp = create_api_server(opts)
 
@@ -180,7 +191,7 @@ async def serve_http(
     client = KaganCore(db_path=opts.mcp_opts.db_path)
 
     # Reap any sessions that were RUNNING when the previous server process died.
-    reaped = await reap_orphan_sessions(client.engine)
+    reaped = await reap_orphan_sessions(client)
     if reaped:
         logger.info("Server startup: reaped {} orphan session(s)", reaped)
 

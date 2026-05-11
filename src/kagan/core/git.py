@@ -151,6 +151,18 @@ async def worktree_add(
     repo = Path(repo_path)
     wt = Path(worktree_path)
     wt.parent.mkdir(parents=True, exist_ok=True)
+
+    # Graceful handling for fresh repos with no commits.
+    # If the base branch has no commits yet, seed an empty initial commit
+    # so that worktree creation (which needs a valid ref) succeeds.
+    base_exists = await _has_local_branch(repo, base)
+    if not base_exists:
+        has_commits, _ = await _run_git("rev-parse", "--verify", "HEAD", cwd=repo, check=False)
+        if not has_commits:
+            await _run_git(
+                "commit", "--allow-empty", "-m", "chore: initialize repository", cwd=repo
+            )
+
     await _run_git("worktree", "add", "-b", branch, str(wt), base, cwd=repo)
 
 

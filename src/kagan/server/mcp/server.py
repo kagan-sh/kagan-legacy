@@ -89,6 +89,10 @@ async def _lifespan(mcp: FastMCP) -> AsyncIterator[ServerContext]:
     client = KaganCore(db_path=opts.db_path)
     logger.debug("MCP lifespan: client initialized")
 
+    from kagan.server._sse_fanout import register_lifecycle_broadcast
+
+    register_lifecycle_broadcast(client)
+
     bound_session_id: str | None = opts.session_id
     bound_task_id: str | None = None
     bound_project_id: str | None = None

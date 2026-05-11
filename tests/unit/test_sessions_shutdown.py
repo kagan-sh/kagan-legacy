@@ -36,6 +36,9 @@ class _FakeEvents:
     def register_agent_end_subscriber(self, session_id: str, count: int = 1) -> None:
         pass
 
+    async def notify_agent_spawn(self, session_id: str) -> None:
+        pass
+
 
 async def _stub_get_task(_task_id: str) -> Any:
     raise AssertionError("_get_task should not run in this shutdown path")
@@ -218,6 +221,7 @@ async def test_run_uses_backend_spec_capability_for_detached_launch(
     )
     monkeypatch.setattr("kagan.core._sessions.get_persona_prompt", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("kagan.core._sessions.build_persona_section", lambda prompt: prompt)
+
     async def fake_update_session_pid(session_id: str, pid: int) -> None:
         updated_pids.append((session_id, pid))
 
@@ -332,6 +336,7 @@ async def test_run_parses_float_timeout_for_non_acp_detached_launch(
     )
     monkeypatch.setattr("kagan.core._sessions.get_persona_prompt", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("kagan.core._sessions.build_persona_section", lambda prompt: prompt)
+
     async def fake_update_session_pid(session_id: str, pid: int) -> None:
         updated_pids.append((session_id, pid))
 
@@ -412,6 +417,7 @@ async def test_run_uses_backend_spec_executable_for_attached_launch(
         "kagan.core._sessions.build_attached_startup_prompt",
         lambda _task, _criteria=None: "prompt",
     )
+
     async def fake_mark_session_running(session_id: str) -> None:
         pass
 

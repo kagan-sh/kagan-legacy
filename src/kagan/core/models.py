@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import sqlalchemy.exc
 from pydantic import field_serializer
-from sqlalchemy import JSON, Boolean, Column, Index
+from sqlalchemy import JSON, Boolean, Column, Index, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 from kagan.core.enums import Priority, SessionStatus, TaskStatus
@@ -212,6 +212,37 @@ class AuditEntry(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class EventLogEntry(SQLModel, table=True):
+    """Append-only frame store for chat and task event streams.
+
+    seq   — per-(session_id, kind) monotonic counter; assigned by EventLog.
+    idx   — per-(session_id, kind) entry index; seeded from max(idx) on attach.
+    ts    — UTC timestamp of insertion.
+    frame — arbitrary JSON payload.
+
+    Note: session_id is intentionally stored without a FK constraint at the DB
+    level.  A SQLite RENAME TABLE quirk in migration 6f4d63a80a1e causes alembic
+    to store ``REFERENCES sessions_old`` rather than ``REFERENCES sessions`` when
+    the FK is declared in model metadata and a fresh DB is migrated.  Application-
+    level integrity is enforced: EventLog.append() always receives a valid
+    session_id.  The FK will be added in a future migration.
+    """
+
+    __tablename__ = "event_log"  # type: ignore[assignment]
+    __table_args__ = (
+        UniqueConstraint("session_id", "kind", "seq", name="uq_event_log_session_kind_seq"),
+        Index("ix_event_log_session_kind_seq", "session_id", "kind", "seq"),
+    )
+
+    id: str = Field(default_factory=_new_id, primary_key=True)
+    session_id: str = Field(index=True)  # no FK — see class docstring
+    kind: str = Field()
+    seq: int = Field()
+    idx: int = Field()
+    ts: datetime = Field(default_factory=_utc_now)
+    frame: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+
+
 class ChatSession(SQLModel, table=True):
     __tablename__ = "chat_sessions"  # type: ignore[assignment]
     __table_args__ = (Index("ix_chat_sessions_project_id_updated_at", "project_id", "updated_at"),)
@@ -221,6 +252,11 @@ class ChatSession(SQLModel, table=True):
     source: str
     agent_backend: str | None = Field(default=None)
     project_id: str | None = Field(default=None, foreign_key="projects.id", index=True)
+    session_type: str = Field(
+        default="orchestrator",
+        index=True,
+        sa_column_kwargs={"server_default": "orchestrator"},
+    )
     created_at: datetime = Field(default_factory=_utc_now, index=True)
     updated_at: datetime = Field(default_factory=_utc_now, index=True)
 
@@ -256,6 +292,7 @@ __all__ = [
     "AuditEntry",
     "ChatMessage",
     "ChatSession",
+    "EventLogEntry",
     "Project",
     "Repository",
     "ReviewVerdict",

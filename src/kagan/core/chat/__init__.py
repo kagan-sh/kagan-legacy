@@ -6,7 +6,12 @@ use. The legacy `kagan.cli.chat.sessions` raw-SQL helpers are gone — call
 `client.chat` (the :class:`ChatEngine`) rather than driving ACP directly.
 """
 
-from kagan.core.chat._factories import LongLivedACPFactory
+from kagan.core.chat._attach import (
+    AgentNotificationKind,
+    notify_project_chat_sessions,
+    record_agent_lifecycle_event,
+)
+from kagan.core.chat._factories import LongLivedACPFactory, make_raw_backend_acp_factory
 from kagan.core.chat.acp import (
     ACPSessionFactory,
     ACPTurnResult,
@@ -21,21 +26,6 @@ from kagan.core.chat.engine import (
     TurnInProgressError,
     TurnStatus,
 )
-from kagan.core.chat.events import (
-    AssistantChunk,
-    AssistantMessagePersisted,
-    ChatEvent,
-    PermissionRequest,
-    PermissionResolved,
-    ToolCallProgress,
-    ToolCallStart,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnStarted,
-    UsageUpdate,
-    UserMessagePersisted,
-)
 from kagan.core.chat.sessions import (
     CHAT_LAST_SESSION_PREFIX,
     CHAT_SCOPE_PREFIX,
@@ -45,12 +35,34 @@ from kagan.core.chat.sessions import (
     clean_generated_title,
     format_relative_time,
 )
+from kagan.core.events import (
+    AgentLifecycle,
+    AssistantChunk,
+    AssistantMessagePersisted,
+    Error,
+    Event,
+    ThinkingChunk,
+    ToolCall,
+    ToolCallResult,
+    ToolCallUpdate,
+    TurnEnd,
+    TurnStart,
+    UsageUpdate,
+    UserMessagePersisted,
+)
+from kagan.core.permission import PermissionRequest, PermissionResolved
+
+# ``ChatEvent`` is kept as an alias for ``Event`` — it is the public name
+# used by transport layers (CLI/TUI/server) to type-annotate the stream.
+ChatEvent = Event
 
 __all__ = [
     "CHAT_LAST_SESSION_PREFIX",
     "CHAT_SCOPE_PREFIX",
     "ACPSessionFactory",
     "ACPTurnResult",
+    "AgentLifecycle",
+    "AgentNotificationKind",
     "AssistantChunk",
     "AssistantMessagePersisted",
     "CancelResult",
@@ -58,16 +70,18 @@ __all__ = [
     "ChatEvent",
     "ChatSessionView",
     "ChatSessions",
+    "Error",
+    "Event",
     "LongLivedACPFactory",
     "PermissionRequest",
     "PermissionResolved",
-    "ToolCallProgress",
-    "ToolCallStart",
-    "TurnCancelled",
-    "TurnDone",
-    "TurnError",
+    "ThinkingChunk",
+    "ToolCall",
+    "ToolCallResult",
+    "ToolCallUpdate",
+    "TurnEnd",
     "TurnInProgressError",
-    "TurnStarted",
+    "TurnStart",
     "TurnStatus",
     "UsageSnapshot",
     "UsageUpdate",
@@ -76,6 +90,9 @@ __all__ = [
     "chat_session_to_view",
     "clean_generated_title",
     "format_relative_time",
+    "make_raw_backend_acp_factory",
     "make_spawn_per_turn_acp_factory",
+    "notify_project_chat_sessions",
+    "record_agent_lifecycle_event",
     "run_spawn_per_turn_acp_prompt",
 ]

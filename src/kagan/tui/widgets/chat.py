@@ -740,9 +740,7 @@ class ChatPanel(Vertical):
             # instead of merely accepting the overlay selection.
             current_text = self._input_widget().value.strip()
             if current_text.startswith("/"):
-                cmd_name = (
-                    current_text.lstrip("/").split()[0] if current_text.lstrip("/") else ""
-                )
+                cmd_name = current_text.lstrip("/").split()[0] if current_text.lstrip("/") else ""
                 specs = [
                     spec
                     for spec in SLASH_COMMAND_REGISTRY.specs()

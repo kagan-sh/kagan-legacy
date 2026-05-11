@@ -10,6 +10,7 @@ to the underlying protocol driver (CoreDriver for now, McpDriver later).
 Tests ONLY use KaganDriver. They never touch services or drivers directly.
 """
 
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -257,6 +258,15 @@ class KaganDriver:
             launcher=launcher,
         )
 
+    async def create_agent_session(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+    ) -> str:
+        """Create a running agent session for session-bound event tests."""
+        return await self._driver.create_agent_session(task_id, session_id=session_id)
+
     async def cancel_task(self, task_id: str) -> bool:
         return await self._driver.cancel_task(task_id)
 
@@ -463,6 +473,19 @@ class KaganDriver:
         """Get paginated execution logs for a task."""
         return await self._driver.task_get_logs(task_id, limit=limit, offset=offset)
 
+    async def read_task_frames(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+    ) -> list[Any]:
+        """Read all EventLog frames (kind='task') for the given task.
+
+        If *session_id* is omitted the most recent session for the task is used.
+        Returns a list of FrameRow objects from the EventLog.
+        """
+        return await self._driver.read_task_frames(task_id, session_id=session_id)
+
     async def set_repo_default_branch(
         self, repo_id: str, branch: str, *, mark_configured: bool = False
     ) -> dict[str, object]:
@@ -470,6 +493,55 @@ class KaganDriver:
         return await self._driver.set_repo_default_branch(
             repo_id=repo_id, branch=branch, mark_configured=mark_configured
         )
+
+    # ======================================================================
+    # Lifecycle helpers
+    # ======================================================================
+
+    async def reboot(self) -> "KaganDriver":
+        """Close the underlying KaganCore and reopen it against the same DB.
+
+        Useful for asserting that settings / tasks / sessions persist across
+        process restarts. The agent factory is preserved so previously-scripted
+        behaviour survives the reboot.
+
+        Returns *self* so the call can be chained or assigned:
+
+            driver = await driver.reboot()
+            settings = await driver.settings_get()
+        """
+        if self._ctx is not None:
+            await self._ctx.aclose()
+        assert self._tmp_path is not None, "Driver not booted; tmp_path unavailable"
+        db_path = self._tmp_path / "kagan.db"
+        new_ctx = KaganCore(db_path=db_path)
+        self._ctx = new_ctx
+        self._driver = CoreDriver(new_ctx)
+        return self
+
+    async def provision_workspace_with_repo(self, task_id: str) -> Path:
+        """Init a real git repo, attach it to the active project, and provision
+        a worktree for *task_id*.
+
+        Idempotent: if the repo directory already exists the ``add_repo`` step
+        is skipped silently. Returns the worktree path.
+
+        Raises ``RuntimeError`` if git init fails (e.g. git not installed).
+        Raises ``RuntimeError`` if the worktree path is unavailable after provisioning.
+        """
+        from tests.helpers.git_helpers import init_git_repo
+
+        assert self._tmp_path is not None, "Driver not booted; tmp_path unavailable"
+        repo_path = self._tmp_path / "task_repo"
+        if not repo_path.exists():
+            await init_git_repo(repo_path)
+        with contextlib.suppress(Exception):
+            await self.add_repo(repo_path)
+        await self.provision_workspace(task_id)
+        ws = await self.get_workspace_path(task_id)
+        if ws is None:
+            raise RuntimeError(f"Worktree path unavailable for task {task_id} after provisioning")
+        return Path(ws)
 
     async def merge_task(self, task_id: str) -> dict[str, object]:
         """Merge task branch and move to DONE."""
@@ -488,6 +560,60 @@ class KaganDriver:
 
     async def detach_task(self, task_id: str) -> dict[str, Any]:
         return await self._driver.detach_task(task_id)
+
+    async def simulate_boot_reap(self) -> int:
+        """Simulate a server boot-time orphan reap against the current DB.
+
+        Calls ``reap_orphan_sessions`` with the driver's live ``KaganCore``
+        client so callers can assert on frame emission without spinning up
+        a full server.  Returns the count of reaped (dead-PID) sessions.
+        """
+        from kagan.core._orphan_reap import reap_orphan_sessions
+
+        assert self._ctx is not None, "Driver not booted"
+        return await reap_orphan_sessions(self._ctx)
+
+    async def emit_resume_frame(
+        self,
+        session_id: str,
+        kind: str = "task",
+        turn_active: bool = True,
+    ) -> int:
+        """Append a ``FrameResume`` to the EventLog for behavioral tests.
+
+        Calls the fake-agent emission helper directly so Python behavioral tests
+        can assert on the resume-notice UX path without running a full server or
+        orchestrating an actual orphan reap.
+
+        Args:
+            session_id: Target session that will receive the frame.
+            kind: ``"chat"`` or ``"task"`` (default ``"task"``).
+            turn_active: Whether the agent turn is still active.
+
+        Returns:
+            The assigned ``seq`` for the new frame.
+        """
+        from kagan.core._fake_agent import emit_resume_frame as _emit
+
+        assert self._ctx is not None, "Driver not booted"
+        return await _emit(
+            self._ctx.engine,
+            session_id=session_id,
+            kind=kind,  # type: ignore[arg-type]  # narrowed to Literal at runtime
+            turn_active=turn_active,
+        )
+
+    async def read_frames(
+        self,
+        session_id: str,
+        kind: str = "task",
+    ) -> list[Any]:
+        """Return all FrameRow objects from EventLog for ``(session_id, kind)``."""
+        from kagan.core._event_log import EventLog
+
+        assert self._ctx is not None, "Driver not booted"
+        event_log = EventLog(self._ctx.engine)
+        return await event_log.history(session_id, kind)
 
     async def wait_for_status(
         self,

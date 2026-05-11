@@ -13,16 +13,15 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from kagan.core.chat.engine import TurnInProgressError
-from kagan.core.chat.events import (
+from kagan.core.events import (
     AssistantChunk,
     AssistantMessagePersisted,
-    ChatEvent,
-    PermissionRequest,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnStarted,
+    Error,
+    Event,
+    TurnEnd,
+    TurnStart,
 )
+from kagan.core.permission import PermissionRequest
 from tests.helpers.chat_engine import (
     PermissionFactory,
     RaisingFactory,
@@ -37,8 +36,8 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.unit]
 
 
-async def _drain(stream: Any) -> list[ChatEvent]:
-    events: list[ChatEvent] = []
+async def _drain(stream: Any) -> list[Event | PermissionRequest]:
+    events: list[Event | PermissionRequest] = []
     async for ev in stream:
         events.append(ev)
     return events
@@ -77,24 +76,24 @@ async def test_stream_assistant_emits_events_in_order(tmp_path: Path) -> None:
             )
         )
 
-        kinds = [e.kind for e in events]
-        assert kinds[0] == "turn_started"
-        assert kinds[-1] == "done"
+        kinds = [e.type for e in events]
+        assert kinds[0] == "turn_start"
+        assert kinds[-1] == "turn_end"
         assert "assistant_chunk" in kinds
         assert "assistant_message" in kinds
 
         chunk_events = [e for e in events if isinstance(e, AssistantChunk)]
-        assert [c.text for c in chunk_events] == ["Hello, ", "world!"]
+        assert [c.delta for c in chunk_events] == ["Hello, ", "world!"]
 
         persisted = next(e for e in events if isinstance(e, AssistantMessagePersisted))
         assert persisted.content == "Hello, world!"
         assert persisted.terminated is False
 
         done = events[-1]
-        assert isinstance(done, TurnDone)
-        assert done.full_response == "Hello, world!"
+        assert isinstance(done, TurnEnd)
+        assert done.reason == "done"
 
-        assert isinstance(events[0], TurnStarted)
+        assert isinstance(events[0], TurnStart)
 
         history = await engine.history(sid)
         assert history[-1].role == "assistant"
@@ -129,13 +128,13 @@ async def test_stream_assistant_persists_partial_on_cancel(tmp_path: Path) -> No
         assert result.partial_chars == len("partial-text")
 
         events = await asyncio.wait_for(consumer, timeout=5.0)
-        kinds = [e.kind for e in events]
-        assert kinds[-1] == "turn_cancelled"
+        kinds = [e.type for e in events]
+        assert kinds[-1] == "turn_end"
         persisted = [e for e in events if isinstance(e, AssistantMessagePersisted)]
         assert len(persisted) == 1
         assert persisted[0].content == "partial-text"
         assert persisted[0].terminated is True
-        assert any(isinstance(e, TurnCancelled) for e in events)
+        assert any(isinstance(e, TurnEnd) and e.reason == "cancelled" for e in events)
 
         history = await engine.history(sid)
         assistant_rows = [m for m in history if m.role == "assistant"]
@@ -280,7 +279,7 @@ async def test_generator_exit_tears_down_state(tmp_path: Path) -> None:
         )
         # Pump until the first chunk arrives, then break out early.
         async for ev in stream:
-            if ev.kind == "assistant_chunk":
+            if ev.type == "assistant_chunk":
                 break
         # Closing the async generator triggers GeneratorExit inside the engine.
         await stream.aclose()
@@ -321,9 +320,9 @@ async def test_generator_exit_at_turn_started_yield_cleans_up(tmp_path: Path) ->
             sid, prompt_blocks=[TextContentBlock(type="text", text="Hi")]
         )
         # Advance to the *first* yielded event — by contract this is
-        # ``TurnStarted``. The generator is now suspended *at* that yield.
+        # ``TurnStart``. The generator is now suspended *at* that yield.
         first = await stream.__anext__()
-        assert isinstance(first, TurnStarted)
+        assert isinstance(first, TurnStart)
 
         # Snapshot the underlying tasks via the engine's private state so we
         # can assert they get cancelled below.
@@ -406,7 +405,7 @@ async def test_history_failure_releases_slot(tmp_path: Path) -> None:
                 prompt_blocks=[TextContentBlock(type="text", text="Hi")],
             )
         )
-        assert any(isinstance(e, TurnDone) for e in events)
+        assert any(isinstance(e, TurnEnd) and e.reason == "done" for e in events)
     finally:
         core.close()
 
@@ -436,7 +435,7 @@ async def test_try_claim_turn_blocks_second_caller(tmp_path: Path) -> None:
                 prompt_blocks=[TextContentBlock(type="text", text="Hi")],
             )
         )
-        assert any(isinstance(e, TurnDone) for e in events)
+        assert any(isinstance(e, TurnEnd) and e.reason == "done" for e in events)
 
         # After the run the slot is released; a fresh claim succeeds again.
         engine.try_claim_turn(sid)
@@ -462,8 +461,8 @@ async def test_factory_failure_emits_single_turn_error(tmp_path: Path) -> None:
                 prompt_blocks=[TextContentBlock(type="text", text="Hi")],
             )
         )
-        errors = [e for e in events if isinstance(e, TurnError)]
-        assert len(errors) == 1, f"Expected exactly one TurnError, got {errors}"
+        errors = [e for e in events if isinstance(e, Error)]
+        assert len(errors) == 1, f"Expected exactly one Error, got {errors}"
         assert errors[0].message == "boom"
         # Engine should clean up state after a failed turn.
         assert engine.turn_status(sid).active is False
@@ -485,7 +484,7 @@ async def test_permission_request_event_emitted_and_resolved(tmp_path: Path) -> 
         await engine.push_user(sid, "Hi")
         from acp.schema import TextContentBlock
 
-        events: list[ChatEvent] = []
+        events: list[Event | PermissionRequest] = []
 
         async def _consume() -> None:
             async for ev in engine.stream_assistant(
@@ -508,8 +507,8 @@ async def test_permission_request_event_emitted_and_resolved(tmp_path: Path) -> 
         assert factory.decision.outcome == "allow_once"
         assert factory.decision.feedback is None
 
-        done = next(e for e in events if isinstance(e, TurnDone))
-        assert done.full_response == "resolved:allow_once"
+        persisted = next(e for e in events if isinstance(e, AssistantMessagePersisted))
+        assert persisted.content == "resolved:allow_once"
     finally:
         core.close()
 
@@ -529,7 +528,7 @@ async def test_permission_request_idempotent_resolve(tmp_path: Path) -> None:
         await engine.push_user(sid, "Hi")
         from acp.schema import TextContentBlock
 
-        events: list[ChatEvent] = []
+        events: list[Event | PermissionRequest] = []
 
         async def _consume() -> None:
             async for ev in engine.stream_assistant(

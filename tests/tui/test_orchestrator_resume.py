@@ -314,7 +314,9 @@ async def test_orchestrator_session_load_shows_snapshot_history(
         # Load sessions (triggers ensure_loaded)
         await app.orchestrator_sessions.ensure_loaded()
         # Should have at least one session created
-        assert app.orchestrator_sessions.current_session_id() is not None
+        session_id = app.orchestrator_sessions.current_session_id()
+        assert isinstance(session_id, str)
+        assert len(session_id) > 0
 
 
 async def test_overlay_reopen_does_not_crash(

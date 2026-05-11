@@ -19,7 +19,8 @@
  * --experimental-eventsource, or a small wrapper around the existing
  * streamRequest fetch path in KaganClient).  Extension callers use
  * KaganClient.subscribeSessionEvents / subscribeTaskEvents which provide
- * the correct factory.
+ * the correct factory.  Transport-level reconnect with Last-Event-ID resume
+ * lives in that fetch-backed wrapper, not in this class.
  */
 
 import type {

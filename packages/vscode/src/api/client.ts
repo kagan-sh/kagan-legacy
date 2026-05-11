@@ -20,9 +20,17 @@ export { ApiError };
 // Satisfies the EventSourceLike interface in event-source.ts so KaganEventSource
 // can use it without touching a native global EventSource (unavailable in Node).
 //
-// Lifecycle: construction starts the read loop immediately.  Reconnect is not
-// implemented here — KaganEventSource handles reconnect at the higher level
-// when it sees the error callback fire.
+// Lifecycle: construction starts a reconnect loop.  On EOF or transport failure
+// the loop waits SSE_RECONNECT_MS and opens a new stream, sending Last-Event-ID
+// only after at least one SSE `id:` line has been observed (never `""`).
+
+const SSE_RECONNECT_MS = 3_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 type SSEListener = (event: { type: string; data: string; lastEventId: string }) => void;
 
@@ -42,7 +50,7 @@ class FetchBackedEventSource {
     private readonly client: KaganClient,
     private readonly url: string,
   ) {
-    void this.start();
+    void this.connectLoop();
   }
 
   addEventListener(type: string, handler: SSEListener): void {
@@ -56,51 +64,62 @@ class FetchBackedEventSource {
     this.controller.abort();
   }
 
-  private async start(): Promise<void> {
-    const { signal } = this.controller;
-
-    try {
-      const response = await this.client.streamRequest(this.url, {
-        headers: { Accept: "text/event-stream", "Last-Event-ID": this.lastEventId },
-        signal,
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error(`SSE frame stream failed: ${response.status}`);
+  private async connectLoop(): Promise<void> {
+    while (this.readyState !== FetchBackedEventSource.CLOSED) {
+      const { signal } = this.controller;
+      if (signal.aborted) {
+        return;
       }
 
-      this.readyState = FetchBackedEventSource.OPEN;
-      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-      let buffer = "";
-
+      this.readyState = FetchBackedEventSource.CONNECTING;
       try {
-        while (this.readyState === FetchBackedEventSource.OPEN) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += value;
-          // SSE frames are separated by blank lines.
-          const blocks = buffer.split("\n\n");
-          buffer = blocks.pop()!;
-
-          for (const block of blocks) {
-            this.dispatchBlock(block);
-          }
+        const headers: Record<string, string> = { Accept: "text/event-stream" };
+        if (this.lastEventId) {
+          headers["Last-Event-ID"] = this.lastEventId;
         }
-      } finally {
-        await reader.cancel().catch(() => {});
-      }
-    } catch (err) {
-      if (signal.aborted) return;
-      this.readyState = FetchBackedEventSource.CONNECTING;
-      this.onerror?.({ type: "error" });
-      void err; // reconnect is handled by KaganEventSource
-      return;
-    }
 
-    if (this.readyState !== FetchBackedEventSource.CLOSED) {
-      this.readyState = FetchBackedEventSource.CONNECTING;
-      this.onerror?.({ type: "error" });
+        const response = await this.client.streamRequest(this.url, {
+          headers,
+          signal,
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`SSE frame stream failed: ${response.status}`);
+        }
+
+        this.readyState = FetchBackedEventSource.OPEN;
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = "";
+
+        try {
+          while (this.readyState === FetchBackedEventSource.OPEN) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+
+            buffer += value;
+            const blocks = buffer.split("\n\n");
+            buffer = blocks.pop()!;
+
+            for (const block of blocks) {
+              this.dispatchBlock(block);
+            }
+          }
+        } finally {
+          await reader.cancel().catch(() => {});
+        }
+      } catch {
+        if (signal.aborted || this.readyState === FetchBackedEventSource.CLOSED) {
+          return;
+        }
+      }
+
+      if (this.readyState === FetchBackedEventSource.CLOSED) {
+        return;
+      }
+
+      await sleep(SSE_RECONNECT_MS);
     }
   }
 

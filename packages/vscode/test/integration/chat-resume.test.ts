@@ -310,11 +310,8 @@ suite("Chat resume — W8 frame stream integration", () => {
     // Allow TCP teardown before opening new connection.
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
 
-    // Second subscription — simulates reopening the panel.
-    // The FetchBackedEventSource will send Last-Event-ID: 0 on reconnect
-    // (it doesn't track the last id from the previous instance, but the
-    // server can replay from the beginning).  The important assertion is
-    // that a new connection is established and frames are received.
+    // Second subscription — simulates reopening the panel (new client instance;
+    // no Last-Event-ID on the first fetch until a prior stream has emitted `id:` lines).
     const secondSnapshots: EntryStreamState[] = [];
     const es2 = client.subscribeSessionEvents(sessionId);
     es2.onSnapshot((s) => secondSnapshots.push({ ...s, entries: new Map(s.entries) }));

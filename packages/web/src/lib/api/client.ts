@@ -152,14 +152,14 @@ export class KaganApiClient extends BaseClient {
     text: string,
     options?: { agent_backend?: string; attachments?: unknown[] },
   ): Promise<Response> {
-    const response = await this._fetchImpl(this.getFullUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}/message`), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.getAuthHeaders(),
+    const response = await this.streamRequest(
+      this.getFullUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}/message`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, ...options }),
       },
-      body: JSON.stringify({ text, ...options }),
-    });
+    );
     if (!response.ok) {
       throw new ApiError(response.status, `Session message failed: ${response.status}`);
     }

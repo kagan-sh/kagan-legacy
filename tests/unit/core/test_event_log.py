@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from kagan.core._event_log import EventLog, FrameRow
+from kagan.core._event_log import EntryIndexProvider, EventLog, FrameRow
 
 pytestmark = [pytest.mark.unit]
 
@@ -185,6 +185,55 @@ async def test_index_provider_recovers_max_idx_after_restart(
     rows2 = await log2.history(session_id, "chat")
     # idx should continue from 3, not restart at 0
     assert rows2[seq].idx == 3
+
+
+async def test_index_provider_seeds_from_create_idx_not_append_noise(
+    event_log_engine,
+    session_id: str,
+) -> None:
+    """After restart, next auto idx follows logical create entries, not append rows."""
+    log1 = EventLog(event_log_engine)
+    await log1.append(
+        session_id,
+        "chat",
+        {
+            "type": "patch",
+            "op": "create",
+            "path": "/entries/0",
+            "value": {"idx": 0, "role": "user", "text": "hi", "finalized": True, "ts": ""},
+        },
+    )
+    await log1.append(
+        session_id,
+        "chat",
+        {
+            "type": "patch",
+            "op": "create",
+            "path": "/entries/1",
+            "value": {
+                "idx": 1,
+                "role": "assistant",
+                "text": "",
+                "finalized": False,
+                "ts": "",
+            },
+        },
+    )
+    for _ in range(5):
+        await log1.append(
+            session_id,
+            "chat",
+            {
+                "type": "patch",
+                "op": "append",
+                "path": "/entries/1/text",
+                "value": "x",
+            },
+        )
+
+    idxp = EntryIndexProvider(event_log_engine)
+    n = await idxp.next(session_id, "chat")
+    assert n == 2
 
 
 # ---------------------------------------------------------------------------

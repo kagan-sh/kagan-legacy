@@ -43,6 +43,32 @@ class EventLogError(KaganError):
     """Raised for EventLog-specific errors."""
 
 
+def _parse_entry_idx_from_patch_path(path: object) -> int | None:
+    """Return entry index ``N`` from ``/entries/N`` or ``/entries/N/...``."""
+    if not isinstance(path, str) or not path.startswith("/entries/"):
+        return None
+    rest = path[len("/entries/") :]
+    head, _, _tail = rest.partition("/")
+    if head.isdigit():
+        return int(head)
+    return None
+
+
+def _infer_row_idx_from_frame(frame: dict[str, Any]) -> int | None:
+    """Derive the logical entry idx for a patch row when the frame carries it."""
+    op = frame.get("op")
+    if op == "create":
+        val = frame.get("value")
+        if isinstance(val, dict):
+            vi = val.get("idx")
+            if isinstance(vi, int):
+                return vi
+        return None
+    if op in ("append", "finalize"):
+        return _parse_entry_idx_from_patch_path(frame.get("path"))
+    return None
+
+
 # ---------------------------------------------------------------------------
 # FrameRow — lightweight DTO
 # ---------------------------------------------------------------------------
@@ -66,9 +92,11 @@ class FrameRow:
 class EntryIndexProvider:
     """Per-(session_id, kind) monotonic counter.
 
-    The counter is seeded from ``max(idx)`` the first time a new
-    ``EventLog`` instance appends to a given ``(session_id, kind)`` pair,
-    so restarts never reuse idx values.
+    The counter seeds from the database so restarts never reuse logical entry
+    indices.  For JSON patch frames with ``op == "create"``, we take
+    ``max(idx)`` over those rows only (conversation entry indices).  Rows
+    without a create op (legacy tests or pre-patch data) fall back to
+    ``max(idx)`` across all rows.
     """
 
     def __init__(self, engine: Engine) -> None:
@@ -83,23 +111,45 @@ class EntryIndexProvider:
         return self._locks[key]
 
     def _seed_from_db(self, session_id: str, kind: str) -> int:
-        """Read ``max(idx)`` from the DB for this (session, kind) pair."""
+        """Next idx to assign: ``max(create-entry idx)+1``, else ``max(idx)+1``."""
 
-        def _query(s) -> int | None:
-            stmt = select(func.max(EventLogEntry.idx)).where(
+        def _query(s) -> int:
+            op_col = EventLogEntry.frame["op"].as_string()
+            stmt_create = select(func.max(EventLogEntry.idx)).where(
+                EventLogEntry.session_id == session_id,
+                EventLogEntry.kind == kind,
+                op_col == "create",
+            )
+            m_create = s.exec(stmt_create).one()
+
+            stmt_all = select(func.max(EventLogEntry.idx)).where(
                 EventLogEntry.session_id == session_id,
                 EventLogEntry.kind == kind,
             )
-            return s.exec(stmt).one()
+            m_all = s.exec(stmt_all).one()
 
-        result = _db_sync(self._engine, _query)
-        return (result + 1) if result is not None else 0
+            if m_create is not None:
+                return m_create + 1
+            if m_all is not None:
+                return m_all + 1
+            return 0
+
+        return _db_sync(self._engine, _query)
+
+    async def ensure_at_least(self, session_id: str, kind: str, floor_next: int) -> None:
+        """Ensure the next ``next()`` value is at least ``floor_next``."""
+        key = (session_id, kind)
+        async with self._lock(session_id, kind):
+            if key not in self._counters:
+                seed = await asyncio.to_thread(self._seed_from_db, session_id, kind)
+                self._counters[key] = seed
+            if self._counters[key] < floor_next:
+                self._counters[key] = floor_next
 
     async def next(self, session_id: str, kind: str) -> int:
         """Return the next idx for the given ``(session_id, kind)`` pair.
 
-        The first call seeds from ``max(idx)`` in the DB; subsequent calls
-        increment in-process.
+        The first call seeds from the DB; subsequent calls increment in-process.
         """
         key = (session_id, kind)
         async with self._lock(session_id, kind):
@@ -212,12 +262,14 @@ class EventLog:
         session_id: str,
         kind: Literal["chat", "task"],
         frame: dict[str, Any],
+        *,
+        row_idx: int | None = None,
     ) -> int:
         """Persist a frame and return its assigned ``seq``.
 
         The ``seq`` is monotonically increasing within ``(session_id, kind)``.
         """
-        _seq, _idx = await self._append_internal(session_id, kind, frame)
+        _seq, _idx = await self._append_internal(session_id, kind, frame, row_idx=row_idx)
         return _seq
 
     async def append_with_idx(
@@ -225,22 +277,31 @@ class EventLog:
         session_id: str,
         kind: Literal["chat", "task"],
         frame: dict[str, Any],
+        *,
+        row_idx: int | None = None,
     ) -> tuple[int, int]:
         """Persist a frame and return ``(seq, idx)``.
 
         The ``seq`` is monotonically increasing within ``(session_id, kind)``.
         The ``idx`` is the stable entry index embedded in the frame path.
         """
-        return await self._append_internal(session_id, kind, frame)
+        return await self._append_internal(session_id, kind, frame, row_idx=row_idx)
 
     async def _append_internal(
         self,
         session_id: str,
         kind: Literal["chat", "task"],
         frame: dict[str, Any],
+        *,
+        row_idx: int | None = None,
     ) -> tuple[int, int]:
         seq = await self._seq.next(session_id, kind)
-        idx = await self._idx.next(session_id, kind)
+        resolved = row_idx if row_idx is not None else _infer_row_idx_from_frame(frame)
+        if resolved is not None:
+            idx = resolved
+            await self._idx.ensure_at_least(session_id, kind, resolved + 1)
+        else:
+            idx = await self._idx.next(session_id, kind)
         ts = datetime.now(UTC).replace(tzinfo=None)
 
         entry = EventLogEntry(

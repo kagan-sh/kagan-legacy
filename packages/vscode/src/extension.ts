@@ -114,7 +114,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerSettingsCommands(context, client);
   registerAnalyticsCommands(context, client);
   registerIntegrationCommands(context, client, boardProvider);
-  registerChatParticipant(context, client, sse);
+  registerChatParticipant(context, client);
 
   // Mention providers
   const mentionCompletionProvider = new MentionCompletionProvider(client);
@@ -143,7 +143,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const messageSubscription = sse.onMessage((message: SSEMessage) => {
     boardProvider.onSSE(message);
-    outputProvider.onSSE(message);
 
     if (message.type === SSE_TYPE.TASK_UPDATED) {
       void refreshCounts(client, statusBar);

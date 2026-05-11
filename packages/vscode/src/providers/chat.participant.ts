@@ -4,10 +4,9 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import { ApiError } from "../api/client.js";
-import type { SSEStream } from "../api/sse.js";
-import { CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
+import type { KaganEventSource } from "../api/event-source.js";
 import { formatToolName } from "@kagan/shared-api-client";
-import type { ChatStreamEvent, ChatWatchEvent as LiveChatEvent, ChatEngineEvent, TaskStatus } from "@kagan/shared-api-client";
+import type { ChatStreamEvent, FrameEntry, FramePatch, TaskStatus } from "@kagan/shared-api-client";
 import {
   pickReusableOrchestratorSession,
   resetStickyChatStateIfNewConversation,
@@ -15,6 +14,69 @@ import {
   resolveSwitchSession,
   switchTokenForSession,
 } from "./chat.participant.helpers.js";
+
+// ── ChatSessionEventBinding ────────────────────────────────────────────────
+// Encapsulates the per-session KaganEventSource lifecycle.  Extracted as a
+// named class so unit tests can instantiate it without a full VS Code host.
+
+type SubscribeSessionEventsFn = (sessionId: string) => KaganEventSource;
+
+export class ChatSessionEventBinding implements vscode.Disposable {
+  /** Called when the session snapshot arrives (after ready). */
+  onSnapshot: ((entries: Map<number, FrameEntry>) => void) | null = null;
+  /** Called for each patch frame (create / append / finalize). */
+  onPatch: ((patch: FramePatch) => void) | null = null;
+
+  private activeSessionId: string | null = null;
+  private es: KaganEventSource | null = null;
+
+  constructor(private readonly subscribe: SubscribeSessionEventsFn) {}
+
+  /**
+   * Subscribe (or re-subscribe) to the given session's frame stream.
+   * If the session id matches the current one, this is a no-op.
+   * If a different session is active, the old EventSource is closed first.
+   */
+  attachSession(sessionId: string): void {
+    if (this.activeSessionId === sessionId && this.es !== null) return;
+    this.detach();
+
+    this.activeSessionId = sessionId;
+    const es = this.subscribe(sessionId);
+    this.es = es;
+
+    es.onSnapshot((state) => {
+      this.onSnapshot?.(new Map(state.entries));
+    });
+
+    es.onPatch((patch) => {
+      this.onPatch?.(patch);
+    });
+
+    es.onResume((frame) => {
+      if (frame.turn_active) {
+        void vscode.window.showInformationMessage(
+          "Kagan: agent resumed after restart — session is active.",
+        );
+      }
+    });
+
+    es.onError((err) => {
+      console.warn("[kagan] chat session frame stream error:", err.message);
+    });
+  }
+
+  /** Close the current EventSource without clearing sessionId (for dispose). */
+  private detach(): void {
+    this.es?.close();
+    this.es = null;
+    this.activeSessionId = null;
+  }
+
+  dispose(): void {
+    this.detach();
+  }
+}
 
 // ── Participant state ──────────────────────────────────────────────────────
 
@@ -29,100 +91,24 @@ class ChatParticipantState implements vscode.Disposable {
   /** Cached session role (for task sessions). */
   selectedSessionRole: string | null = null;
 
-  private liveStreamUnsubscribe: (() => void) | null = null;
-  private liveStreamSessionId: string | null = null;
-  private remoteChunkBuffer = "";
+  private readonly eventBinding: ChatSessionEventBinding;
 
-  stopLiveStreamSubscription(): void {
-    if (this.liveStreamUnsubscribe) {
-      this.liveStreamUnsubscribe();
-      this.liveStreamUnsubscribe = null;
-    }
-    this.liveStreamSessionId = null;
-    this.remoteChunkBuffer = "";
-  }
-
-  subscribeToLiveChat(client: KaganClient, sessionId: string): void {
-    if (this.liveStreamSessionId === sessionId && this.liveStreamUnsubscribe) return;
-    this.stopLiveStreamSubscription();
-    this.liveStreamSessionId = sessionId;
-    this.liveStreamUnsubscribe = client.followChatSession(
-      sessionId,
-      (event: LiveChatEvent) => this.handleWatchEvent(event),
-      (err: Error) => console.warn("[kagan] live chat stream error:", err.message),
+  constructor(client: KaganClient) {
+    this.eventBinding = new ChatSessionEventBinding(
+      (sessionId) => client.subscribeSessionEvents(sessionId),
     );
   }
 
-  handleWatchEvent(event: LiveChatEvent): void {
-    // Engine events discriminate on ``type``; transport frames on ``t``.
-    if ("type" in event) {
-      const engineEvent = event as ChatEngineEvent;
-      switch (engineEvent.type) {
-        case "assistant_chunk":
-          this.remoteChunkBuffer += engineEvent.delta;
-          break;
-        case "turn_end":
-          this.remoteChunkBuffer = "";
-          break;
-        case "assistant_message":
-          if (engineEvent.terminated) {
-            const preview = engineEvent.content.slice(0, 80).replace(/\n/g, " ");
-            void vscode.window.showInformationMessage(
-              `Kagan: assistant response was interrupted — "${preview}..."`,
-            );
-          }
-          this.remoteChunkBuffer = "";
-          break;
-        case "agent_lifecycle": {
-          const glyphs: Record<string, string> = {
-            started: "▸",
-            finished: "✓",
-            stopped: "◯",
-            failed: "✗",
-          };
-          const glyph = glyphs[engineEvent.kind] ?? "·";
-          const taskRef = engineEvent.task_id ? `#${engineEvent.task_id.slice(0, 8)}` : "task";
-          let label: string;
-          if (engineEvent.kind === "failed") {
-            label = engineEvent.detail ? `failed: ${engineEvent.detail}` : "failed";
-          } else if (engineEvent.kind === "finished") {
-            label = "finished";
-          } else {
-            label = engineEvent.kind;
-          }
-          void vscode.window.showInformationMessage(`Kagan: ${glyph} ${taskRef} ${label}`);
-          break;
-        }
-        default:
-          break;
-      }
-      return;
-    }
+  subscribeToLiveChat(sessionId: string): void {
+    this.eventBinding.attachSession(sessionId);
+  }
 
-    switch (event.t) {
-      case CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE:
-        if (event.terminated) {
-          const preview = event.content.slice(0, 80).replace(/\n/g, " ");
-          void vscode.window.showInformationMessage(
-            `Kagan: assistant response was interrupted — "${preview}..."`,
-          );
-        }
-        this.remoteChunkBuffer = "";
-        break;
-      case CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED:
-        if (event.reason === "takeover") {
-          void vscode.window.showInformationMessage(
-            "This Kagan chat session was taken over by another client.",
-          );
-        }
-        break;
-      default:
-        break;
-    }
+  stopLiveStreamSubscription(): void {
+    this.eventBinding.dispose();
   }
 
   reset(): void {
-    this.stopLiveStreamSubscription();
+    this.eventBinding.dispose();
     this.activeRawChatSessionId = null;
     this.selectedSessionId = null;
     this.sessionCreating = null;
@@ -140,14 +126,13 @@ class ChatParticipantState implements vscode.Disposable {
 export function registerChatParticipant(
   context: vscode.ExtensionContext,
   client: KaganClient,
-  sse: SSEStream,
 ): void {
-  const state = new ChatParticipantState();
+  const state = new ChatParticipantState(client);
 
   const participant = vscode.chat.createChatParticipant(
     "kagan.agent",
     (request, chatCtx, stream, token) =>
-      handleRequest(state, client, sse, request, chatCtx, stream, token),
+      handleRequest(state, client, request, chatCtx, stream, token),
   );
 
   participant.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "kagan.svg");
@@ -257,7 +242,6 @@ export function registerChatParticipant(
 async function handleRequest(
   state: ChatParticipantState,
   client: KaganClient,
-  _sse: SSEStream,
   request: vscode.ChatRequest,
   chatCtx: vscode.ChatContext,
   stream: vscode.ChatResponseStream,
@@ -356,7 +340,7 @@ async function handleChat(
   state.activeRawChatSessionId = await getOrCreateSession(state, client, chatCtx);
   state.selectedSessionType = "orchestrator";
   state.selectedSessionRole = null;
-  state.subscribeToLiveChat(client, state.activeRawChatSessionId);
+  state.subscribeToLiveChat(state.activeRawChatSessionId);
 
   stream.progress("Thinking...");
 

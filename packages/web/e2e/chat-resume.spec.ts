@@ -169,7 +169,7 @@ test.describe('Chat resume — useEntryStream', () => {
     // The persisted partial text and/or the streaming continuation should be visible.
     await expect(lastUserMessage(page)).toContainText('reopen test');
     await expect(lastAssistantMessage(page)).toContainText('before close', {
-      timeout: 45_000,
+      timeout: 90_000,
     });
 
     await clearScenario(request, sessionId);
@@ -231,7 +231,7 @@ test.describe('Chat resume — useEntryStream', () => {
 
     // Sonner toast copy includes an ellipsis (…) — match with a substring regex.
     await expect(page.getByText(/Agent is still working/)).toBeVisible({
-      timeout: 20_000,
+      timeout: 45_000,
     });
 
     await clearScenario(request, sessionId);

@@ -9,7 +9,7 @@ TDD: this file was committed before the implementation in responses.py.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.unit]
 
 
 def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 def _make_entry(idx: int = 0) -> dict:

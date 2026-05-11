@@ -11,7 +11,7 @@ models (see ``scripts/generate_wire_types.py``).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -461,6 +461,84 @@ class MentionResponse(BaseModel):
     state: str | None = None
 
 
+# ── SSE resume pattern frame models ──────────────────────────────────────────
+# Ported from vibe-kanban's snapshot → ready → live resume pattern.
+# These frame types are emitted by the SSE endpoint (W4) and consumed by
+# web (W6), TUI (W7), and VS Code (W8) clients.
+# Discriminated on the ``type`` field.
+
+
+class FrameEntry(BaseModel):
+    """A single conversation/log entry within a snapshot or indexed stream."""
+
+    idx: int
+    role: Literal["user", "assistant", "system", "tool"]
+    text: str
+    finalized: bool
+    ts: datetime
+
+    @field_serializer("ts")
+    def _serialize_ts(self, v: datetime) -> str:
+        """Emit ISO-8601 UTC string."""
+        return v.isoformat()
+
+
+class FrameSnapshot(BaseModel):
+    """Full snapshot of entries in a session window.
+
+    Emitted once at stream open so the client can seed its local state
+    before live patches arrive.
+    """
+
+    type: Literal["snapshot"] = "snapshot"
+    kind: Literal["chat", "task"]
+    session_id: str
+    from_seq: int
+    to_seq: int
+    entries: list[FrameEntry] = Field(default_factory=list)
+
+
+class FrameReady(BaseModel):
+    """Sentinel emitted after the snapshot to signal the client is live."""
+
+    type: Literal["ready"] = "ready"
+
+
+class FramePatch(BaseModel):
+    """A single JSON-Patch-style operation on the stable /entries/{idx} path tree.
+
+    op values:
+      - ``create``   — new entry at ``/entries/{idx}``
+      - ``append``   — append delta to ``/entries/{idx}/text``
+      - ``finalize`` — mark entry as complete (value may be null)
+    """
+
+    type: Literal["patch"] = "patch"
+    op: Literal["create", "append", "finalize"]
+    path: str
+    value: Any | None = None
+    reason: str | None = None
+
+
+class FrameResume(BaseModel):
+    """Emitted when a client reconnects via Last-Event-ID.
+
+    Carries metadata so the client can decide whether to show a spinner
+    (``turn_active=True``) or treat the stream as idle.
+    """
+
+    type: Literal["resume"] = "resume"
+    kind: Literal["chat", "task"]
+    turn_active: bool
+
+
+# Discriminated union — all four frame variants keyed on ``type``.
+Frame = Annotated[
+    FrameSnapshot | FrameReady | FramePatch | FrameResume,
+    Field(discriminator="type"),
+]
+
+
 # ── Schema export helper ─────────────────────────────────────────────────────
 
 # All response models that map to TS interfaces.
@@ -495,4 +573,10 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "CreateSessionRequest": CreateSessionRequest,
     "SessionReplayEvent": SessionReplayEvent,
     "SessionReplayPage": SessionReplayPage,
+    # SSE resume-pattern frame models (W1)
+    "FrameEntry": FrameEntry,
+    "FrameSnapshot": FrameSnapshot,
+    "FrameReady": FrameReady,
+    "FramePatch": FramePatch,
+    "FrameResume": FrameResume,
 }

@@ -52,6 +52,14 @@ def _ts_type(schema: dict, defs: dict) -> str:  # noqa: C901
         base = " | ".join(variants) if variants else "unknown"
         return f"{base} | null" if has_null else base
 
+    # Handle const (e.g. Pydantic Literal["snapshot"] with a default emits
+    # {"const": "snapshot", "default": "snapshot", "type": "string"}).
+    if "const" in schema:
+        v = schema["const"]
+        if isinstance(v, str):
+            return f"'{v}'"
+        return str(v)
+
     schema_type = schema.get("type")
     if schema_type == "string":
         # Literal enum
@@ -113,7 +121,11 @@ def _generate_definition(name: str, schema: dict, defs: dict) -> list[str]:
 
     for field_name, field_schema in props.items():
         ts = _ts_type(field_schema, defs)
-        optional = field_name not in required
+        # A field is optional in TS if it is not in the JSON Schema ``required``
+        # list, UNLESS it is a ``const`` field (discriminator tag like
+        # ``type: "snapshot"``), which is always present on the wire.
+        is_const = "const" in field_schema
+        optional = field_name not in required and not is_const
         opt_mark = "?" if optional else ""
         lines.append(f"  {field_name}{opt_mark}: {ts};")
 

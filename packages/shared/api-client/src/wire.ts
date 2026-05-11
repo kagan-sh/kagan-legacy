@@ -342,6 +342,41 @@ export interface SessionReplayPage {
   has_more?: boolean;
 }
 
+export interface FrameEntry {
+  idx: number;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  text: string;
+  finalized: boolean;
+  ts: string;
+}
+
+export interface FrameSnapshot {
+  type: 'snapshot';
+  kind: 'chat' | 'task';
+  session_id: string;
+  from_seq: number;
+  to_seq: number;
+  entries?: FrameEntry[];
+}
+
+export interface FrameReady {
+  type: 'ready';
+}
+
+export interface FramePatch {
+  type: 'patch';
+  op: 'create' | 'append' | 'finalize';
+  path: string;
+  value?: unknown | null;
+  reason?: string | null;
+}
+
+export interface FrameResume {
+  type: 'resume';
+  kind: 'chat' | 'task';
+  turn_active: boolean;
+}
+
 export interface TaskCreateRequest {
   acceptance_criteria?: string[] | null;
   title: string;

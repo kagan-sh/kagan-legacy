@@ -226,9 +226,11 @@ async def _sse_generator(
     yield _sse_event(max_seq_floored, "ready", ready.model_dump_json())
 
     # --- Phase 3: live tail ---------------------------------------------------
-    # live_from uses raw_max_seq so that an empty history starts from seq=0
-    # (not seq=1 which would miss the first ever frame appended).
-    live_from = raw_max_seq + 1
+    # After replaying *history* into the snapshot, new rows start at
+    # ``raw_max_seq + 1``.  When *history* is empty and ``from_seq > 0`` the
+    # client is already caught up at Last-Event-ID — subscribing at 0 would
+    # replay the entire log (duplicate frames).  Use ``from_seq`` instead.
+    live_from = raw_max_seq + 1 if history else from_seq
     last_keepalive = datetime.now(UTC)
 
     async def _drain_live() -> AsyncIterator[str]:

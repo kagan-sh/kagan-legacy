@@ -177,6 +177,8 @@ class ChatEngine:
         """
         del attachments  # threaded into stream_assistant by callers
         cleaned = text.strip()
+        if not cleaned:
+            raise ValidationError("text", "Message cannot be empty")
 
         scan = scan_text_for_injection(cleaned)
         risk = scan.get("risk_level", "SAFE")

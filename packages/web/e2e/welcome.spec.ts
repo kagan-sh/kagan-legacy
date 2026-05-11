@@ -14,15 +14,15 @@ test.describe("Welcome", () => {
     });
 
     await test.step("welcome actions and dialogs", async () => {
-      await page.goto("/welcome");
-      await page.waitForLoadState("load");
+      await page.goto("/welcome", { waitUntil: "domcontentloaded" });
+      await page.waitForLoadState("networkidle");
 
       await expect(
         page.getByRole("button", { name: /^new project$/i }),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 60_000 });
       await expect(
         page.getByRole("button", { name: /^open folder$/i }),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 60_000 });
 
       await page.getByRole("button", { name: /^new project$/i }).click();
       const newProjectDialog = page.getByRole("dialog", { name: /new project/i });

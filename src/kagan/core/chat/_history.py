@@ -50,7 +50,10 @@ def _read_jsonl(path: Path) -> list[str]:
     Returns up to ``_MAX_ENTRIES`` entries, newest at the end.
     Returns ``[]`` if the file does not exist or cannot be read.
     """
-    if not path.exists():
+    try:
+        if not path.exists():
+            return []
+    except OSError:
         return []
     entries: list[str] = []
     try:

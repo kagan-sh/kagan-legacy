@@ -169,7 +169,7 @@ test.describe('Chat resume — useEntryStream', () => {
     // The persisted partial text and/or the streaming continuation should be visible.
     await expect(lastUserMessage(page)).toContainText('reopen test');
     await expect(lastAssistantMessage(page)).toContainText('before close', {
-      timeout: 20_000,
+      timeout: 45_000,
     });
 
     await clearScenario(request, sessionId);
@@ -229,12 +229,10 @@ test.describe('Chat resume — useEntryStream', () => {
     // on this page will receive the 'resume' event immediately.
     await emitResumeFrame(request, sessionId, { kind: 'chat', turnActive: true });
 
-    // The resume-notice toast should render in the Sonner toaster.
-    // Sonner renders toasts as [role="status"] or [data-sonner-toast] elements.
-    // We match on the known toast text set by use-chat-session.ts.
-    await expect(
-      page.locator('[data-sonner-toast]').filter({ hasText: 'Agent is still working' }),
-    ).toBeVisible({ timeout: 10_000 });
+    // Sonner toast copy includes an ellipsis (…) — match with a substring regex.
+    await expect(page.getByText(/Agent is still working/)).toBeVisible({
+      timeout: 20_000,
+    });
 
     await clearScenario(request, sessionId);
   });

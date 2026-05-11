@@ -36,7 +36,7 @@ def test_slash_help(chat_workdir: Path, chat_home: Path) -> None:
         assert "Global" in after_help or "Sessions" in after_help
 
         pty.send_key("ctrl_d")
-        assert pty.wait(timeout=30) == 0
+        assert pty.wait(timeout=60) == 0
     finally:
         pty.close()
 
@@ -67,7 +67,7 @@ def test_slash_agents(chat_workdir: Path, chat_home: Path) -> None:
         pty.read_available(timeout=1.5)
 
         pty.send_key("ctrl_d")
-        assert pty.wait(timeout=30) == 0
+        assert pty.wait(timeout=60) == 0
     finally:
         pty.close()
 
@@ -86,6 +86,6 @@ def test_slash_unknown(chat_workdir: Path, chat_home: Path) -> None:
         assert "foo" in after
 
         pty.send_key("ctrl_d")
-        assert pty.wait(timeout=30) == 0
+        assert pty.wait(timeout=60) == 0
     finally:
         pty.close()

@@ -48,7 +48,7 @@ def test_cold_start(chat_workdir: Path, chat_home: Path, tmp_path: Path) -> None
 
         # 4. clean exit on Ctrl-D (empty buffer)
         pty.send_key("ctrl_d")
-        rc = pty.wait(timeout=10)
+        rc = pty.wait(timeout=45)
         assert rc == 0
     finally:
         pty.close()

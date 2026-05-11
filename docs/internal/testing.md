@@ -63,6 +63,37 @@ These catch regressions that **end-to-end UI tests rarely reach** or that **must
 Feature narratives live in [`docs/internal/features/`](./features/) — map scenarios there to Tier A
 Playwright or Python smoke tests when adding coverage.
 
+### Frame-stream contract tests (Tier C carve-outs)
+
+These tests catch regressions that end-to-end UI tests rarely reach and must
+stay fast. They are Tier C carve-outs — keep them even as Tier A Playwright
+coverage grows.
+
+| File                                                  | Workstream | Covers                                            |
+| ----------------------------------------------------- | ---------- | ------------------------------------------------- |
+| `tests/unit/test_wire_frames.py`                      | W1         | Pydantic frame discriminated union schema         |
+| `tests/unit/core/test_event_log.py`                   | W0         | EventLog persistence + seq/idx counters           |
+| `tests/server/test_events_endpoint.py`                | W4         | SSE endpoint wire contract + reconnect matrix     |
+| `tests/unit/server/test_frame_reduce.py`              | W4         | Server-side `reduce_frames` pure reducer          |
+| `tests/unit/tui/test_frame_reducer.py`                | W7         | TUI `apply_frame` pure reducer                    |
+| `packages/vscode/src/api/event-source.test.ts`        | W8         | VS Code `applyFrame` reducer + `KaganEventSource` |
+| `packages/web/src/lib/hooks/use-entry-stream.test.ts` | W6         | Web `useEntryStream` hook state machine           |
+
+**Tier A Playwright (end-to-end browser resume):**
+
+`packages/web/e2e/chat-resume.spec.ts` — proves end-to-end browser resume
+against a real `kagan web` server with `KAGAN_FAKE_AGENT=1`. Covers: fresh
+connect, network-drop reconnect via `Last-Event-ID`, and snapshot replay on
+window reopen.
+
+**Known gaps:**
+
+- `FakeAgent` does not currently emit `FrameResume` directly; the resume-notice
+  path in `chat-resume.spec.ts` is structural-only (verifies the DOM element
+  exists, not real orphan-reap trigger).
+- `HttpEventSource` (TUI remote variant) is unit-tested with `MockTransport`
+  only; no integration test exercises the full remote-TUI SSE path.
+
 ______________________________________________________________________
 
 ## The DSL

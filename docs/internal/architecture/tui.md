@@ -302,6 +302,73 @@ Slash commands and plan/permission flows are behavioral — see `docs/internal/f
 
 ______________________________________________________________________
 
+## Frame-Stream EventSource
+
+The TUI uses the `EventSource` interface (`src/kagan/tui/_event_source.py`) to
+consume the frame-stream subsystem. Two implementations are available and
+selected at boot time by `KaganApp`.
+
+### Interface contract
+
+Both implementations expose two coroutines with identical signatures:
+
+- `snapshot(session_id, kind, from_seq) -> EntrySnapshot` — point-in-time
+  snapshot of all entries from `from_seq` onward. Used to pre-fill a chat panel
+  on (re-)open.
+- `subscribe(session_id, kind, from_seq) -> AsyncIterator[Frame]` — yields
+  backlog frames then tails live frames.
+
+### Implementations
+
+| Class               | Mode                 | Backed by                                                    |
+| ------------------- | -------------------- | ------------------------------------------------------------ |
+| `InProcEventSource` | local / default      | `kagan.core._event_log.EventLog` (same instance as the core) |
+| `HttpEventSource`   | remote (`--connect`) | `httpx.AsyncClient` + `Last-Event-ID` auto-reconnect         |
+
+`InProcEventSource` requires the **same** `EventLog` instance from
+`KaganCore._event_log` — not a fresh `EventLog(engine)`, which would not receive
+live-tail notifications.
+
+`HttpEventSource` reconnects on connection loss after a `_HTTP_RETRY_DELAY`
+(5 s) back-off. It is unit-tested with `MockTransport` only; full remote-TUI
+integration tests are a known gap (see `docs/internal/testing.md`).
+
+### Reducer
+
+`kagan.tui._frame_reducer.apply_frame(state, frame)` is a pure function that
+maps typed `Frame` objects onto a `dict[int, Entry]`. It mirrors the
+server-side `reduce_frames` but operates on the typed union rather than raw
+`FrameRow` dicts. Returns a new dict (never mutates input).
+
+```python
+from kagan.tui._frame_reducer import Entry, apply_frame
+
+state: dict[int, Entry] = {}
+for frame in frames:
+    state = apply_frame(state, frame)
+```
+
+`FrameSnapshot` replaces state entirely. `FramePatch` with `op="append"` or
+`op="finalize"` creates stubs for missing entries (out-of-order tolerance).
+`FrameReady` and `FrameResume` are meta-frames and do not touch entry state.
+
+### Screen consumers
+
+Screens that subscribe to the frame stream:
+
+- `orchestrator_sessions.ensure_loaded()` — loads chat session history.
+- `orchestrator_overlay._replay_task_session` — starts a live-tail worker for
+  the selected task session.
+- `_chat_runner.subscribe_session` — drives the `ChatPanel` with live tokens.
+- `session_dashboard._stream_events` — populates `LiveOutputPanel`.
+
+**Worker lifecycle rule:** every overlay or screen that owns a live
+`subscribe()` iterator must call `_cancel_live_task_worker` in its
+dismiss/session-switch path. Failing to cancel leaves orphaned async iterators
+that block `wait_for_workers()` in tests.
+
+______________________________________________________________________
+
 ## Styling Strategy
 
 Three TCSS layers, ascending specificity:

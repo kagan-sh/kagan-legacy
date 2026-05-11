@@ -39,9 +39,11 @@ src/kagan/server/
 ├── _task_routes.py      # Task REST API
 ├── _project_routes.py   # Project/repo REST API
 ├── _system_routes.py    # Settings, preflight, presence, and global SSE stream
-├── _chat_routes.py      # Legacy chat REST + SSE (`/api/chat/...`, permission resolve)
+├── _chat_routes.py      # Chat REST + per-turn SSE (`/api/chat/...`, permission resolve)
 ├── _session_routes.py   # Unified sessions v1 (`/api/v1/sessions`, replay, message SSE)
-├── _sse_fanout.py       # Shared SSE fan-out helpers (resolve params, broadcast, emit)
+├── _event_routes.py     # Frame-stream SSE endpoints (chat + task, Last-Event-ID resume)
+├── _frame_reduce.py     # Pure reducer: replay create/append/finalize ops into entries
+├── _sse_fanout.py       # Board SSE fan-out helpers (TASK_UPDATED / SESSION_EVENT broadcast)
 ├── _sse_stream.py       # Unified turn stream loop shared by chat + v1 session routes
 ├── _middleware.py       # ASGI middleware (security headers, Content-Length fixes)
 ├── _integration_routes.py  # Integration-specific REST routes (preflight, preview, sync)
@@ -180,6 +182,105 @@ The replay cursor is a stable `created_at|id` composite — it survives random
 hex IDs, and ascending vs descending traversal is selected via `direction`.
 Read routes are scoped behind `AccessTier.READ`; mutating actions require the
 route-specific write tier.
+
+______________________________________________________________________
+
+## Frame Stream Subsystem
+
+The frame-stream subsystem provides persistent, resumable SSE streams for both chat
+sessions and task agent sessions. It was introduced to replace the removed
+`/api/chat/sessions/{id}/watch` and `/messages?after_id=` polling patterns.
+
+### Storage: `event_log` table
+
+| Column       | Type     | Notes                                                                         |
+| ------------ | -------- | ----------------------------------------------------------------------------- |
+| `id`         | str (PK) | Random UUID                                                                   |
+| `session_id` | str      | No FK — SQLite RENAME quirk prevents it; application-level integrity only     |
+| `kind`       | str      | `"chat"` or `"task"`                                                          |
+| `seq`        | int      | Monotonic counter per `(session_id, kind)`; used for `Last-Event-ID`          |
+| `idx`        | int      | Stable entry index embedded in frame `path`; seeded from `max(idx)` on attach |
+| `ts`         | datetime | UTC insertion timestamp                                                       |
+| `frame`      | JSON     | Arbitrary frame payload                                                       |
+
+Indexed on `(session_id, kind, seq)` with a unique constraint on that triple.
+Append-only — never updated or deleted in normal operation.
+Model: `kagan.core.models.EventLogEntry`. Storage: `kagan.core._event_log.EventLog`.
+
+### Frame types
+
+All frames carry a `"type"` discriminator field. The union is defined in
+`kagan.server.responses` and generated as TypeScript via
+`scripts/generate_wire_types.py`.
+
+| Type       | `op` field                     | Path scheme                               | Purpose                                        |
+| ---------- | ------------------------------ | ----------------------------------------- | ---------------------------------------------- |
+| `snapshot` | —                              | —                                         | Full reduced state of all entries to `to_seq`  |
+| `ready`    | —                              | —                                         | Sentinel: snapshot replay finished, going live |
+| `patch`    | `create \| append \| finalize` | `/entries/{idx}` or `/entries/{idx}/text` | Incremental entry mutation                     |
+| `resume`   | —                              | —                                         | Orphan-reap signal: agent PID still alive      |
+
+Path-based idempotency: each patch is addressed by its stable `idx`; re-applying
+the same patch is safe and does not require seq-level deduplication.
+
+### SSE endpoints
+
+| Endpoint                        | Kind   | Notes                                                                       |
+| ------------------------------- | ------ | --------------------------------------------------------------------------- |
+| `GET /api/sessions/{id}/events` | `chat` | Chat session stream. `/events` suffix.                                      |
+| `GET /api/tasks/{id}/sse`       | `task` | Task agent stream. `/sse` suffix avoids collision with paginated `/events`. |
+
+Both endpoints share identical framing logic in `_event_routes._sse_generator`.
+Auth is cookie-based (same-origin); no `?token=` query param needed.
+
+### Reconnect contract (Last-Event-ID)
+
+The client sends the native `Last-Event-ID` header. The server parses it as an
+integer (`seq` value). Invalid non-integer values return 400.
+
+| Client state      | Server behaviour                             |
+| ----------------- | -------------------------------------------- |
+| No header (fresh) | `snapshot` from seq=0 + `ready` + live tail  |
+| Header `N < max`  | `snapshot` from `N+1..max` + `ready` + live  |
+| Header `N == max` | `ready` only (empty snapshot omitted) + live |
+| Header `N > max`  | `ready` + live (no error; treat as fresh)    |
+
+Keepalive SSE comment lines (`": keepalive"`) are emitted every 15 seconds.
+`retry: 1000` is sent at stream open.
+
+### Reducer: `reduce_frames`
+
+`kagan.server._frame_reduce.reduce_frames` is the canonical reducer shared by:
+
+- `_event_routes._build_snapshot_frame` — builds the `snapshot` frame sent to clients.
+- `kagan.tui._event_source.InProcEventSource.snapshot` — pre-fills TUI chat panels.
+
+The TUI-side `apply_frame` in `kagan.tui._frame_reducer` is a parallel pure
+function that applies typed `Frame` objects to a `dict[int, Entry]` state.
+
+### Producers
+
+| Producer                                       | Writes kind | Events                                                           |
+| ---------------------------------------------- | ----------- | ---------------------------------------------------------------- |
+| `kagan.core.chat.engine.ChatEngine`            | `chat`      | Per-token `append` frames; `create`/`finalize` on turn start/end |
+| `kagan.core._events.Events.emit_typed`         | `task`      | output chunks, tool calls, lifecycle transitions                 |
+| `kagan.core._events.Events.notify_agent_spawn` | `task`      | `create` frame for the initial assistant entry                   |
+| `kagan.core._orphan_reap.reap_orphan_sessions` | `task`      | `resume` (alive PID) or `finalize` (dead PID) on boot            |
+
+### Deprecated / deleted endpoints
+
+These endpoints were removed in the W9a/b cleanup. Do not reference them in new code.
+
+| Removed endpoint                                   | Replaced by                             |
+| -------------------------------------------------- | --------------------------------------- |
+| `GET /api/chat/sessions/{id}/watch`                | `GET /api/sessions/{id}/events`         |
+| `GET /api/chat/{id}/turn-status`                   | `ready` frame in the event stream       |
+| `GET /api/chat/sessions/{id}/messages?after_id=N`  | `GET /api/sessions/{id}/events`         |
+| `_sse_fanout._chat_subscribers` per-session queues | `EventLog` in-process subscriber queues |
+
+The `SessionEvent` table is kept intact for read-only consumers such as
+`_watcher.stream_board`. The dual-write path that populated it from `Events.emit`
+was removed; new producers write only to `event_log`.
 
 ______________________________________________________________________
 

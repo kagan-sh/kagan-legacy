@@ -426,6 +426,60 @@ and handles the TUI action locally.
 
 ______________________________________________________________________
 
+## Resume Behavior
+
+The frame-stream subsystem (`event_log` table + `Last-Event-ID` SSE endpoints)
+provides durable resume across the following failure modes.
+
+### Window / tab close mid-turn
+
+Assistant text is persisted to `event_log` per token as `append` frames by
+`ChatEngine`. On reopen, the browser `EventSource` connects fresh (no
+`Last-Event-ID`), receives a full `snapshot` frame, and replays the complete
+transcript including any partial assistant turn.
+
+### Network drop
+
+The browser `EventSource` sends the native `Last-Event-ID` header on automatic
+reconnect. The server replays from `from_seq + 1`, emitting a catchup
+`snapshot` + `ready` before resuming live tail. No manual backoff is needed
+in the web client.
+
+### Server restart mid-turn
+
+`ChatEngine._TurnState` is in-process and is lost on restart. Partial assistant
+text written to `event_log` before the crash survives. Clients see finalized
+history on reload via the `snapshot` frame; the partial turn is presented as
+whatever was persisted (the `finalize` frame may be missing, leaving the entry
+`finalized=False` — rendered as an incomplete response).
+
+### Orphan reap on boot
+
+`reap_orphan_sessions` runs at server startup for sessions whose process state
+is stale:
+
+- **Alive PID** — emits a `FrameResume` (`type="resume"`) into `event_log`.
+  Connected clients see it as a `resume` SSE event and can surface an
+  "agent resumed" notice.
+- **Dead PID** — cascades the task to `BACKLOG` via `transition_task`, then
+  emits a `FramePatch(op="finalize", reason="orphan_reap")`. The partial
+  transcript is preserved up to that point.
+
+### Single-flight semantics
+
+`ChatEngine.try_claim_turn` / `_chat_routes._claim_turn_slot` enforce
+single-flight per session. A concurrent POST to `/api/chat/{id}/stream`
+returns 409 and presents the takeover UI. This behavior is unchanged by the
+frame-stream work.
+
+### Path-based idempotency
+
+Patches are addressed by stable `idx` values, not by seq. Re-applying the
+same patch (e.g., after a replay window overlap) is safe; no echo-suppression
+logic is required in consumers.
+
+______________________________________________________________________
+
 ## Test Coverage
 
 | File                                           | Tests                                                 |

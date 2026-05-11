@@ -141,6 +141,50 @@ plumbing:
 
 ______________________________________________________________________
 
+## Frame-Stream EventSource
+
+`KaganEventSource` (`packages/vscode/src/api/event-source.ts`) provides
+resumable SSE streaming for chat and task sessions.
+
+### Entry points
+
+```typescript
+// Chat session (kind=chat):
+client.subscribeSessionEvents(sessionId)  // → KaganEventSource
+
+// Task session (kind=task):
+client.subscribeTaskEvents(taskId)        // → KaganEventSource
+```
+
+Both return a `KaganEventSource` instance. Callers register typed callbacks via
+`onSnapshot`, `onPatch`, `onReady`, `onResume`, and `onError`. Each registration
+returns an `Unsubscribe` function.
+
+### Implementation details
+
+`KaganEventSource` accepts an `esFactory` parameter so unit tests can inject a
+fake without a full `EventSource` implementation. Production callers go through
+`KaganClient.subscribeSessionEvents` / `subscribeTaskEvents`, which provide
+the correct factory wrapping `KaganClient.streamRequest`.
+
+There is no npm EventSource polyfill. The VS Code extension host (Node 18+) does
+not have a global `EventSource`, so the factory abstraction is load-bearing.
+
+Auth: `?token=` query param appended to the URL when a token is present.
+Cookie auth also works for same-origin requests.
+
+The pure reducer `applyFrame(state, frame)` in `event-source.ts` maps typed
+`Frame` values onto `EntryStreamState.entries: Map<number, FrameEntry>`.
+
+### Removed
+
+`KaganClient.followChatSession` was removed in the W9d cleanup.
+`SSEStream` is retained for the global `TASK_UPDATED` / `SESSION_EVENT`
+board-refresh stream — this is a separate concern from per-session
+frame streaming.
+
+______________________________________________________________________
+
 ## Server Auto-Start
 
 `LocalServerSupervisor` manages the local server lifecycle:

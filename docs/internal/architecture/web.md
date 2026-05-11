@@ -125,17 +125,22 @@ ______________________________________________________________________
 
 Custom hooks in `src/lib/hooks/`:
 
-- `use-chat-session.ts` — **per-session** streaming, interrupt, queue, and slash-command state for one chat id (hook-local `useState`; live events from `GET /api/chat/sessions/{id}/watch` via `useChatWatch`)
-- `use-chat-watch.ts` — subscribes to `GET /api/chat/sessions/{id}/watch` for live `ChatWatchEvent` envelopes
+- `use-entry-stream.ts` — **frame-stream hook** for chat and task SSE endpoints. Opens a native `EventSource(url, { withCredentials: true })`. Maintains `Map<idx, FrameEntry>` state via an inline reducer that handles `snapshot`, `ready`, `patch` (create/append/finalize), and `resume` frames. Hook owns the connection lifecycle; EventSource is closed on unmount or when `url` changes. URL builders: `apiClient.chatEventsUrl(sessionId)` and `apiClient.taskEventsUrl(taskId)`.
+- `use-chat-session.ts` — **per-session** streaming, interrupt, queue, and slash-command state for one chat id (hook-local `useState`; live events from `use-entry-stream`)
 - `use-session-overlay.ts` — compatibility shim over `selectedSessionAtom`/`sessionOverlayLayoutAtom`; preserved for chat panels but no longer drives a docked rail
 - `use-session-list.ts` — polls unified session list for the overlay/workspace
 - `use-session-actions.ts` — stop/close session helpers
-- `use-event-stream.ts` — connects `GET /api/events/stream` to the Jotai atom graph (board + task events)
+- `use-event-stream.ts` — connects `GET /api/events/stream` to the Jotai atom graph (board + task events; separate from `use-entry-stream`)
 - `use-task-events.ts` — subscribes to task-scoped session events via `CustomEvent` dispatch
 - `use-board-dnd.ts` — drag-and-drop state and handlers for the kanban board
 - `use-board-keyboard.ts` — keyboard navigation and shortcuts for the board
 - `use-follow-up-queue.ts` — manages the follow-up message queue for a task session
 - `use-mobile.ts` — responsive breakpoint detection
+
+Removed hooks (W9b cleanup): `use-chat-watch.ts` (`GET /api/chat/sessions/{id}/watch`),
+`pollForTurnCompletion`, `localStreamingRef`, and the window-reopen probe. These
+were replaced by `use-entry-stream` which uses native `EventSource` and
+`Last-Event-ID` resume.
 
 ______________________________________________________________________
 
@@ -145,7 +150,7 @@ ______________________________________________________________________
 - **`src/lib/atoms/chat.ts`** exports **types and constants** only (`ChatStreamEntry`, pending-queue types, `PENDING_QUEUE_MAX`), not writable singleton atoms.
 - **`shell-layout.tsx`** runs the project-active gate on mount; if no active project exists it redirects to `/welcome`. Active-repo selection now lives inside Welcome and Settings flows (the title bar no longer hosts a project/repo switcher).
 - **Route-local state** handles page-specific loading, tab selection, and transient form state.
-- **SSE sync** lives in `use-event-stream.ts` and feeds board/task updates into the atom graph. **Live chat UI** consumes `GET /api/chat/sessions/{id}/watch` via `useChatWatch` + `useChatSession`; sending a turn still opens `POST /api/chat/{id}/stream` (per-turn SSE body drained for backpressure; the watch stream carries decoded `ChatWatchEvent` frames).
+- **Board/task SSE sync** lives in `use-event-stream.ts` and feeds `TASK_UPDATED` / `SESSION_EVENT` updates into the atom graph. **Live chat and task session UI** consumes the frame-stream endpoints via `use-entry-stream`: `GET /api/sessions/{id}/events` (chat) and `GET /api/tasks/{id}/sse` (task). Sending a turn still opens `POST /api/chat/{id}/stream` (per-turn SSE body drained for backpressure).
 
 ______________________________________________________________________
 

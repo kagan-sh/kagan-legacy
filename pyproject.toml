@@ -99,6 +99,8 @@ dev = [
   "pytest-cov>=7.0.0",
   "pytest-xdist>=3.8.0",
   "python-semantic-release>=10.5.3",
+  # Transitive via python-semantic-release; pin past SNYK-PYTHON-GITPYTHON-16624542 (high)
+  "gitpython>=3.1.50",
   "pytest-sugar>=1.1.1",
   "playwright>=1.58.0",
   "pytest-playwright>=0.7.2",
@@ -140,6 +142,9 @@ max-complexity = 20
 "src/kagan/cli/chat/_approval_batch.py" = [
   "C901",
 ] # Interactive prompt_toolkit dispatch over j/k/space/y/n/a/r/Esc/? + feedback mode
+"src/kagan/core/chat/engine.py" = [
+  "C901",
+] # ChatEngine._run_stream interleaves ACP streaming, event_log patches, permissions, cancel paths
 "src/kagan/tui/screens/workspace.py" = [
   "C901",
 ] # Grouped session rendering (Active/Idle/Archived) with filter + prefer-key + per-row badges

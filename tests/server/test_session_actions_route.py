@@ -337,7 +337,10 @@ async def test_message_general_session_uses_raw_factory(
         make_request(
             "POST",
             f"/api/v1/sessions/gen:{chat_id}/message",
-            body={"text": "hello"},
+            # Force a non-fake backend so `_unified_sse_stream` takes the
+            # `make_spawn_per_turn_acp_factory` path (patched above) rather
+            # than the `_make_fake_chat_factory` short-circuit.
+            body={"text": "hello", "agent_backend": "claude-code"},
             path_params={"session_id": f"gen:{chat_id}"},
         )
     )

@@ -218,13 +218,16 @@ async def test_two_subscribers_see_identical_seq_stream(board: KaganDriver) -> N
     sub_a = asyncio.create_task(_subscribe(collected_a))
     sub_b = asyncio.create_task(_subscribe(collected_b))
 
-    # Give subscribers time to register before the turn starts.
-    await asyncio.sleep(0)
-
     await board.chat_send(sid, "hello", agent_chunks=["one", "two"])
 
-    # Let live-tail drain.
-    await asyncio.sleep(0.05)
+    deadline = asyncio.get_running_loop().time() + 10.0
+    while asyncio.get_running_loop().time() < deadline:
+        if collected_a and collected_b:
+            break
+        await asyncio.sleep(0)
+    else:
+        pytest.fail("subscribers did not receive frames within timeout")
+
     stop.set()
     sub_a.cancel()
     sub_b.cancel()

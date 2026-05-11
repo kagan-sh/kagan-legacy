@@ -308,8 +308,11 @@ class EventLog:
         """
         # Phase 1 — replay backlog
         backlog = await self.history(session_id, kind, from_seq=from_seq)
+        max_yielded = from_seq - 1
         for row in backlog:
             yield row
+            if row.seq > max_yielded:
+                max_yielded = row.seq
 
         # Phase 2 — live tail
         queue = _BoundedQueue()
@@ -319,19 +322,21 @@ class EventLog:
 
         # The window between backlog end and queue registration can miss frames.
         # Catch up any frames that arrived between the DB read and queue attach.
-        catchup_seq = (backlog[-1].seq + 1) if backlog else from_seq
+        catchup_seq = max_yielded + 1
         catchup = await self.history(session_id, kind, from_seq=catchup_seq)
         for row in catchup:
-            # Deduplicate against anything already queued
             yield row
+            if row.seq > max_yielded:
+                max_yielded = row.seq
 
         try:
             while True:
                 row = await queue.get()
-                # Skip frames we already yielded in the catch-up pass
-                if row.seq < catchup_seq + len(catchup):
+                # Skip frames we already yielded in backlog or catch-up passes
+                if row.seq <= max_yielded:
                     continue
                 yield row
+                max_yielded = row.seq
         finally:
             with contextlib.suppress(ValueError):
                 subs.remove(queue)

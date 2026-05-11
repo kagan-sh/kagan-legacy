@@ -78,7 +78,7 @@ def render_ai_verdict_summary(task: Task, total_criteria: int, *, running: bool)
             return f"AI: {pass_count}/{total_criteria} passed ({fail_count} failed)", "fail"
         return f"AI: {pass_count}/{total_criteria} passed", "pass"
     if task.status is TaskStatus.REVIEW and running:
-        return "AI Reviewing...", "pending"
+        return "AI reviewing...", "pending"
     return "", ""
 
 
@@ -223,4 +223,4 @@ def build_merge_readiness_text(
     else:
         lines.append("  ⋯ AI review: not run yet")
 
-    return "Merge Readiness\n" + "\n".join(lines)
+    return "Merge readiness\n" + "\n".join(lines)

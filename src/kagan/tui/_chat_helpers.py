@@ -1,10 +1,8 @@
-import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from kagan.cli.chat import merge_task_follow_up_description, resolve_default_agent_backend
-from kagan.core.errors import KaganError
+from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core.models import Task
 
 if TYPE_CHECKING:
@@ -61,14 +59,3 @@ async def kick_title_generation(session: TitleGenerationSession, core: "KaganCor
             session.panel.set_sessions(session.session_options, active_key)
     except Exception:
         return
-
-
-async def send_task_message(
-    core: "KaganCore",
-    task: Task,
-    message: str,
-) -> Task:
-    with contextlib.suppress(KaganError, OSError, RuntimeError):
-        await core.tasks.cancel(task.id)
-    description = merge_task_follow_up_description(task.description, message)
-    return await core.tasks.update(task.id, description=description)

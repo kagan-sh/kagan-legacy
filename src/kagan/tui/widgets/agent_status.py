@@ -8,7 +8,7 @@ _HALF_DISC_FPS: float = 4.0
 _HALF_DISC_INTERVAL: float = 1.0 / _HALF_DISC_FPS
 
 STATUS_META = {
-    "running": ("[#fbbf24]◐[/]", "Running"),  # placeholder; glyph is animated in _refresh_display
+    "running": ("[#d4a84b]◐[/]", "Running"),  # placeholder; glyph is animated in _refresh_display
     "completed": ("[green]✓[/]", "Completed"),
     "failed": ("[red]✗[/]", "Failed"),
     "idle": ("[dim]○[/]", "Idle"),
@@ -135,7 +135,7 @@ class AgentStatusPanel(Static):
 
     def _running_symbol(self) -> str:
         glyph = _HALF_DISC_FRAMES[self._frame_index]
-        return f"[#fbbf24]{glyph}[/]"
+        return f"[#d4a84b]{glyph}[/]"
 
     def _refresh_display(self) -> None:
         if self.status == "running":

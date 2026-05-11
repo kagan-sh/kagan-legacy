@@ -43,6 +43,10 @@ WorkspaceScreen {
     color: $text-disabled;
 }
 
+#workspace-sidebar-mode-hint {
+    color: $text-disabled;
+}
+
 #workspace-search {
     margin-bottom: 1;
 }

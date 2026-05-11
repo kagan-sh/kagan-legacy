@@ -18,7 +18,7 @@ class RejectionInputModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="rejection-input-container"):
-            yield Static("Send Back For Rework", classes="modal-title")
+            yield Static("Send back for rework", classes="modal-title")
             yield Static(self._task_label, classes="task-label")
             yield Rule()
             yield Static(
@@ -39,8 +39,8 @@ class RejectionInputModal(ModalScreen[str | None]):
                     classes="modal-action-hint",
                 )
             with Horizontal(classes="modal-action-row"):
-                yield Button("Send To In Progress", id="rejection-send", variant="primary")
-                yield Button("Send To Backlog", id="rejection-backlog")
+                yield Button("Send to in progress", id="rejection-send", variant="primary")
+                yield Button("Send to backlog", id="rejection-backlog")
                 yield Button("Cancel", id="rejection-cancel")
         yield Footer(show_command_palette=False)
 

@@ -188,7 +188,7 @@ export const MentionPopover = forwardRef<MentionPopoverHandle, MentionPopoverPro
     }, [open, close]);
 
     const sourceIcon = (source: 'kagan' | 'github') =>
-      source === 'kagan' ? '◆' : '🐙';
+      source === 'kagan' ? '◆' : '↗';
 
     return (
       <div ref={containerRef} className="relative">

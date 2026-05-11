@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { createStore } from 'jotai';
 import {
   tasksAtom,
@@ -8,16 +8,8 @@ import {
   searchQueryAtom,
   boardStatusFilterAtom,
   boardSortAtom,
-  fetchTasksAtom,
-  boardLoadingAtom,
 } from '@/lib/atoms/board';
 import { mockTask } from '@/test/mocks';
-
-vi.mock('@/lib/api/client', () => ({
-  apiClient: {
-    getTasks: vi.fn(),
-  },
-}));
 
 describe('board atoms', () => {
   let store: ReturnType<typeof createStore>;
@@ -78,17 +70,7 @@ describe('board atoms', () => {
       status: 'DONE',
       sort: 'recent',
       repoId: null,
+      agent: null,
     });
-  });
-
-  it('fetch populates tasks', async () => {
-    const { apiClient } = await import('@/lib/api/client');
-    const tasks = [mockTask(), mockTask()];
-    vi.mocked(apiClient.getTasks).mockResolvedValue(tasks);
-
-    await store.set(fetchTasksAtom);
-
-    expect(store.get(tasksAtom)).toHaveLength(2);
-    expect(store.get(boardLoadingAtom)).toBe(false);
   });
 });

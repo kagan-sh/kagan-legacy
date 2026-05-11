@@ -4,6 +4,11 @@
  * Transforms raw `(event_type, payload)` pairs into a client-agnostic
  * `RenderableEvent` that carries kind, title, body, and severity.
  * Mirrors the Python implementation in `kagan.core._event_rendering`.
+ *
+ * Note: task session events stored in the DB still use the legacy
+ * agent_events kind strings (e.g. ``"output_chunk"``, ``"tool_call_start"``).
+ * We compare against those string literals directly rather than via a const
+ * so this module remains independent of the chat stream EVENT_TYPE constant.
  */
 
 // ── Enums ────────────────────────────────────────────────────────────────────
@@ -134,8 +139,12 @@ export function renderEvent(
   sessionId: string = "",
 ): RenderableEvent | null {
   const ids = { event_id: eventId, session_id: sessionId };
+  const normalizedEventType = eventType.toLowerCase();
 
-  if (eventType === "OUTPUT_CHUNK") {
+  // Task session events stored in the DB use legacy agent_events kind strings.
+  // We compare lowercase to handle both old UPPER_SNAKE and new snake_case storage.
+
+  if (normalizedEventType === "output_chunk") {
     const text = String(payload.text ?? "");
     if (!text) return null;
     const thought = Boolean(payload.thought);
@@ -145,11 +154,11 @@ export function renderEvent(
     });
   }
 
-  if (eventType === "TOOL_CALL_START") {
+  if (normalizedEventType === "tool_call_start") {
     return make("tool_start", extractToolTitle(payload), ids);
   }
 
-  if (eventType === "TOOL_CALL_UPDATE") {
+  if (normalizedEventType === "tool_call_update") {
     const status = extractToolStatus(payload, "done");
     if (status === "completed" || status === "done") return null;
     return make("tool_update", extractToolTitle(payload), {
@@ -158,12 +167,12 @@ export function renderEvent(
     });
   }
 
-  if (eventType === "AGENT_STATUS") {
+  if (normalizedEventType === "agent_status") {
     // Skipped — internal heartbeat; not meaningful to display in any client.
     return null;
   }
 
-  if (eventType === "TASK_STATUS_CHANGED") {
+  if (normalizedEventType === "task_status_changed") {
     const from = String(payload.from ?? "?");
     const to = String(payload.to ?? "?");
     return make("status_change", `${from} -> ${to}`, {
@@ -172,7 +181,7 @@ export function renderEvent(
     });
   }
 
-  if (eventType === "CRITERION_VERDICT") {
+  if (normalizedEventType === "criterion_verdict") {
     const verdict = String(payload.verdict ?? "");
     const reason = String(payload.reason ?? "");
     const verdictLabel = verdict === "PASS" ? "PASS" : verdict === "SKIP" ? "SKIP" : "FAIL";
@@ -186,14 +195,14 @@ export function renderEvent(
     });
   }
 
-  if (eventType === "AGENT_COMPLETED") {
+  if (normalizedEventType === "agent_completed") {
     return make("note", "Agent completed", {
       severity: "success",
       ...ids,
     });
   }
 
-  if (eventType === "AGENT_FAILED") {
+  if (normalizedEventType === "agent_failed") {
     const error = String(payload.error ?? payload.details ?? "Agent failed");
     return make("error", "Agent failed", {
       body: error,
@@ -202,14 +211,14 @@ export function renderEvent(
     });
   }
 
-  if (eventType === "MERGE_COMPLETED") {
+  if (normalizedEventType === "merge_completed") {
     return make("merge", "Merge completed", {
       severity: "success",
       ...ids,
     });
   }
 
-  if (eventType === "MERGE_FAILED") {
+  if (normalizedEventType === "merge_failed") {
     const error = String(payload.error ?? "unknown");
     return make("merge", "Merge failed", {
       body: error,
@@ -218,11 +227,11 @@ export function renderEvent(
     });
   }
 
-  if (eventType === "PLAN_UPDATE") {
+  if (normalizedEventType === "plan_update") {
     return make("plan", "Plan updated", ids);
   }
 
-  if (eventType === "AUTO_REVIEW_STARTED") {
+  if (normalizedEventType === "auto_review_started") {
     return make("note", "Auto-review started", ids);
   }
 

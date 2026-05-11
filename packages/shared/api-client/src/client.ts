@@ -15,6 +15,7 @@ import type {
   ClientPresence,
   CombinedStats,
   CreateChatSessionInput,
+  CreateSessionRequest,
   CreateProjectInput,
   CreateTaskInput,
   DiffFile,
@@ -34,7 +35,10 @@ import type {
   ReviewStatusResponse,
   RunTaskInput,
   SearchMentionsInput,
+  SessionItemResponse,
+  SessionReplayPage,
   SessionTimelineEntry,
+  SessionsResponse,
   SettingsResponse,
   TaskCommitsResponse,
   TaskCountsResponse,
@@ -176,7 +180,7 @@ export class KaganApiClient {
 
   // -- Core HTTP Methods ----------------------------------------------------
 
-  protected getFullUrl(path: string): string {
+  getFullUrl(path: string): string {
     return `${this._protocol}://${this._baseUrl}${path}`;
   }
 
@@ -242,6 +246,20 @@ export class KaganApiClient {
 
   protected async del<T>(path: string): Promise<T> {
     return this.request<T>("DELETE", path);
+  }
+
+  /**
+   * Raw fetch with auth headers appended — for streaming paths (SSE) that must
+   * bypass envelope unwrapping. Returns the raw Response.
+   *
+   * @param url  Full URL (protocol + host + path). Use getFullUrl() to build it.
+   * @param init Optional RequestInit. Auth headers are merged in automatically.
+   */
+  public streamRequest(url: string, init?: RequestInit): Promise<Response> {
+    return this._fetchImpl(url, {
+      ...init,
+      headers: { ...init?.headers, ...this.getAuthHeaders() },
+    });
   }
 
   // -- Tasks ----------------------------------------------------------------
@@ -822,6 +840,55 @@ export class KaganApiClient {
    */
   async verifyApi(): Promise<void> {
     await this.getSettings();
+  }
+
+  // -- Unified sessions -----------------------------------------------------
+
+  /** GET /api/v1/sessions */
+  getSessions(): Promise<SessionsResponse> {
+    return this.get<SessionsResponse>("/api/v1/sessions");
+  }
+
+  /** POST /api/v1/sessions */
+  createSession(input: CreateSessionRequest): Promise<SessionItemResponse> {
+    return this.post<SessionItemResponse>("/api/v1/sessions", input);
+  }
+
+  /** POST /api/v1/sessions/:sessionId/message */
+  sendSessionMessage(
+    sessionId: string,
+    text: string,
+    options?: { agent_backend?: string; attachments?: unknown[] },
+  ): Promise<unknown> {
+    return this.post<unknown>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/message`, {
+      text,
+      ...options,
+    });
+  }
+
+  /** POST /api/v1/sessions/:sessionId/stop */
+  stopSession(sessionId: string): Promise<unknown> {
+    return this.post<unknown>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/stop`, {});
+  }
+
+  /** POST /api/v1/sessions/:sessionId/close */
+  closeSession(sessionId: string): Promise<unknown> {
+    return this.post<unknown>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/close`, {});
+  }
+
+  /**
+   * GET /api/v1/sessions/:sessionId/replay
+   * Cursor-based pagination for agent session events.
+   */
+  getSessionReplay(
+    sessionId: string,
+    opts: { cursor?: string; limit?: number; direction?: "forward" | "backward" } = {},
+  ): Promise<SessionReplayPage> {
+    const params = new URLSearchParams();
+    if (opts.cursor) params.set("cursor", opts.cursor);
+    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts.direction) params.set("direction", opts.direction);
+    return this.get<SessionReplayPage>(`/api/v1/sessions/${sessionId}/replay${withQuery(params)}`);
   }
 }
 

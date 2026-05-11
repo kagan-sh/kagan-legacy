@@ -20,6 +20,7 @@ import {
 } from '@/lib/atoms/board';
 import { presenceAtom } from '@/lib/atoms/presence';
 import { isAnyDialogOpenAtom } from '@/lib/atoms/ui';
+import { SSE_TYPE } from '@kagan/shared-api-client';
 import type { SSEMessage } from '@kagan/shared-api-client';
 
 export function useEventStream() {
@@ -85,7 +86,7 @@ export function useEventStream() {
               streamEstablished = true;
               reconnectAttemptsRef.current = 0;
             }
-            if (msg.type === 'TASK_UPDATED') {
+            if (msg.type === SSE_TYPE.TASK_UPDATED) {
               if (msg.task) {
                 const task = msg.task;
                 setTasks((prev) => {
@@ -117,7 +118,7 @@ export function useEventStream() {
               }
             }
             // SESSION_EVENT is dispatched to subscribers via a custom event
-            if (msg.type === 'SESSION_EVENT' && msg.event) {
+            if (msg.type === SSE_TYPE.SESSION_EVENT && msg.event) {
               window.dispatchEvent(
                 new CustomEvent('kagan:session-event', {
                   detail: { task_id: msg.task_id, event: msg.event },

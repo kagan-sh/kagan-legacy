@@ -3,34 +3,37 @@
  * auto-scroll coordination, edit-prefill, slash commands, and interrupt logic
  * for a single chat session identified by `id`.
  *
- * Returns a stable descriptor that chat-page.tsx and orchestrator-chat-panel
- * bind to the view layer. This is the single authoritative chat-streaming hook.
+ * All streaming / buffer / queue state is keyed by session id via hook-local
+ * state (useState / useRef). No global jotai atoms are used here, eliminating
+ * cross-session races when multiple sessions are mounted concurrently.
+ *
+ * Returns a stable descriptor that chat surfaces (`chat-page`, session overlay
+ * bodies) bind to the view layer. This is the single authoritative chat-streaming hook.
+ *
+ * ## Streaming architecture (W6)
+ * POST /api/chat/{id}/stream — turn trigger only (fire-and-forget after claim).
+ * GET  /api/sessions/{id}/events — native EventSource; single UI event source.
+ * The old /watch SSE + pollForTurnCompletion + localStreamingRef are removed.
+ * useEntryStream drives `entries` → UI. Browser EventSource handles reconnect
+ * via Last-Event-ID automatically.
  */
 
-import { useState, useEffect, useRef, useCallback, type RefObject, type MutableRefObject } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type RefObject } from 'react';
 import { useNavigate } from 'react-router';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient, ApiError } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
 import {
-  chatMessagesAtom,
-  isStreamingAtom,
-  streamEntriesAtom,
-  appendStreamChunkAtom,
-  addToolStartAtom,
-  updateToolProgressAtom,
-  addStreamErrorAtom,
-  addStreamNoteAtom,
-  resetStreamAtom,
-  takeoverBannerAtom,
-  turnConflictAtom,
   type ChatStreamEntry,
   type TurnConflict,
+  type PendingMessage,
+  type PendingMessageInput,
+  PENDING_QUEUE_MAX,
 } from '@/lib/atoms/chat';
-import { useChatWatch } from '@/lib/hooks/use-chat-watch';
-import type { ChatWatchEvent, WireChatMessage } from '@kagan/shared-api-client';
-import type { Attachment } from '@/components/chat/chat-input-bar';
+import { useEntryStream } from '@/lib/hooks/use-entry-stream';
+import type { WireChatMessage } from '@kagan/shared-api-client';
+import type { Attachment } from '@/lib/chat-attachments';
+import type { PermissionRequest } from '@/components/PermissionDialog';
 
 /** Optional context passed to onSlashCommand by panel consumers. */
 export interface SlashCommandExtra {
@@ -41,6 +44,7 @@ export interface SlashCommandExtra {
 export interface ChatSessionState {
   loading: boolean;
   label: string;
+  projectId: string | null;
   agentBackend: string | null;
   availableBackends: string[];
   messages: WireChatMessage[];
@@ -51,6 +55,7 @@ export interface ChatSessionState {
   lastSentText: string;
   editPrefill: string | null;
   scrollRef: RefObject<HTMLDivElement | null>;
+  pendingQueue: PendingMessage[];
   onSend: (text: string, attachments?: Attachment[]) => void;
   onInterrupt: (opts?: { pendingText: string | null }) => void;
   /** Handles slash commands. Pass `extra.onNew` to override /new and /exit navigation. */
@@ -59,73 +64,152 @@ export interface ChatSessionState {
   onDismissTakeover: () => void;
   onDismissConflict: () => void;
   onPrefillConsumed: () => void;
+  /** Enqueue a message while streaming. Returns false if queue is full. */
+  onEnqueue: (input: string | PendingMessageInput) => boolean;
+  /** Clear the entire pending queue. */
+  onClearQueue: () => void;
   switchBackend: (backend: string) => Promise<void>;
   /** Expose setters so embedded panels can reset state on session switch. */
   setEditPrefill: (value: string | null) => void;
   setLabel: (label: string) => void;
+  permissionRequest: PermissionRequest | null;
+  setPermissionRequest: (req: PermissionRequest | null) => void;
 }
 
 export function useChatSession(id: string | undefined): ChatSessionState {
   const navigate = useNavigate();
 
-  // ── Atoms ──────────────────────────────────────────────────────────────────
-  const [messages, setMessages] = useAtom(chatMessagesAtom);
-  const [isStreaming, setIsStreaming] = useAtom(isStreamingAtom);
-  const streamEntries = useAtomValue(streamEntriesAtom);
-  const appendChunk = useSetAtom(appendStreamChunkAtom);
-  const addToolStart = useSetAtom(addToolStartAtom);
-  const updateToolProgress = useSetAtom(updateToolProgressAtom);
-  const addError = useSetAtom(addStreamErrorAtom);
-  const addNote = useSetAtom(addStreamNoteAtom);
-  const resetStream = useSetAtom(resetStreamAtom);
-  const [takeoverBanner, setTakeoverBanner] = useAtom(takeoverBannerAtom);
-  const [turnConflict, setTurnConflict] = useAtom(turnConflictAtom);
+  // ── Per-session state (no global atoms — prevents cross-session races) ──────
+  const [messages, setMessages] = useState<WireChatMessage[]>([]);
+  const [takeoverBanner, setTakeoverBanner] = useState<string | null>(null);
+  const [turnConflict, setTurnConflict] = useState<TurnConflict | null>(null);
+
+  // Pending queue: keep a ref in sync with state so internal drain logic
+  // (setTimeout callbacks) always reads the current value without stale closures.
+  const pendingQueueRef = useRef<PendingMessage[]>([]);
+  const [pendingQueue, _setPendingQueueState] = useState<PendingMessage[]>([]);
+  const setPendingQueue = useCallback((next: PendingMessage[]) => {
+    pendingQueueRef.current = next;
+    _setPendingQueueState(next);
+  }, []);
 
   // ── Local state ────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [agentBackend, setAgentBackend] = useState<string | null>(null);
   const [availableBackends, setAvailableBackends] = useState<string[]>([]);
   const [lastSentText, setLastSentText] = useState('');
   const [editPrefill, setEditPrefill] = useState<string | null>(null);
+  const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Track whether the current tab initiated the active stream so CHAT_USER_MESSAGE
-  // from other clients can be distinguished.
-  const localStreamingRef = useRef(false);
+  // Ref to `doSendStream` so that turn-drain can call the latest version
+  // without creating a circular dependency in useCallback deps.
+  const doSendStreamRef = useRef<((text: string, attachments?: Attachment[]) => void) | null>(null);
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null) as MutableRefObject<ReturnType<typeof setInterval> | null>;
+  // ── Entry stream — native EventSource, replaces /watch + pollForTurnCompletion ─
+  const entryStreamUrl = id ? apiClient.chatEventsUrl(id) : '';
+  const entryStream = useEntryStream({ url: entryStreamUrl, enabled: Boolean(id) });
 
-  const pollForTurnCompletion = useCallback(
-    (sid: string) => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(async () => {
-        try {
-          const status = await apiClient.getTurnStatus(sid);
-          if (!status.active) {
-            if (pollRef.current) clearInterval(pollRef.current);
-            pollRef.current = null;
-            const session = await apiClient.getChatSession(sid);
-            setMessages(session.messages);
-            resetStream();
-          }
-        } catch {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setIsStreaming(false);
-        }
-      }, 2000);
-    },
-    [setMessages, resetStream, setIsStreaming],
-  );
+  // Derive isStreaming and streamEntries from the live entry map.
+  // Non-finalized assistant entries → streaming text chunks.
+  // isStreaming = stream is live AND at least one non-finalized assistant entry exists.
+  const streamEntries = useMemo((): ChatStreamEntry[] => {
+    if (entryStream.entries.size === 0) return [];
+    // Sort entries by idx ascending.
+    const sorted = Array.from(entryStream.entries.values()).sort((a, b) => a.idx - b.idx);
+    const result: ChatStreamEntry[] = [];
+    for (const e of sorted) {
+      if (e.role === 'assistant' && !e.finalized && e.text) {
+        result.push({ kind: 'text', content: e.text });
+      }
+    }
+    return result;
+  }, [entryStream.entries]);
+
+  const isStreaming = entryStream.isLive && streamEntries.length > 0;
+
+  // Track whether all non-finalized entries have just become finalized so we
+  // can re-fetch the persisted session messages after a turn completes.
+  const prevIsLiveRef = useRef(false);
+  const prevEntriesSizeRef = useRef(0);
 
   useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
+    const wasLive = prevIsLiveRef.current;
+    const prevSize = prevEntriesSizeRef.current;
+    prevIsLiveRef.current = entryStream.isLive;
+    prevEntriesSizeRef.current = entryStream.entries.size;
+
+    if (!id) return;
+
+    // Turn complete: was streaming (live with entries), now entries are all
+    // finalized OR the snapshot arrived empty (no-op turn).
+    const allFinalized = entryStream.entries.size > 0 &&
+      Array.from(entryStream.entries.values()).every((e) => e.finalized);
+
+    if (wasLive && (allFinalized || (prevSize > 0 && entryStream.entries.size === 0))) {
+      // Re-fetch persisted messages after turn completes.
+      apiClient.getChatSession(id).then((session) => {
+        setMessages(session.messages);
+        // Drain the next queued message (if any).
+        setTimeout(() => {
+          const next = pendingQueueRef.current[0];
+          if (next) {
+            setPendingQueue(pendingQueueRef.current.slice(1));
+            doSendStreamRef.current?.(next.text, next.attachments);
+          }
+        }, 0);
+      }).catch(() => {});
+    }
+  }, [id, entryStream.isLive, entryStream.entries, setPendingQueue]);
+
+  // Show resume notice as a note in stream entries.
+  const resumeToast = useRef(false);
+  useEffect(() => {
+    if (entryStream.resumeNotice && !resumeToast.current) {
+      resumeToast.current = true;
+      toast.info(
+        entryStream.resumeNotice.turnActive
+          ? 'Agent is still working… (session resumed)'
+          : 'Session resumed.',
+        { duration: 3000 },
+      );
+    }
+    if (!entryStream.resumeNotice) {
+      resumeToast.current = false;
+    }
+  }, [entryStream.resumeNotice]);
+
+  // ── Queue helpers ──────────────────────────────────────────────────────────
+
+  const onEnqueue = useCallback((input: string | PendingMessageInput): boolean => {
+    const payload = typeof input === 'string' ? { text: input } : input;
+    let enqueued = false;
+    // Functional updater runs synchronously so `enqueued` is set before return.
+    setPendingQueue((() => {
+      const queue = pendingQueueRef.current;
+      if (queue.length >= PENDING_QUEUE_MAX) return queue;
+      enqueued = true;
+      const msgId = `pq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const next = [
+        ...queue,
+        payload.attachments && payload.attachments.length > 0
+          ? { id: msgId, text: payload.text, attachments: payload.attachments }
+          : { id: msgId, text: payload.text },
+      ];
+      return next;
+    })());
+    return enqueued;
+  }, [setPendingQueue]);
+
+  const onClearQueue = useCallback(() => {
+    setPendingQueue([]);
+  }, [setPendingQueue]);
 
   // ── Load session ───────────────────────────────────────────────────────────
+  // Load persisted messages on session mount. No turn-status probe needed —
+  // the entry stream will reconnect and emit snapshot+ready automatically.
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -137,14 +221,8 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         if (cancelled) return;
         setMessages(session.messages);
         setLabel(session.label || 'Chat');
+        setProjectId(session.project_id ?? null);
         setAgentBackend(session.agent_backend ?? null);
-
-        const turnStatus = await apiClient.getTurnStatus(id);
-        if (!cancelled && turnStatus.active) {
-          setIsStreaming(true);
-          addNote({ message: 'Agent is working… (reconnected)' });
-          pollForTurnCompletion(id);
-        }
       } catch (error) {
         if (!cancelled) {
           toast.error(error instanceof Error ? error.message : 'Session not found');
@@ -157,11 +235,10 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     return () => {
       cancelled = true;
       setMessages([]);
-      resetStream();
       setTakeoverBanner(null);
       setTurnConflict(null);
     };
-  }, [id, setMessages, resetStream, setIsStreaming, addNote, pollForTurnCompletion, setTakeoverBanner, setTurnConflict]);
+  }, [id]);
 
   // ── Fetch available backends ────────────────────────────────────────────────
   useEffect(() => {
@@ -189,114 +266,8 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     return () => {
       chatAbortRef.current?.abort();
       chatAbortRef.current = null;
-      localStreamingRef.current = false;
     };
   }, [id]);
-
-  // ── /watch event handler ───────────────────────────────────────────────────
-  const handleWatchEvent = useCallback(
-    (event: ChatWatchEvent) => {
-      switch (event.t) {
-        case 'CHAT_CHUNK': {
-          setIsStreaming(true);
-          const content = event.content ?? '';
-          if (content) appendChunk({ content, thought: event.thought });
-          break;
-        }
-        case 'CHAT_TOOL_START': {
-          setIsStreaming(true);
-          addToolStart({ tool: event.tool ?? 'tool' });
-          break;
-        }
-        case 'CHAT_TOOL_PROGRESS': {
-          updateToolProgress({
-            tool: event.tool ?? 'tool',
-            status: event.status ?? undefined,
-          });
-          break;
-        }
-        case 'CHAT_ERROR': {
-          addError({ message: event.error ?? 'An error occurred' });
-          setIsStreaming(false);
-          break;
-        }
-        case 'CHAT_DONE': {
-          resetStream();
-          localStreamingRef.current = false;
-          if (id) {
-            apiClient
-              .getChatSession(id)
-              .then((session) => setMessages(session.messages))
-              .catch(() => {});
-          }
-          break;
-        }
-        case 'CHAT_SESSION_UPDATED': {
-          if (typeof event.session?.label === 'string') setLabel(event.session.label);
-          break;
-        }
-        case 'CHAT_USER_MESSAGE': {
-          // Message from another client — add to persisted list only when this
-          // tab did not initiate the stream.
-          if (!localStreamingRef.current) {
-            setMessages((prev) => [
-              ...prev,
-              { role: 'user', content: event.content },
-            ]);
-          }
-          break;
-        }
-        case 'CHAT_ASSISTANT_MESSAGE': {
-          if (event.terminated) {
-            setMessages((prev) => [
-              ...prev,
-              { role: 'assistant', content: `${event.content}\n\n*⚡ interrupted*` },
-            ]);
-          }
-          break;
-        }
-        case 'CHAT_TURN_TERMINATED': {
-          setIsStreaming(false);
-          resetStream();
-          localStreamingRef.current = false;
-          if (event.reason === 'takeover') {
-            setTakeoverBanner(
-              'Session taken over by another client. Your turn was interrupted.',
-            );
-          }
-          break;
-        }
-        default:
-          break;
-      }
-    },
-    [
-      id,
-      setIsStreaming,
-      appendChunk,
-      addToolStart,
-      updateToolProgress,
-      addError,
-      resetStream,
-      setMessages,
-      setTakeoverBanner,
-    ],
-  );
-
-  const handleCatchup = useCallback(
-    async (afterId: number) => {
-      if (!id) return;
-      const missed = await apiClient.getChatMessages(id, afterId);
-      if (missed.length === 0) return;
-      setMessages((prev) => {
-        const appended = missed.map((m) => ({ role: m.role, content: m.content }));
-        return [...prev, ...appended];
-      });
-    },
-    [id, setMessages],
-  );
-
-  useChatWatch(id, { onEvent: handleWatchEvent, onCatchup: handleCatchup });
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -304,13 +275,19 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   }, [messages, streamEntries]);
 
   // ── doSendStream ───────────────────────────────────────────────────────────
+  // POST /api/chat/{id}/stream — fire-and-forget turn trigger.
+  // UI is driven from the entry stream; this call only claims the turn.
+  const addStreamError = useCallback((msg: string) => {
+    // We can no longer directly mutate streamEntries (derived from entry stream),
+    // so surface errors via toast.
+    toast.error(msg);
+  }, []);
+
   const doSendStream = useCallback(
     (text: string, attachments?: Attachment[]) => {
       if (!id) return;
 
-      localStreamingRef.current = true;
       setLastSentText(text);
-      setIsStreaming(true);
 
       const displayText = attachments?.length
         ? `${text}\n\n[Attachments: ${attachments.map((a) => a.name).join(', ')}]`
@@ -332,7 +309,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
 
       (async () => {
         try {
-          for await (const _chunk of streamSSE<ChatWatchEvent>(
+          for await (const _chunk of streamSSE<unknown>(
             `/api/chat/${id}/stream`,
             {
               method: 'POST',
@@ -344,8 +321,8 @@ export function useChatSession(id: string | undefined): ChatSessionState {
               signal: controller.signal,
             },
           )) {
-            // Drained for backpressure only — /watch is the single source of
-            // UI events. Handling here too would double every chunk.
+            // Drained for backpressure only — entry stream is the single source
+            // of UI events.
             void _chunk;
           }
         } catch (err) {
@@ -357,28 +334,27 @@ export function useChatSession(id: string | undefined): ChatSessionState {
                 runningSince: statusResp.running_since ?? new Date().toISOString(),
                 partialChars: statusResp.partial_chars ?? 0,
                 pendingText: text,
-                pendingAttachments: wireAttachments,
+                pendingAttachments: attachments,
               });
             } catch {
               setTurnConflict({
                 runningSince: new Date().toISOString(),
                 partialChars: 0,
                 pendingText: text,
-                pendingAttachments: wireAttachments,
+                pendingAttachments: attachments,
               });
             }
-            setIsStreaming(false);
-            localStreamingRef.current = false;
             return;
           }
-          addError({ message: err instanceof Error ? err.message : 'Stream failed' });
-          setIsStreaming(false);
-          localStreamingRef.current = false;
+          addStreamError(err instanceof Error ? err.message : 'Stream failed');
         }
       })();
     },
-    [id, setIsStreaming, setMessages, addError, setTurnConflict],
+    [id, addStreamError],
   );
+
+  // Keep the ref up-to-date so that turn-drain sees the latest version.
+  doSendStreamRef.current = doSendStream;
 
   const onSend = useCallback(
     (text: string, attachments?: Attachment[]) => {
@@ -398,10 +374,9 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         } catch {
           // best-effort — server may already have torn the stream down
         }
-        addNote({ message: 'Interrupted by user.' });
-        setIsStreaming(false);
-        localStreamingRef.current = false;
-
+        // Entry stream will flip isLive=false on disconnect; no manual state
+        // mutation needed.  Prefill the composer if the user didn't provide a
+        // follow-up.
         if (opts?.pendingText) {
           doSendStream(opts.pendingText);
         } else {
@@ -409,7 +384,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         }
       })();
     },
-    [id, isStreaming, addNote, setIsStreaming, lastSentText, doSendStream],
+    [id, isStreaming, lastSentText, doSendStream],
   );
 
   const onTakeoverAndRetry = useCallback(async () => {
@@ -422,9 +397,9 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     const { pendingText, pendingAttachments } = turnConflict;
     setTurnConflict(null);
     setTimeout(() => {
-      doSendStream(pendingText, pendingAttachments as Attachment[] | undefined);
+      doSendStream(pendingText, pendingAttachments);
     }, 300);
-  }, [id, turnConflict, setTurnConflict, doSendStream]);
+  }, [id, turnConflict, doSendStream]);
 
   const onSlashCommand = useCallback(
     (command: string, extra?: SlashCommandExtra) => {
@@ -480,16 +455,17 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           onSend(command, undefined);
       }
     },
-    [onSend, navigate, setMessages, switchBackend],
+    [onSend, navigate, switchBackend],
   );
 
-  const onDismissTakeover = useCallback(() => setTakeoverBanner(null), [setTakeoverBanner]);
-  const onDismissConflict = useCallback(() => setTurnConflict(null), [setTurnConflict]);
+  const onDismissTakeover = useCallback(() => setTakeoverBanner(null), []);
+  const onDismissConflict = useCallback(() => setTurnConflict(null), []);
   const onPrefillConsumed = useCallback(() => setEditPrefill(null), []);
 
   return {
     loading,
     label,
+    projectId,
     agentBackend,
     availableBackends,
     messages,
@@ -500,6 +476,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     lastSentText,
     editPrefill,
     scrollRef,
+    pendingQueue,
     onSend,
     onInterrupt,
     onSlashCommand,
@@ -507,8 +484,12 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     onDismissTakeover,
     onDismissConflict,
     onPrefillConsumed,
+    onEnqueue,
+    onClearQueue,
     switchBackend,
     setEditPrefill,
     setLabel,
+    permissionRequest,
+    setPermissionRequest,
   };
 }

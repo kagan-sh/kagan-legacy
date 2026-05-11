@@ -361,11 +361,11 @@ export function Component() {
         <div className="mb-6 flex flex-wrap justify-center gap-3">
           <Button onClick={() => setCreateOpen(true)} className="">
             <Plus className="size-4" />
-            New Project
+            New project
           </Button>
           <Button variant="outline" className="" onClick={() => setFolderPickerOpen(true)}>
             <FolderOpen className="size-4" />
-            Open Folder
+            Open folder
           </Button>
         </div>
 
@@ -401,7 +401,7 @@ export function Component() {
                 ) : (
                   <FolderOpen className="size-4" />
                 )}
-                Open Current Folder
+                Open current folder
               </Button>
             </div>
           </div>
@@ -419,7 +419,7 @@ export function Component() {
         ) : (
           <div className="space-y-2">
             <p className="px-1 font-code text-[11px] uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
-              Recent Projects
+              Recent projects
             </p>
             <div className="divide-y divide-[color:var(--border-subtle)] bg-[color:var(--surface-1)] shadow-[var(--ambient-shadow)]">
               {projects.map(({ project, repos }, index) => (
@@ -526,7 +526,7 @@ export function Component() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New Project</DialogTitle>
+            <DialogTitle>New project</DialogTitle>
             <DialogDescription>
               Create a new project and optionally attach a repository.
             </DialogDescription>

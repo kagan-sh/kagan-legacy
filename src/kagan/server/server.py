@@ -17,6 +17,7 @@ from uvicorn.server import HANDLED_SIGNALS
 
 from kagan.server._analytics_routes import register_analytics_routes
 from kagan.server._chat_routes import register_chat_routes
+from kagan.server._event_routes import register_event_routes
 from kagan.server._integration_routes import register_integration_routes
 from kagan.server._project_routes import register_project_routes
 from kagan.server._session_routes import register_session_routes
@@ -131,6 +132,7 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
     register_chat_routes(mcp)
     register_integration_routes(mcp)
     register_session_routes(mcp)
+    register_event_routes(mcp)
 
     if opts.fake_agent:
         from kagan.server._fake_agent_routes import register_fake_agent_routes
@@ -189,7 +191,7 @@ async def serve_http(
     client = KaganCore(db_path=opts.mcp_opts.db_path)
 
     # Reap any sessions that were RUNNING when the previous server process died.
-    reaped = await reap_orphan_sessions(client.engine)
+    reaped = await reap_orphan_sessions(client)
     if reaped:
         logger.info("Server startup: reaped {} orphan session(s)", reaped)
 

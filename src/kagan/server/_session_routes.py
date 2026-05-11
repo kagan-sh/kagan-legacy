@@ -25,7 +25,6 @@ from kagan.server._helpers import (
     require_context,
 )
 from kagan.server._sse_fanout import (
-    _broadcast,
     _chat_event_to_sse_frame,
     _emit,
     _load_session_view,
@@ -356,7 +355,6 @@ async def _message_sse_stream(
         backend,
         attachments,
         is_orchestrator=is_orchestrator,
-        broadcast=_broadcast,
         emit=_emit,
         chat_event_to_sse_frame=_chat_event_to_sse_frame,
         session_summary=_session_summary,

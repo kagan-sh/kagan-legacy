@@ -1,11 +1,15 @@
 """kagan.server._sse_stream — Shared SSE turn producer for chat sessions.
 
-Both ``_chat_routes`` (orchestrator-only legacy endpoint) and
+Both ``_chat_routes`` (orchestrator-only endpoint) and
 ``_session_routes`` (unified session overlay) drive the same lifecycle:
 
-  claim turn → push_user → broadcast CHAT_USER_MESSAGE →
-  broadcast CHAT_TURN_STARTED → stream_assistant events →
-  broadcast CHAT_SESSION_UPDATED (post-turn)
+  claim turn → push_user → yield CHAT_USER_MESSAGE →
+  yield CHAT_TURN_STARTED → stream_assistant events →
+  yield CHAT_SESSION_UPDATED (post-turn)
+
+Post-W9a: the /watch fan-out broadcast has been removed. All consumers
+subscribe directly via EventLog (InProcEventSource) or the SSE events
+endpoint (HttpEventSource).
 
 The only runtime axis is ``is_orchestrator``:
 - True:  build an orchestrator prompt via ``build_orchestrator_prompt``
@@ -40,7 +44,6 @@ async def _unified_sse_stream(
     attachments: list[Any] | None,
     *,
     is_orchestrator: bool,
-    broadcast: Any,
     emit: Any,
     chat_event_to_sse_frame: Any,
     session_summary: Any,
@@ -64,14 +67,12 @@ async def _unified_sse_stream(
     is_orchestrator:
         When ``True`` the prompt is built via ``build_orchestrator_prompt``
         and the ACP factory is invoked without ``raw=True``.
-    broadcast:
-        The ``_broadcast`` callable from ``_chat_routes``.
     emit:
-        The ``_emit`` callable from ``_chat_routes``.
+        The ``_emit`` callable from ``_sse_fanout``.
     chat_event_to_sse_frame:
-        The ``_chat_event_to_sse_frame`` callable from ``_chat_routes``.
+        The ``_chat_event_to_sse_frame`` callable from ``_sse_fanout``.
     session_summary:
-        The ``_session_summary`` callable from ``_chat_routes``.
+        The ``_session_summary`` callable from ``_sse_fanout``.
     """
     engine = ctx.client.chat
 
@@ -79,13 +80,11 @@ async def _unified_sse_stream(
     # so it is atomic w.r.t. the asyncio scheduler; without it a concurrent
     # request on the same session could slip past the preflight turn_status
     # check, persist a user row, and then trip TurnInProgressError inside
-    # stream_assistant — leaving an orphan user row and /watch subscribers
-    # stuck without a recovery frame.
+    # stream_assistant — leaving an orphan user row in an inconsistent state.
     try:
         engine.try_claim_turn(session_id)
     except TurnInProgressError:
         err = {"t": "CHAT_ERROR", "error": "Turn already in progress for this session"}
-        broadcast(session_id, err)
         yield emit(err)
         return
 
@@ -108,7 +107,6 @@ async def _unified_sse_stream(
             "content": text or "",
             **({"attachment_count": attachment_count} if attachment_count > 0 else {}),
         }
-        broadcast(session_id, user_event)
         yield emit(user_event)
 
         started_event: dict[str, Any] = {
@@ -116,7 +114,6 @@ async def _unified_sse_stream(
             "at": datetime.now(UTC).isoformat(),
             "by_source": session.source,
         }
-        broadcast(session_id, started_event)
         yield emit(started_event)
 
         settings = await ctx.client.settings.get()
@@ -156,7 +153,6 @@ async def _unified_sse_stream(
             frame = chat_event_to_sse_frame(event)
             if frame is None:
                 continue
-            broadcast(session_id, frame)
             yield emit(frame)
             if frame.get("t") == "CHAT_DONE":
                 turn_done = True
@@ -172,7 +168,6 @@ async def _unified_sse_stream(
     except Exception as exc:
         logger.exception("Chat stream failed for session {}", session_id)
         err = {"t": "CHAT_ERROR", "error": str(exc)}
-        broadcast(session_id, err)
         yield emit(err)
     finally:
         if not stream_entered:
@@ -190,10 +185,7 @@ async def _unified_sse_stream(
                 from kagan.core.chat.sessions import chat_session_to_view
 
                 refreshed = chat_session_to_view(*refreshed_pair)
-                broadcast(
-                    session_id,
-                    {"t": "CHAT_SESSION_UPDATED", "session": session_summary(refreshed)},
-                )
+                yield emit({"t": "CHAT_SESSION_UPDATED", "session": session_summary(refreshed)})
 
 
 # ---------------------------------------------------------------------------

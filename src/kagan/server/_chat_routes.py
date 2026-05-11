@@ -1,19 +1,15 @@
 """kagan.server._chat_routes — REST + SSE endpoints for chat session management.
 
-Phase 3 of refactor R1: the SSE turn lifecycle, partial-buffering, 409-guard,
-and assistant persistence all live on ``ChatEngine`` (``ctx.client.chat``).
-This module is now a thin transport that handles the request/response shape
-for ``/stream``, ``/watch``, ``/turn-status`` and ``/interrupt``.
+Post-W9a: legacy /watch, /turn-status, and /messages endpoints removed.
+Remaining routes: /stream (POST, turn trigger + 409), /interrupt (POST),
+/permission (POST), and the CRUD routes for chat sessions.
 
 SSE fanout, wire-frame helpers, and parameter resolution live in ``_sse_fanout.py``.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from starlette.responses import JSONResponse, Response, StreamingResponse
@@ -23,9 +19,7 @@ from kagan.core.chat import ChatSessionView, chat_session_to_view
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
 from kagan.server._sse_fanout import (
-    _broadcast,
     _chat_event_to_sse_frame,
-    _chat_subscribers,
     _emit,
     _load_session_view,
     _session_summary,
@@ -35,7 +29,6 @@ from kagan.server._sse_fanout import (
 from kagan.server.responses import (
     AgentBackendResponse,
     ChatAgentsResponse,
-    ChatMessageDetailResponse,
     ChatMessageResponse,
     ChatSessionResponse,
 )
@@ -153,40 +146,6 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
-    @mcp.custom_route("/api/chat/sessions/{session_id}/messages", methods=["GET"])
-    @require_context(mcp)
-    @handle_errors
-    async def get_session_messages(request: Request, *, ctx: ServerContext) -> JSONResponse:
-        """Cursor-tail endpoint for reconnecting /watch clients.
-
-        Returns messages with id > after_id so clients can catch up on messages
-        missed during a /watch disconnect. Defaults to after_id=0 (all messages).
-        """
-        session_id = cast("str", request.path_params["session_id"])
-        try:
-            after_id = int(request.query_params.get("after_id", "0"))
-        except (ValueError, TypeError):
-            return _err("after_id must be an integer", status=400)
-
-        # Existence check only — messages are fetched separately below.
-        session_exists = await _load_session_view(ctx.client, session_id)
-        if session_exists is None:
-            return _err("Session not found", status=404)
-
-        messages = await ctx.client.chat_sessions.messages_after(session_id, after_id=after_id)
-        wire = [
-            ChatMessageDetailResponse(
-                id=m.id or 0,
-                session_id=m.session_id,
-                role=m.role,
-                content=m.content,
-                terminated_at_user_request=m.terminated_at_user_request,
-                created_at=m.created_at.isoformat() if m.created_at else "",
-            ).model_dump(mode="json")
-            for m in messages
-        ]
-        return _ok(wire)
-
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["PATCH"])
     @require_context(mcp)
     @handle_errors
@@ -252,7 +211,6 @@ async def _sse_stream(
         backend,
         attachments,
         is_orchestrator=True,
-        broadcast=_broadcast,
         emit=_emit,
         chat_event_to_sse_frame=_chat_event_to_sse_frame,
         session_summary=_session_summary,
@@ -284,73 +242,6 @@ def _register_stream_routes(mcp: FastMCP) -> None:
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
             },
-        )
-
-    @mcp.custom_route("/api/chat/sessions/{session_id}/watch", methods=["GET"])
-    @require_context(mcp)
-    async def chat_watch(request: Request, *, ctx: ServerContext) -> Response:
-        """SSE endpoint — subscribe to all events for a session (broadcast channel).
-
-        Multiple clients can connect simultaneously. Each gets every event in
-        lockstep. On disconnect the subscriber is removed from the registry.
-        """
-        session_id = cast("str", request.path_params["session_id"])
-        if not is_access_allowed(ctx, AccessTier.STANDARD):
-            return _err("Insufficient access tier for chat", status=403)
-
-        session_view = await _load_session_view(ctx.client, session_id)
-        if session_view is None:
-            return _err("Session not found", status=404)
-
-        async def _event_stream() -> AsyncIterator[str]:
-            q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=128)
-            shutdown_event = getattr(ctx, "shutdown_event", None)
-            last_keepalive = datetime.now(UTC)
-            _chat_subscribers[session_id].append(q)
-            try:
-                while shutdown_event is None or not shutdown_event.is_set():
-                    timeout = 0.5 if shutdown_event is not None else 25.0
-                    try:
-                        event = await asyncio.wait_for(q.get(), timeout=timeout)
-                        yield f"data: {json.dumps(event)}\n\n"
-                    except TimeoutError:
-                        if shutdown_event is not None and shutdown_event.is_set():
-                            break
-                        now = datetime.now(UTC)
-                        if (now - last_keepalive).total_seconds() >= 25.0:
-                            last_keepalive = now
-                            yield ": keepalive\n\n"
-            except (GeneratorExit, asyncio.CancelledError, ConnectionError):
-                pass
-            finally:
-                with contextlib.suppress(ValueError):
-                    _chat_subscribers[session_id].remove(q)
-
-        return StreamingResponse(
-            _event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
-
-    @mcp.custom_route("/api/chat/{session_id}/turn-status", methods=["GET"])
-    @require_context(mcp)
-    @handle_errors
-    async def turn_status(request: Request, *, ctx: ServerContext) -> JSONResponse:
-        """Check whether a chat turn is still running for the given session."""
-        session_id = cast("str", request.path_params["session_id"])
-        status = ctx.client.chat.turn_status(session_id)
-        return _ok(
-            {
-                "active": status.active,
-                "partial_chars": status.partial_chars,
-                "running_since": (
-                    status.started_at.isoformat() if status.started_at is not None else None
-                ),
-            }
         )
 
     @mcp.custom_route("/api/chat/sessions/{session_id}/permission/{future_id}", methods=["POST"])
@@ -387,19 +278,12 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         Request body: {"reason": "user" | "takeover"} (default "user").
         Returns: {interrupted, partial_persisted, partial_chars}.
         The partial buffer is persisted as a terminated assistant message if non-empty
-        (handled inside ``ChatEngine``); CHAT_TURN_TERMINATED is broadcast to /watch.
+        (handled inside ``ChatEngine``).
         """
         session_id = cast("str", request.path_params["session_id"])
         reason = await _interrupt_reason(request)
         result = await ctx.client.chat.cancel(session_id, reason=reason)
         if not result.was_running:
-            # No active /stream consumer to relay the engine's TurnCancelled
-            # event, so emit a transport-level CHAT_TURN_TERMINATED here so
-            # any /watch-only subscribers still see the cancel. When a turn
-            # *is* running, the engine emits TurnCancelled which
-            # ``_sse_stream`` already broadcasts — broadcasting again here
-            # would deliver the same frame twice. (Greptile P2.)
-            _broadcast(session_id, {"t": "CHAT_TURN_TERMINATED", "reason": reason})
             return _ok(
                 {
                     "session_id": session_id,

@@ -1,22 +1,24 @@
 """kagan.server._sse_fanout — Shared SSE infrastructure for chat/session routes.
 
-Provides the /watch fanout, wire-frame helpers, parameter resolution,
-and session teardown used by both ``_chat_routes`` and ``_session_routes``.
+Post-W9a: the /watch queue-based fan-out has been removed. All consumers
+subscribe via EventLog directly (InProcEventSource) or via the unified
+/api/sessions/{id}/events SSE endpoint (HttpEventSource).
+
+Provides wire-frame helpers, parameter resolution, and session teardown
+used by both ``_chat_routes`` and ``_session_routes``.
 """
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any, cast
 
 from starlette.responses import JSONResponse
 
 from kagan.core import Attachment, AttachmentBody
 from kagan.core.chat import ChatSessionView, chat_session_to_view
-from kagan.core.events import AgentLifecycle, Event, event_to_dict
+from kagan.core.events import Event, event_to_dict
 from kagan.core.permission import PermissionRequest
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err
@@ -29,23 +31,6 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
     from kagan.server.mcp.server import ServerContext
-
-# ---------------------------------------------------------------------------
-# /watch fanout
-# ---------------------------------------------------------------------------
-# The engine produces ChatEvents on a single iterator consumed by the SSE
-# producer. ``/watch`` subscribers tap that producer via this fanout — kept at
-# transport level (not in the engine) because it is a server-only concern.
-
-_chat_subscribers: dict[str, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
-
-
-def _broadcast(session_id: str, event: dict[str, Any]) -> None:
-    """Fan out an event to all /watch subscribers; silently drop on overflow."""
-    for q in list(_chat_subscribers[session_id]):
-        with contextlib.suppress(asyncio.QueueFull):
-            q.put_nowait(event)
-
 
 # ---------------------------------------------------------------------------
 # Wire helpers
@@ -164,42 +149,22 @@ async def _load_session_view(client: Any, session_id: str) -> ChatSessionView | 
     return chat_session_to_view(*pair)
 
 
-async def _broadcast_lifecycle_to_project(
-    client: Any, project_id: str, event: AgentLifecycle
-) -> None:
-    """Fan out an AgentLifecycle event to all /watch subscribers for orchestrator
-    and general chat sessions that belong to *project_id*.
-
-    Called via the ``_lifecycle_broadcast_fn`` hook on ``KaganCore`` whenever a
-    session transition fires. Errors are caught so they never block the transition.
-    """
-    try:
-        sessions = await client.chat_sessions.list(project_id=project_id)
-        wire = event_to_dict(event)
-        for session in sessions:
-            _broadcast(session.id, wire)
-    except Exception:
-        pass  # best-effort; transition already committed
-
-
 def register_lifecycle_broadcast(client: Any) -> None:
-    """Wire the server-side AgentLifecycle fan-out into ``client._lifecycle_broadcast_fn``.
+    """No-op post-W9a.
 
-    Called once at server startup so that task-agent session transitions push
-    ``AgentLifecycle`` events to all active /watch subscribers.
+    Previously wired AgentLifecycle events to /watch subscribers via
+    ``client._lifecycle_broadcast_fn``. The /watch endpoint has been
+    removed; lifecycle fan-out is now handled by the EventLog subscriber
+    path. Kept so server startup code can call this without changes.
     """
-
-    async def _fn(project_id: str, event: AgentLifecycle) -> None:
-        await _broadcast_lifecycle_to_project(client, project_id, event)
-
-    client._lifecycle_broadcast_fn = _fn
 
 
 def _teardown_session_state(ctx: ServerContext, session_id: str) -> None:
     """Clear per-session transport state and ask the engine to detach."""
-    _chat_subscribers.pop(session_id, None)
     engine = getattr(ctx.client, "chat", None)
     if engine is not None:
+        import asyncio
+
         # Fire-and-forget — detach is best-effort cleanup at delete time.
         with contextlib.suppress(RuntimeError):
             asyncio.get_running_loop().create_task(engine.detach(session_id))

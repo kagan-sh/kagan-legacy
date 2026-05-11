@@ -22,12 +22,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 from typing import TYPE_CHECKING, Any
 
 import acp
 from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
-from loguru import logger
 
 from kagan.cli.chat import (
     build_orchestrator_prompt,
@@ -69,16 +67,9 @@ from kagan.tui.screens._agent_event_presenter import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    import httpx
-
     from kagan.core import KaganCore
+    from kagan.tui._event_source import HttpEventSource, InProcEventSource
     from kagan.tui.widgets.chat import ChatPanel
-
-
-_WATCH_RETRY_DELAY = 5.0
-_WATCH_EVENT_TAKEOVER = "CHAT_TURN_TERMINATED"
 
 # Session key constants shared across kanban, task_screen, and session_dashboard.
 TASK_WORKER_SESSION_KEY = "task-worker"
@@ -279,80 +270,75 @@ def apply_task_chat_event(
     render_agent_event_to_chat(panel, present_agent_event(event_type, payload))
 
 
-async def stream_task_chat(
+async def subscribe_session(
     *,
-    core: KaganCore,
     panel: ChatPanel,
-    task_id: str,
-    is_active: Callable[[], bool],
-) -> None:
-    async for event in core.tasks.events.stream(task_id):
-        if not is_active():
-            continue
-
-        payload = event.payload or {}
-        apply_task_chat_event(panel, event.event_type, payload)
-
-
-async def watch_chat_session(
-    *,
     session_id: str,
-    panel: ChatPanel,
-    http_client: httpx.AsyncClient | None,
+    kind: str,
+    event_source: HttpEventSource | InProcEventSource,
+    from_seq: int = 0,
+    stop_after_snapshot: bool = False,
 ) -> None:
-    """Subscribe to the /watch SSE endpoint for a chat session.
+    """Subscribe to session events via ``event_source`` and paint frames onto ``panel``.
 
-    Delivers a Textual notification when another client takes over the session
-    (``CHAT_TURN_TERMINATED`` with ``reason=="takeover"``).
+    Delegates to ``event_source.subscribe`` — the retry-loop for remote
+    connections is handled inside ``HttpEventSource.subscribe``.
 
-    If ``http_client`` is ``None`` the function returns immediately — the TUI
-    runs against a local ``KaganCore`` and has no HTTP connection to the server.
-    Retry after ``_WATCH_RETRY_DELAY`` seconds on any connection error.
+    Parameters
+    ----------
+    panel:
+        Target ``ChatPanel`` to receive frame renders.
+    session_id:
+        Session / task id to subscribe to.
+    kind:
+        ``"chat"`` or ``"task"``.
+    event_source:
+        ``InProcEventSource`` or ``HttpEventSource`` obtained from
+        ``KaganApp.event_source``.
+    from_seq:
+        Resume from this sequence number (default 0 = full replay).
+    stop_after_snapshot:
+        When ``True``, return after the first ``FrameReady`` frame is
+        received (useful for tests that want a one-shot replay without
+        blocking on the live-tail subscription forever).
     """
-    if http_client is None:
-        return
+    from kagan.tui._frame_reducer import apply_frame
 
-    watch_url = f"/api/chat/sessions/{session_id}/watch"
+    state: dict = {}
+    async for frame in event_source.subscribe(session_id, kind, from_seq):
+        frame_type: str = getattr(frame, "type", "")
 
-    while True:
-        try:
-            async with http_client.stream("GET", watch_url) as response:
-                if response.status_code == 404:
-                    logger.debug(
-                        "Chat watch endpoint not available for session {}; skipping", session_id
-                    )
-                    return
-                response.raise_for_status()
-                async for raw_line in response.aiter_lines():
-                    line = raw_line.strip()
-                    if not line or line.startswith(":"):
-                        continue
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        event = json.loads(line[6:])
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(event, dict):
-                        continue
-                    if (
-                        event.get("t") == _WATCH_EVENT_TAKEOVER
-                        and str(event.get("reason") or "") == "takeover"
-                        and panel.is_mounted
-                    ):
-                        panel.app.notify(
-                            "Session taken over by another client. Your turn was interrupted.",
-                            severity="warning",
-                        )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.debug("Chat watch connection lost for session {}: {}", session_id, exc)
+        if frame_type == "patch":
+            op: str = getattr(frame, "op", "")
+            value = getattr(frame, "value", None)
 
-        try:
-            await asyncio.sleep(_WATCH_RETRY_DELAY)
-        except asyncio.CancelledError:
-            raise
+            if op == "create":
+                text = value.get("text", "") if isinstance(value, dict) else ""
+                if text:
+                    panel.append_assistant_fragment(text)
+            elif op == "append":
+                delta = value if isinstance(value, str) else ""
+                if delta:
+                    panel.append_assistant_fragment(delta)
+            elif op == "finalize":
+                with contextlib.suppress(Exception):
+                    panel.finish_thought()
+
+            state = apply_frame(state, frame)
+
+        elif frame_type == "snapshot":
+            state = apply_frame(state, frame)
+            # Render snapshot entries to panel
+            for entry in sorted(state.values(), key=lambda e: e.idx):
+                if entry.text:
+                    panel.append_assistant_fragment(entry.text)
+
+        elif frame_type == "ready":
+            if stop_after_snapshot:
+                return
+
+        elif frame_type == "resume":
+            pass  # meta-frame, no entry mutations
 
 
 # Re-export the ACP schema names that older imports referenced via kanban_chat.
@@ -370,12 +356,11 @@ __all__ = [
     "send_chat_message",
     "stream_chunk_kind",
     "stream_chunk_text",
-    "stream_task_chat",
+    "subscribe_session",
     "tool_call_args",
     "tool_call_id",
     "tool_call_kind",
     "tool_call_result",
     "tool_call_status",
     "tool_call_title",
-    "watch_chat_session",
 ]

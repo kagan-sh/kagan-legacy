@@ -13,6 +13,7 @@ from kagan.cli.doctor import DoctorCheck
 from kagan.core import KaganCore, install_asyncio_subprocess_exception_filter
 from kagan.core.errors import KaganError, NotFoundError
 from kagan.core.models import Project
+from kagan.tui._event_source import HttpEventSource, InProcEventSource
 from kagan.tui._utils import is_enabled as _is_enabled
 from kagan.tui.keybindings import APP_BINDINGS
 from kagan.tui.orchestrator_sessions import TuiOrchestratorSessionStore
@@ -94,6 +95,8 @@ class KaganApp(App[None]):
         db_path: str | Path | None = None,
         startup_chat_session_id: str | None = None,
         startup_checks: list[DoctorCheck] | None = None,
+        http_client: Any | None = None,
+        base_url: str = "",
         **kwargs,
     ) -> None:
         apply_textual_compat_workarounds()
@@ -107,6 +110,15 @@ class KaganApp(App[None]):
         self.selected_repo_id: str | None = None
         self.selected_repo_name: str | None = None
         self._startup_checks: list[DoctorCheck] | None = startup_checks
+
+        # Wire the correct EventSource implementation depending on whether
+        # the TUI is running in-process (local) or against a remote server.
+        if http_client is not None:
+            self.event_source: HttpEventSource | InProcEventSource = HttpEventSource(
+                http_client, base_url=base_url
+            )
+        else:
+            self.event_source = InProcEventSource(self.core._event_log)
 
         self.register_theme(KAGAN_THEME)
         self.register_theme(KAGAN_THEME_256)

@@ -23,12 +23,6 @@ from kagan.tui.screens._chat_runner import (
     acp_payload,
     stream_chunk_kind,
     stream_chunk_text,
-    tool_call_args,
-    tool_call_id,
-    tool_call_kind,
-    tool_call_result,
-    tool_call_status,
-    tool_call_title,
 )
 from kagan.tui.screens.orchestrator_overlay import OrchestratorOverlay
 from kagan.tui.widgets.agent_status import AgentStatusPanel
@@ -81,6 +75,9 @@ class DashboardStatusBar(Horizontal):
 class SessionDashboardScreen(Screen[None]):
     BINDINGS = SESSION_DASHBOARD_BINDINGS
 
+    # W9c: signals that this screen uses event_source.subscribe, not Events.stream
+    _USES_EVENT_SOURCE: bool = True
+
     def __init__(self, task_id: str) -> None:
         super().__init__(id="session-dashboard-screen")
         self._task_id = task_id
@@ -110,6 +107,8 @@ class SessionDashboardScreen(Screen[None]):
                 yield WorktreePanel(id="dashboard-worktree")
                 yield CommitsPanel(id="dashboard-commits")
                 yield DiffView(id="dashboard-diff-view", default_focus="content")
+        with Horizontal(id="dashboard-actions"):
+            yield Static("", id="dashboard-action-hint", classes="dashboard-action-hint")
         yield Footer(show_command_palette=False)
 
     async def on_mount(self) -> None:
@@ -246,61 +245,70 @@ class SessionDashboardScreen(Screen[None]):
         self._stream_task = asyncio.create_task(self._stream_events(self._task_id))
 
     async def _stream_events(self, task_id: str) -> None:
+        """Stream task events via event_source.subscribe (W9c).
+
+        Resolves the active (or latest) session for ``task_id``, then
+        subscribes to ``KaganApp.event_source`` for that session.  This
+        works identically for both in-proc (``InProcEventSource``) and
+        remote (``HttpEventSource``) TUI modes.
+
+        Falls back to a no-op loop when no session exists yet (the task has
+        not been run).  ``_ensure_stream_worker`` will restart this coroutine
+        via a new ``asyncio.Task`` when a session is started.
+        """
+        from kagan.tui._frame_reducer import apply_frame
+
         output = self.query_one(StreamingOutput)
+        event_source = self.kagan_app.event_source
+
+        # Resolve the active or latest session_id for this task.
+        session_id: str | None = None
         try:
-            async for event in self.kagan_app.core.tasks.events.stream(
-                task_id,
-                replay_limit=SESSION_DASHBOARD_REPLAY_EVENT_LIMIT,
-            ):
-                payload = event.payload or {}
-                match event.event_type:
-                    case "output_chunk":
-                        self._render_stream_chunk(output, payload)
-                    case "tool_call_start":
-                        output.upsert_tool_call(
-                            tool_call_id(payload),
-                            tool_call_title(payload),
-                            status=tool_call_status(payload, default="running"),
-                            args=tool_call_args(payload),
-                            result=tool_call_result(payload),
-                            kind=tool_call_kind(payload),
-                        )
-                    case "tool_call_update":
-                        output.update_tool_status(
-                            tool_call_id(payload),
-                            tool_call_status(payload, default="updated"),
-                            result=tool_call_result(payload),
-                        )
-                    case "agent_status":
-                        output.post_note(self._payload_text(payload) or "Agent status update")
-                        usage = payload.get("usage")
-                        if isinstance(usage, dict):
-                            try:
-                                panel = self.query_one(AgentStatusPanel)
-                                panel.set_usage_info(
-                                    usage.get("used"),
-                                    usage.get("size"),
-                                    usage.get("cost"),
-                                    usage.get("cost_currency"),
-                                )
-                            except Exception:
-                                pass
-                    case "agent_completed":
-                        self._running = False
-                        self._set_compact_status("Completed")
-                        output.post_note("Agent completed")
-                        self._queue_refreshes(
-                            agent_status=True, worktree=True, persona=True, delay=0.0
-                        )
-                    case "agent_failed":
-                        self._running = False
-                        self._set_compact_status("Failed")
-                        output.post_note(self._payload_text(payload) or "Agent failed")
-                        self._queue_refreshes(
-                            agent_status=True, worktree=True, persona=True, delay=0.0
-                        )
-                    case _:
-                        continue
+            latest = await self._latest_run()
+            if latest is not None:
+                session_id = latest.id
+        except Exception:
+            session_id = None
+
+        if session_id is None:
+            # No session yet — nothing to subscribe to; the worker will be
+            # restarted by _ensure_stream_worker when a session starts.
+            return
+
+        state: dict = {}
+
+        try:
+            async for frame in event_source.subscribe(session_id, "task", from_seq=0):
+                frame_type: str = getattr(frame, "type", "")
+                state = apply_frame(state, frame)
+
+                if frame_type == "patch":
+                    op: str = getattr(frame, "op", "")
+                    value = getattr(frame, "value", None)
+
+                    if op == "create":
+                        text = value.get("text", "") if isinstance(value, dict) else ""
+                        role: str = "assistant"
+                        if isinstance(value, dict):
+                            role = value.get("role", "assistant")
+                        if text:
+                            self._render_stream_chunk(output, {"text": text, "kind": role})
+                    elif op == "append":
+                        delta = value if isinstance(value, str) else ""
+                        if delta:
+                            self._render_stream_chunk(output, {"text": delta, "kind": "assistant"})
+                    elif op == "finalize":
+                        # Finalize signals completion of this chunk stream
+                        pass
+
+                elif frame_type == "snapshot":
+                    # On reconnect, snapshot replays all entries — render them all
+                    for entry in sorted(state.values(), key=lambda e: e.idx):
+                        if entry.text:
+                            self._render_stream_chunk(
+                                output, {"text": entry.text, "kind": entry.role}
+                            )
+
         except asyncio.CancelledError:
             return
         except (KaganError, NoMatches, AttributeError, OSError, RuntimeError) as exc:

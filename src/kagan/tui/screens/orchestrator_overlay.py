@@ -88,6 +88,9 @@ class OrchestratorOverlay(ModalScreen[None]):
 
         self._chat_message_task: asyncio.Task[None] | None = None
 
+        # Live-tail worker for task sessions (W9c: event_source path)
+        self._live_task_worker: asyncio.Task[None] | None = None
+
         # Fullscreen state
         self._is_fullscreen = False
 
@@ -129,6 +132,7 @@ class OrchestratorOverlay(ModalScreen[None]):
             self._chat_message_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._chat_message_task
+        await self._cancel_live_task_worker()
 
     def on_show(self) -> None:
         self.call_after_refresh(self._focus_input)
@@ -167,6 +171,7 @@ class OrchestratorOverlay(ModalScreen[None]):
 
     async def _select_orchestrator(self) -> None:
         """Default to orchestrator mode."""
+        await self._cancel_live_task_worker()
         self._selected_session_id = None
         self._selected_item = None
         self._update_breadcrumb(_ORCHESTRATOR_TITLE)
@@ -186,9 +191,11 @@ class OrchestratorOverlay(ModalScreen[None]):
 
         match item.type:
             case "orchestrator":
+                await self._cancel_live_task_worker()
                 self._update_breadcrumb(item.title)
                 await self._load_orchestrator_state()
             case "general":
+                await self._cancel_live_task_worker()
                 self._update_breadcrumb(item.title)
                 await self._load_general_state(item)
             case "task":
@@ -259,8 +266,25 @@ class OrchestratorOverlay(ModalScreen[None]):
         panel.set_session_kind(SessionKind.ORCHESTRATOR)
         panel.hydrate_current_session_history(history)
 
+    async def _cancel_live_task_worker(self) -> None:
+        """Cancel and await the live-tail task worker if one is running."""
+        if self._live_task_worker is not None:
+            self._live_task_worker.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._live_task_worker
+            self._live_task_worker = None
+
     async def _replay_task_session(self, item: SessionItem, panel: ChatPanel) -> None:
-        """Replay recent events for a task session (read-only, no live stream)."""
+        """Subscribe to live task session events via event_source (W9c).
+
+        Replaces the legacy one-shot ``list_recent`` scan with a live-tail
+        subscription through ``event_source.subscribe``.  The worker is
+        stored in ``_live_task_worker`` and cancelled on overlay dismiss /
+        session switch.
+        """
+        # Cancel any previous live-tail worker before starting a new one
+        await self._cancel_live_task_worker()
+
         output = panel.stream_output()
         output.clear()
 
@@ -270,29 +294,43 @@ class OrchestratorOverlay(ModalScreen[None]):
             panel.add_system_message("Task session missing task or session id")
             return
 
-        try:
-            replay_events = await self.kagan_app.core.tasks.events.list_recent(
-                task_id, limit=200, session_id=session_id
-            )
-        except Exception:
-            replay_events = []
+        event_source = self.kagan_app.event_source
 
-        for event in replay_events:
-            match event.event_type:
-                case "output_chunk":
-                    self._render_agent_event(
-                        event.event_type, event.payload or {}, output, merge=True
-                    )
-                case "agent_completed":
-                    self._render_agent_event(
-                        event.event_type, event.payload or {}, output, merge=True
-                    )
-                case "agent_failed":
-                    self._render_agent_event(
-                        event.event_type, event.payload or {}, output, merge=True
-                    )
-                case _:
-                    pass
+        async def _live_tail() -> None:
+            from kagan.tui._frame_reducer import apply_frame
+
+            state: dict = {}
+            try:
+                # Subscribe using session_id (the event_log key for task frames)
+                async for frame in event_source.subscribe(session_id, "task", from_seq=0):
+                    if not self.is_mounted:
+                        return
+                    state = apply_frame(state, frame)
+                    frame_type: str = getattr(frame, "type", "")
+                    if frame_type == "patch":
+                        op: str = getattr(frame, "op", "")
+                        value = getattr(frame, "value", None)
+                        if op == "create":
+                            text = value.get("text", "") if isinstance(value, dict) else ""
+                            if text:
+                                output.append_text(text)
+                        elif op == "append":
+                            delta = value if isinstance(value, str) else ""
+                            if delta:
+                                output.append_text(delta)
+                    elif frame_type == "snapshot":
+                        # Render snapshot entries on reconnect
+                        for entry in sorted(state.values(), key=lambda e: e.idx):
+                            if entry.text:
+                                output.append_text(entry.text)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.debug("_live_tail: error subscribing to session_id={}: {}", session_id, exc)
+
+        self._live_task_worker = asyncio.create_task(
+            _live_tail(), name=f"orch-overlay-live-tail-{session_id[:8]}"
+        )
 
     # ------------------------------------------------------------------
     # Key / event handlers

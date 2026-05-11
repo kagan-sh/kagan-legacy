@@ -1,32 +1,13 @@
-// Surface-aware chat-flow tests against the scripted FakeAgentDirector.
-// Each test maps to one of the 10 user-facing flows in
-// docs/internal/features/{chat,tui,web,core,vscode,cli}.md.
-//
-// Helpers are shared via ./helpers.ts. New flow blocks
-// reuse: scheduleScenario / clearScenario / chatEcho / quickComplete /
-// reviewGate / permissionGate / waitForTaskStatus / waitForTaskSessions /
-// createTaskAndRun / createTaskAndRunWithScenario / ensureProjectReady /
-// ensureBoardReady.
-
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type Page,
-} from "./coverage-fixture";
+// Compressed chat coverage: cold start + multiturn + reload persistence,
+// streaming + tool traces, permission gate, slash menu, and interrupt.
+// Task-scoped chat + Cmd+K Spotlight live in task-journey / board-spotlight.
+import { expect, test, type APIRequestContext, type Page } from "./coverage-fixture";
 import {
   chatEcho,
   clearScenario,
-  createTaskAndRun,
-  createTaskAndRunWithScenario,
-  ensureBoardReady,
   ensureProjectReady,
   permissionGate,
-  quickComplete,
-  reviewGate,
   scheduleScenario,
-  waitForTaskSessions,
-  waitForTaskStatus,
   type FakeScenario,
 } from "./helpers";
 
@@ -38,14 +19,7 @@ type WireChatSession = {
   source: string;
 };
 
-// ---------------------------------------------------------------------------
-// Local helpers — kept inline; do not promote unless reused by a third spec.
-// ---------------------------------------------------------------------------
-
-async function createOrchestratorSession(
-  request: APIRequestContext,
-  label: string,
-): Promise<string> {
+async function createSession(request: APIRequestContext, label: string): Promise<string> {
   const created = await request.post("/api/chat/sessions", {
     data: { label, agent_backend: "fake-agent" },
   });
@@ -85,59 +59,17 @@ async function scheduleSessionEcho(
   request: APIRequestContext,
   sessionId: string,
   reply: string,
-): Promise<FakeScenario> {
-  const scenario = chatEcho(sessionId, reply);
-  await scheduleScenario(request, scenario);
-  return scenario;
+): Promise<void> {
+  await scheduleScenario(request, chatEcho(sessionId, reply));
 }
 
-// ---------------------------------------------------------------------------
-// Flow A — Cold-Start Chat
-// ---------------------------------------------------------------------------
+test.describe("Chat flows", () => {
+  test.describe.configure({ timeout: 120_000 });
 
-test.describe("Flow A — Cold-Start Chat", () => {
-  test("user sends first message and sees scripted assistant reply", async ({
-    page,
-    request,
-  }) => {
+  test("cold start, multiturn, and persistence across reload", async ({ page, request }) => {
     await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(
-      request,
-      "flow-a cold start",
-    );
-    await scheduleSessionEcho(request, sessionId, "hello from cold start");
+    const sessionId = await createSession(request, "chat multiturn persist");
 
-    await gotoChat(page, sessionId);
-    await sendMessage(page, "hi");
-
-    await expect(lastUserMessage(page)).toContainText("hi");
-    await expect(lastAssistantMessage(page)).toContainText(
-      "hello from cold start",
-      {
-        timeout: 15_000,
-      },
-    );
-
-    await clearScenario(request, sessionId);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Flow B — Multiturn + Queue Drain
-// ---------------------------------------------------------------------------
-
-test.describe("Flow B — Multiturn + Queue Drain", () => {
-  test("two prompts in sequence both reach the assistant", async ({
-    page,
-    request,
-  }) => {
-    await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(
-      request,
-      "flow-b multiturn",
-    );
-
-    // First turn — quick echo so the second send happens after stream end.
     await scheduleSessionEcho(request, sessionId, "turn one reply");
     await gotoChat(page, sessionId);
     await sendMessage(page, "first");
@@ -145,7 +77,6 @@ test.describe("Flow B — Multiturn + Queue Drain", () => {
       timeout: 15_000,
     });
 
-    // Second turn — schedule a different reply, send again, expect second reply.
     await scheduleSessionEcho(request, sessionId, "turn two reply");
     await sendMessage(page, "second");
     await expect(lastUserMessage(page)).toContainText("second");
@@ -153,60 +84,19 @@ test.describe("Flow B — Multiturn + Queue Drain", () => {
       timeout: 15_000,
     });
 
-    await clearScenario(request, sessionId);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Flow C — Permission Gating
-// ---------------------------------------------------------------------------
-
-test.describe("Flow C — Permission Gating", () => {
-  test("agent tool_use request renders in stream entries", async ({
-    page,
-    request,
-  }) => {
-    await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(
-      request,
-      "flow-c permission",
-    );
-
-    await scheduleScenario(request, permissionGate(sessionId, "write_file"));
-
-    await gotoChat(page, sessionId);
-    await sendMessage(page, "please write the file");
-
-    // The fake permission_gate scenario emits a chunk + tool_use. Both
-    // should appear; the chunk is the most reliable assertion since
-    // permission UI rendering is currently a server-pause path.
-    await expect(lastAssistantMessage(page)).toContainText(
-      "I need to write a file.",
-      {
-        timeout: 15_000,
-      },
-    );
+    await page.reload();
+    await page.waitForLoadState("load");
+    await expect(lastUserMessage(page)).toContainText("second");
+    await expect(lastAssistantMessage(page)).toContainText("turn two reply");
 
     await clearScenario(request, sessionId);
   });
-});
 
-// ---------------------------------------------------------------------------
-// Flow D — Streaming Output + Typewriter
-// ---------------------------------------------------------------------------
-
-test.describe("Flow D — Streaming Output", () => {
-  test("multi-chunk reply concatenates in the assistant entry", async ({
-    page,
-    request,
-  }) => {
+  test("streaming chunks and tool_use / tool_result trail", async ({ page, request }) => {
     await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(
-      request,
-      "flow-d streaming",
-    );
+    const sessionId = await createSession(request, "chat stream tool");
 
-    const scenario: FakeScenario = {
+    const streaming: FakeScenario = {
       targetId: sessionId,
       cues: [
         { wait: 0.05, emit: { type: "chunk", text: "first " } },
@@ -214,36 +104,18 @@ test.describe("Flow D — Streaming Output", () => {
         { wait: 0.1, emit: { type: "chunk", text: "third" }, done: true },
       ],
     };
-    await scheduleScenario(request, scenario);
+    await scheduleScenario(request, streaming);
 
     await gotoChat(page, sessionId);
     await sendMessage(page, "stream test");
 
-    // Final assertion only — no per-chunk timing because that's racy.
-    await expect(lastAssistantMessage(page)).toContainText(
-      "first second third",
-      {
-        timeout: 15_000,
-      },
-    );
+    await expect(lastAssistantMessage(page)).toContainText("first second third", {
+      timeout: 15_000,
+    });
 
     await clearScenario(request, sessionId);
-  });
-});
 
-// ---------------------------------------------------------------------------
-// Flow E — Tool Call + Live Status
-// ---------------------------------------------------------------------------
-
-test.describe("Flow E — Tool Call", () => {
-  test("tool_use + tool_result + final chunk all surface", async ({
-    page,
-    request,
-  }) => {
-    await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(request, "flow-e tool");
-
-    const scenario: FakeScenario = {
+    const toolScenario: FakeScenario = {
       targetId: sessionId,
       cues: [
         {
@@ -269,9 +141,8 @@ test.describe("Flow E — Tool Call", () => {
         },
       ],
     };
-    await scheduleScenario(request, scenario);
+    await scheduleScenario(request, toolScenario);
 
-    await gotoChat(page, sessionId);
     await sendMessage(page, "run shell");
 
     await expect(lastAssistantMessage(page)).toContainText("tool finished", {
@@ -280,46 +151,26 @@ test.describe("Flow E — Tool Call", () => {
 
     await clearScenario(request, sessionId);
   });
-});
 
-// ---------------------------------------------------------------------------
-// Flow F — Session Persistence + Restore
-// ---------------------------------------------------------------------------
-
-test.describe("Flow F — Session Persistence", () => {
-  test("messages persist across navigation", async ({ page, request }) => {
+  test("permission gate surfaces assistant chunk", async ({ page, request }) => {
     await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(
-      request,
-      "flow-f persist",
-    );
-    await scheduleSessionEcho(request, sessionId, "persisted reply");
+    const sessionId = await createSession(request, "chat permission");
+
+    await scheduleScenario(request, permissionGate(sessionId, "write_file"));
 
     await gotoChat(page, sessionId);
-    await sendMessage(page, "persist me");
-    await expect(lastAssistantMessage(page)).toContainText("persisted reply", {
+    await sendMessage(page, "please write the file");
+
+    await expect(lastAssistantMessage(page)).toContainText("I need to write a file.", {
       timeout: 15_000,
     });
 
-    // Hard reload the page; history must come back.
-    await page.reload();
-    await page.waitForLoadState("load");
-
-    await expect(lastUserMessage(page)).toContainText("persist me");
-    await expect(lastAssistantMessage(page)).toContainText("persisted reply");
-
     await clearScenario(request, sessionId);
   });
-});
 
-// ---------------------------------------------------------------------------
-// Flow G — Slash Commands
-// ---------------------------------------------------------------------------
-
-test.describe("Flow G — Slash Commands", () => {
-  test("typing a slash opens the command list", async ({ page, request }) => {
+  test("slash menu opens from composer", async ({ page, request }) => {
     await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(request, "flow-g slash");
+    const sessionId = await createSession(request, "chat slash");
 
     await gotoChat(page, sessionId);
 
@@ -328,56 +179,15 @@ test.describe("Flow G — Slash Commands", () => {
     await input.click();
     await input.fill("/");
 
-    // Slash registry exposes a popover/list. Use a stable role-based query.
     const list = page.getByRole("listbox", { name: /commands?/i });
     await expect(list.or(page.getByText(/^\/help/i)).first()).toBeVisible({
       timeout: 5_000,
     });
   });
-});
 
-// ---------------------------------------------------------------------------
-// Flow H — Task-Scoped Chat
-// Task page now has an inline "Open chat" button (aria-label="Open session chat")
-// that navigates the chat pane — the old SessionOverlay dialog is gone.
-// ---------------------------------------------------------------------------
-
-test.describe("Flow H — Task-Scoped Chat", () => {
-  test("task page exposes Open chat button that is backed by the worker session", async ({
-    page,
-    request,
-  }) => {
+  test("interrupt stops a slow turn", async ({ page, request }) => {
     await ensureProjectReady(request);
-    const title = `flow-h task ${Date.now()}`;
-    const taskId = await createTaskAndRunWithScenario(
-      request,
-      title,
-      quickComplete(`task:${title}`, "Done."),
-    );
-    await waitForTaskSessions(request, taskId);
-
-    await page.goto(`/task/${taskId}`);
-    await page.waitForLoadState("load");
-
-    // The task action bar exposes "Open chat" (aria-label="Open session chat").
-    // The old SessionOverlay dialog is replaced by in-page navigation.
-    await expect(
-      page.getByRole("button", { name: "Open session chat" }),
-    ).toBeVisible({ timeout: 10_000 });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Flow I — Interrupt / Stop Turn
-// ---------------------------------------------------------------------------
-
-test.describe("Flow I — Interrupt", () => {
-  test("Stop button halts a long-running turn", async ({ page, request }) => {
-    await ensureProjectReady(request);
-    const sessionId = await createOrchestratorSession(
-      request,
-      "flow-i interrupt",
-    );
+    const sessionId = await createSession(request, "chat interrupt");
 
     const slow: FakeScenario = {
       targetId: sessionId,
@@ -395,17 +205,10 @@ test.describe("Flow I — Interrupt", () => {
     await gotoChat(page, sessionId);
     await sendMessage(page, "long running");
 
-    // During streaming the text lives in the stream entries, not a persisted
-    // ChatMessage with data-role="assistant" yet.
-    await expect(page.getByTestId("chat-stream-agent-text")).toContainText(
-      "thinking...",
-      {
-        timeout: 5_000,
-      },
-    );
+    await expect(page.getByTestId("chat-stream-agent-text")).toContainText("thinking...", {
+      timeout: 5_000,
+    });
 
-    // Stop button: visible only while streaming. Selector mirrors
-    // packages/web/src/components/chat/chat-input-bar.tsx (Stop role).
     const stop = page.getByRole("button", { name: /stop/i });
     if (await stop.isVisible().catch(() => false)) {
       await stop.click();
@@ -413,57 +216,9 @@ test.describe("Flow I — Interrupt", () => {
       await page.keyboard.press("Escape");
     }
 
-    // Composer must re-enable; "should not arrive" must NOT appear.
     await expect(composer(page)).toBeEnabled({ timeout: 5_000 });
     await expect(page.getByText("should not arrive")).toHaveCount(0);
 
     await clearScenario(request, sessionId);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Flow J — Workspace View / Orchestrator Overlay
-// Cmd+K now opens the Spotlight (command palette) in the new shell.
-// The old Cmd+Shift+K → Session Switcher shortcut is no longer wired.
-// The "Session overlay" dialog is gone; task-scoped chat uses in-page routing.
-// ---------------------------------------------------------------------------
-
-test.describe("Flow J — Workspace / Session Switcher", () => {
-  test("Cmd/Ctrl+K opens the Spotlight from the board", async ({
-    page,
-    request,
-  }) => {
-    await ensureBoardReady(page, request);
-    const isMac = await page.evaluate(() =>
-      navigator.platform.toLowerCase().includes("mac"),
-    );
-    await page.keyboard.press(isMac ? "Meta+k" : "Control+k");
-    // Spotlight is rendered as role="dialog" aria-label="Command palette".
-    await expect(
-      page.getByRole("dialog", { name: /command palette/i }),
-    ).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("board → task → Open chat button is visible for a running task", async ({
-    page,
-    request,
-  }) => {
-    await ensureProjectReady(request);
-    const title = `flow-j workspace ${Date.now()}`;
-    const taskId = await createTaskAndRun(request, title);
-    // Wait for task to move out of BACKLOG (status may be IN_PROGRESS, REVIEW, or DONE).
-    await waitForTaskStatus(request, taskId, "IN_PROGRESS", { timeoutMs: 30_000 }).catch(
-      () => {
-        // Status may not flip on the first task run — Open chat button should still exist.
-      },
-    );
-
-    await page.goto(`/task/${taskId}`);
-    await page.waitForLoadState("load");
-
-    // The task action bar now has aria-label="Open session chat" instead of the old overlay button.
-    await expect(
-      page.getByRole("button", { name: "Open session chat" }),
-    ).toBeVisible({ timeout: 10_000 });
   });
 });

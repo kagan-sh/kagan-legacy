@@ -175,6 +175,22 @@ export class KaganApiClient extends BaseClient {
   async closeSession(sessionId: string): Promise<void> {
     await this.post<void>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/close`, {});
   }
+
+  // -- Native SSE frame endpoints -------------------------------------------
+  // These return full URLs suitable for `new EventSource(url, { withCredentials: true })`.
+  // In bundled-web mode the URL is a same-origin relative path so cookies are
+  // sent automatically; no Authorization header needed (EventSource doesn't
+  // support custom headers).
+
+  /** Full URL for GET /api/sessions/{sessionId}/events (chat SSE, kind=chat). */
+  chatEventsUrl(sessionId: string): string {
+    return this.getFullUrl(`/api/sessions/${encodeURIComponent(sessionId)}/events`);
+  }
+
+  /** Full URL for GET /api/tasks/{taskId}/sse (task SSE, kind=task). */
+  taskEventsUrl(taskId: string): string {
+    return this.getFullUrl(`/api/tasks/${encodeURIComponent(taskId)}/sse`);
+  }
 }
 
 // ---------------------------------------------------------------------------

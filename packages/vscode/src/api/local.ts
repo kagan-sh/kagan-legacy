@@ -7,6 +7,25 @@
 
 import type { Priority, TaskStatus } from "@kagan/shared-api-client";
 
+// ── Frame stream event name constants ────────────────────────────────────────
+// Derived from the Frame discriminated union type in wire.ts:
+//   FrameSnapshot.type = 'snapshot'
+//   FrameReady.type    = 'ready'
+//   FramePatch.type    = 'patch'
+//   FrameResume.type   = 'resume'
+//
+// Used as the SSE event name when subscribing via addEventListener.
+// Never hand-type these strings — use FRAME_EVENT consts.
+
+export const FRAME_EVENT = {
+  SNAPSHOT: "snapshot",
+  READY: "ready",
+  PATCH: "patch",
+  RESUME: "resume",
+} as const satisfies Record<string, "snapshot" | "ready" | "patch" | "resume">;
+
+export type FrameEventName = (typeof FRAME_EVENT)[keyof typeof FRAME_EVENT];
+
 /** Launcher backends supported by the VS Code extension. */
 export type LauncherBackend =
   | "tmux"

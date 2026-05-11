@@ -35,22 +35,24 @@ kagan/
 
 ## WHERE TO LOOK
 
-| Task                  | Location                                                  | Notes                                                                             |
-| --------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Add CLI command       | `src/kagan/cli/`                                          | Click group in `main.py`, lazy-loaded modules                                     |
-| Add MCP tool          | `src/kagan/mcp/toolsets/`                                 | One file per domain, use `get_context()`                                          |
-| Add TUI screen        | `src/kagan/tui/screens/`                                  | Register in `app.py` SCREENS dict                                                 |
-| Add TUI widget        | `src/kagan/tui/widgets/`                                  | Follow Textual compose pattern                                                    |
-| Modify task lifecycle | `src/kagan/core/_transitions.py`                          | State machine for task status                                                     |
-| Add agent backend     | `src/kagan/core/_agent.py`                                | AGENT_BACKENDS registry dict                                                      |
-| Add DB migration      | `alembic -c alembic.ini revision --autogenerate -m "msg"` | Via `poe db-migration-generate`                                                   |
-| Wire protocol change  | `src/kagan/server/responses.py`                           | Response models → JSON Schema → TypeScript via `scripts/generate_wire_types.py`   |
-| Web UI feature        | `packages/web/src/`                                       | React 19 + jotai + Tailwind CSS 4                                                 |
-| API endpoint          | `src/kagan/server/_routes.py`                             | Starlette routes via FastMCP                                                      |
-| Add integration       | `src/kagan/core/integrations/`                            | Implement Integration protocol, register in `all_enabled()`                       |
-| VS Code feature       | `packages/vscode/src/providers/`                          | One provider per VS Code API surface                                              |
-| VS Code command       | `packages/vscode/src/commands/`                           | Register in `extension.ts`                                                        |
-| Modify prompt system  | `src/kagan/core/_prompts.py`                              | Three-layer resolution: dotfile → defaults + behavioral → additional instructions |
+| Task                  | Location                                                                                                                        | Notes                                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Add CLI command       | `src/kagan/cli/`                                                                                                                | Click group in `main.py`, lazy-loaded modules                                                                              |
+| Add MCP tool          | `src/kagan/mcp/toolsets/`                                                                                                       | One file per domain, use `get_context()`                                                                                   |
+| Add TUI screen        | `src/kagan/tui/screens/`                                                                                                        | Register in `app.py` SCREENS dict                                                                                          |
+| Add TUI widget        | `src/kagan/tui/widgets/`                                                                                                        | Follow Textual compose pattern                                                                                             |
+| Modify task lifecycle | `src/kagan/core/_transitions.py`                                                                                                | State machine for task status                                                                                              |
+| Add agent backend     | `src/kagan/core/_agent.py`                                                                                                      | AGENT_BACKENDS registry dict                                                                                               |
+| Add DB migration      | `alembic -c alembic.ini revision --autogenerate -m "msg"`                                                                       | Via `poe db-migration-generate`                                                                                            |
+| Wire protocol change  | `src/kagan/server/responses.py`                                                                                                 | Response models → JSON Schema → TypeScript via `scripts/generate_wire_types.py`                                            |
+| Add SSE event channel | `src/kagan/server/_event_routes.py`                                                                                             | Register route + hook into `register_event_routes(mcp)` in `server.py`                                                     |
+| Add frame consumer    | `src/kagan/tui/_event_source.py` / `packages/web/src/lib/hooks/use-entry-stream.ts` / `packages/vscode/src/api/event-source.ts` | TUI: implement `InProcEventSource`/`HttpEventSource` interface; Web: use `useEntryStream`; VS Code: use `KaganEventSource` |
+| Web UI feature        | `packages/web/src/`                                                                                                             | React 19 + jotai + Tailwind CSS 4                                                                                          |
+| API endpoint          | `src/kagan/server/_routes.py`                                                                                                   | Starlette routes via FastMCP                                                                                               |
+| Add integration       | `src/kagan/core/integrations/`                                                                                                  | Implement Integration protocol, register in `all_enabled()`                                                                |
+| VS Code feature       | `packages/vscode/src/providers/`                                                                                                | One provider per VS Code API surface                                                                                       |
+| VS Code command       | `packages/vscode/src/commands/`                                                                                                 | Register in `extension.ts`                                                                                                 |
+| Modify prompt system  | `src/kagan/core/_prompts.py`                                                                                                    | Three-layer resolution: dotfile → defaults + behavioral → additional instructions                                          |
 
 ## CONVENTIONS
 
@@ -90,6 +92,8 @@ async funnel from within a sync transaction context.
 - **DO NOT** use stdlib `logging` — use `loguru`
 - **DO NOT** put test fixtures in test files — use `tests/helpers/`
 - **DO NOT** write `task.status = X` outside a `_db_sync`/`_db_async` callback or the files listed above — use `transition_task` instead
+- **DO NOT** use `/api/chat/sessions/{id}/watch` or `/messages?after_id=` — these were removed in W9a cleanup; subscribe via `GET /api/sessions/{id}/events` with `Last-Event-ID` for resume
+- **DO NOT** write `task.status` or `session.status` directly in EventLog frame producers — frames are supplementary; status transitions still go through `transition_task` / `transition_session`
 - RUF012 / RUF006 / SIM102 / SIM117 intentionally suppressed (see pyproject.toml)
 
 ## COMMANDS

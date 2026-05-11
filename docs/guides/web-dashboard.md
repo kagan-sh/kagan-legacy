@@ -15,14 +15,13 @@ kagan web --host 0.0.0.0    # LAN access
 
 ## Activity bar
 
-The left-edge activity bar has four icons:
+The left-edge activity bar has three icons:
 
-| Icon      | Route        | Purpose                               |
-| --------- | ------------ | ------------------------------------- |
-| Board     | `/board`     | Kanban board with drag-and-drop       |
-| Workspace | `/workspace` | Orchestrator-first conversation view  |
-| Analytics | `/analytics` | Agent performance and session metrics |
-| Settings  | `/settings`  | Categorized settings with sidebar     |
+| Icon      | Route        | Purpose                              |
+| --------- | ------------ | ------------------------------------ |
+| Board     | `/board`     | Kanban board with drag-and-drop      |
+| Workspace | `/workspace` | Orchestrator-first conversation view |
+| Settings  | `/settings`  | Categorized settings with sidebar    |
 
 Toggle between Board and Workspace with `Cmd/Ctrl+Shift+W`.
 
@@ -51,25 +50,6 @@ A conversation-first companion to the board, modeled after ChatGPT / Codex Deskt
 - On first visit, if no conversations exist, Kagan creates a blank orchestrator session automatically.
 - The global AI rail does not open on `/workspace`; this route already is the AI surface.
 
-## Analytics
-
-Added in v0.18.0. The `/analytics` page surfaces multi-dimensional metrics across your agent runs, with four tabs:
-
-| Tab              | Content                                                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **Backend**      | KPI cards (Total Sessions, Success Rate, Avg Duration, Retry Rate), backend performance table, duration chart, session timeline |
-| **By Role**      | Per-role success rates (Worker / Orchestrator / Reviewer) and a role comparison chart                                           |
-| **By Task Type** | Per-task-type success rates and a Backend x Task Type matrix                                                                    |
-| **Combined**     | 3D table of Backend x Role x Task Type combinations                                                                             |
-
-Top-of-page controls:
-
-- **Time range dropdown**: 7 / 14 / 30 days.
-- **Export**: downloads the current dataset as JSON.
-- **Glossary**: help icon that explains each metric.
-
-See [Analytics & Metrics](./analytics.md) for the full metric definitions, task-type classifier, and access across other surfaces (TUI, CLI, VS Code, MCP).
-
 ## Settings
 
 The settings page uses a left sidebar for category navigation. See [Configuration reference -- Web dashboard settings](../reference/configuration.md#web-dashboard-settings) for the full category list.
@@ -82,7 +62,7 @@ Changes save immediately for toggles and dropdowns. Text fields save on blur or 
 | ------------------ | ----------------------------------------------- |
 | `Cmd/Ctrl+Shift+W` | Toggle Board / Workspace                        |
 | `Cmd/Ctrl+Shift+P` | Quick Actions                                   |
-| `Cmd/Ctrl+.`       | Cycle AI panel on Board / Task routes           |
+| `Cmd/Ctrl+.`       | Toggle Sessions overlay on Board / Task routes  |
 | `Cmd/Ctrl+Shift+F` | Toggle AI panel fullscreen off-workspace        |
 | `Cmd/Ctrl+K`       | Session switcher                                |
 | `?` / `F1`         | Help overlay                                    |

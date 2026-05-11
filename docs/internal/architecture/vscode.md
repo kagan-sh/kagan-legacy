@@ -30,14 +30,17 @@ packages/vscode/src/
 │   ├── sse.ts                      # SSEStream — EventSource over fetch
 │   └── types.ts                    # Shared types, EVENT_TYPE / SSE_TYPE consts
 ├── providers/
-│   ├── chat.participant.ts         # @kagan chat participant (agent output)
+│   ├── chat.participant.ts         # @kagan chat participant (agent output, /switch)
 │   ├── board.tree.ts               # Kanban board TreeView
+│   ├── sessions.tree.ts            # "Sessions" TreeView (polls /api/v1/sessions)
 │   ├── events.output.ts            # Agent diagnostic log (OutputChannel)
 │   ├── review.comments.ts          # Review verdicts (Comments API)
 │   ├── tasks.scm.ts                # Task diffs (SCM / TextDocumentContentProvider)
 │   ├── tasks.scm.helpers.ts        # Diff parsing helpers
 │   ├── tasks.terminal.ts           # Terminal attach (tmux, nvim, IDE launchers)
-│   └── tasks.terminal.helpers.ts   # Launcher normalization, deep links
+│   ├── tasks.terminal.helpers.ts   # Launcher normalization, deep links
+│   ├── mention-link-provider.ts    # @task / @session links in editor docs
+│   └── mention-completion-provider.ts # @ typeahead for tasks/sessions
 ├── commands/
 │   ├── tasks.ts                    # Task CRUD, run, cancel, move, edit
 │   └── review.ts                   # Approve, reject, merge
@@ -89,21 +92,19 @@ Registered as `kagan.agent` with `isSticky: true`. Three modes:
 | Command     | Behavior                                                              |
 | ----------- | --------------------------------------------------------------------- |
 | *(default)* | Orchestrator chat -- proxies messages to `POST /api/chat/{id}/stream` |
-| `/watch`    | Stream task agent output via SSE                                      |
+| `/switch`   | Switch to a session by ID                                             |
 | `/status`   | Board summary table + running task list                               |
 
-**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets both the orchestrator session and any sticky `/watch` follow-up state.
+**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets the orchestrator session.
 
-**Watch pipeline:**
+**Session switch pipeline:**
 
-1. Fetch tail of recent events via `GET /api/tasks/{id}/events?tail=1&limit=10`
-1. Coalesce OUTPUT_CHUNK tokens into flowing markdown
-1. Render tool calls as inline code, status changes as rules
-1. If IN_PROGRESS, subscribe to live SSE until AGENT_COMPLETED/FAILED
+1. Resolve session ID via `GET /api/v1/sessions/{id}`
+1. Update participant state with the selected session
+1. Stream events via SSE for live sessions
 1. Append action buttons based on final task state
-1. Route later plain messages in that same chat conversation to `POST /api/tasks/{id}/follow-up`
 
-**`kagan.chat.open` command** accepts a tree item or string and opens the Chat panel pre-filled with `@kagan /watch <task>`.
+**`kagan.chat.open` command** accepts a tree item or string and opens the Chat panel.
 
 ______________________________________________________________________
 
@@ -119,25 +120,68 @@ Server event payloads nest ACP protocol data under `payload.acp`. Helper functio
 
 ______________________________________________________________________
 
-## Attach Context Detection
+## Sessions
 
-When the IDE is opened via "Attach to Task" (from TUI, web, or CLI), the server writes `.kagan/attach_context.json` into the worktree:
+The chat panel can switch to any running worker or reviewer session. State and
+plumbing:
 
-```json
-{ "task_id": "abc123", "session_id": "def456" }
+- `packages/vscode/src/providers/sessions.tree.ts` registers a
+  `kagan.agents` tree view that polls `GET /api/v1/sessions` every 5s
+  (and refreshes whenever the global SSE stream emits `TASK_UPDATED`). Each
+  node exposes `kagan.switchSession` inline.
+- `chat.participant.helpers.ts` adds `parseSwitchPrompt` (UUID or 8-char prefix
+  validation) and `resolveSessionId` (exact session id → session prefix →
+  exact task id → task prefix matching against the sessions list).
+- `chat.participant.ts` handles `@kagan /switch <id>`, remembers
+  `selectedSessionId` on the participant state, and routes plain follow-up
+  turns through the selected session when a session is bound.
+- Commands `kagan.switchSession`, `kagan.stopSession`, and `kagan.closeSession` are
+  registered in `extension.ts` and surfaced from the tree view and the command
+  palette.
+
+______________________________________________________________________
+
+## Frame-Stream EventSource
+
+`KaganEventSource` (`packages/vscode/src/api/event-source.ts`) provides
+resumable SSE streaming for chat and task sessions.
+
+### Entry points
+
+```typescript
+// Chat session (kind=chat):
+client.subscribeSessionEvents(sessionId)  // → KaganEventSource
+
+// Task session (kind=task):
+client.subscribeTaskEvents(taskId)        // → KaganEventSource
 ```
 
-On activation, `detectAttachContext()` in `extension.ts`:
+Both return a `KaganEventSource` instance. Callers register typed callbacks via
+`onSnapshot`, `onPatch`, `onReady`, `onResume`, and `onError`. Each registration
+returns an `Unsubscribe` function.
 
-1. Checks `kagan.autoWatchOnAttach` setting (default `true`)
-1. Looks for `.kagan/attach_context.json` in the workspace root
-1. Waits for SSE connection to establish
-1. Verifies the task is still `IN_PROGRESS` via the API
-1. Executes `kagan.chat.open` with the task ID, opening the Chat panel
+### Implementation details
 
-This works for all IDE launchers (vscode, cursor, windsurf, kiro, antigravity) since they all open the same worktree containing the context file. The extension also registers `workspaceContains:.kagan/attach_context.json` as an activation event for faster startup in the attach case.
+`KaganEventSource` accepts an `esFactory` parameter so unit tests can inject a
+fake without a full `EventSource` implementation. Production callers go through
+`KaganClient.subscribeSessionEvents` / `subscribeTaskEvents`, which provide
+the correct factory wrapping `KaganClient.streamRequest`.
 
-**Server side:** `_launchers.py` writes the file via `_write_attach_context()`. The `task_id` is passed from `Sessions.run()` through `launch_kwargs`.
+There is no npm EventSource polyfill. The VS Code extension host (Node 18+) does
+not have a global `EventSource`, so the factory abstraction is load-bearing.
+
+Auth: `?token=` query param appended to the URL when a token is present.
+Cookie auth also works for same-origin requests.
+
+The pure reducer `applyFrame(state, frame)` in `event-source.ts` maps typed
+`Frame` values onto `EntryStreamState.entries: Map<number, FrameEntry>`.
+
+### Removed
+
+`KaganClient.followChatSession` was removed in the W9d cleanup.
+`SSEStream` is retained for the global `TASK_UPDATED` / `SESSION_EVENT`
+board-refresh stream — this is a separate concern from per-session
+frame streaming.
 
 ______________________________________________________________________
 
@@ -151,6 +195,43 @@ ______________________________________________________________________
 1. Pipe server stdout/stderr to the "Kagan Server" OutputChannel
 1. On shutdown, send `SIGTERM`, wait for process exit, then escalate to `SIGKILL`
    only if the server does not exit within the grace window
+
+______________________________________________________________________
+
+## Design System
+
+The extension applies the [Kagan Design System](../../../packages/web/../../../Downloads/kagan-design-system/project/README.md) within the constraints of the VS Code extension API.
+
+### Theme color contributions
+
+Seven Kagan-specific theme color tokens are declared in `package.json` under `contributes.colors`. Extensions and themes can override these; the defaults are calibrated for dark and light VS Code themes:
+
+| Token               | Dark default | Light default | Usage                     |
+| ------------------- | ------------ | ------------- | ------------------------- |
+| `kagan.primary`     | `#d4a84b`    | `#b89154`     | Amber phosphor accent     |
+| `kagan.railRunning` | `#3fb58e`    | `#1a8563`     | Connected / running state |
+| `kagan.railWarning` | `#e6c07b`    | `#a87b25`     | Degraded / warning state  |
+| `kagan.railReview`  | `#c27c4e`    | `#a8653a`     | Review column accent      |
+| `kagan.railIdle`    | `#777777`    | `#8a7f72`     | Disconnected / idle state |
+| `kagan.modeAuto`    | `#d4a84b`    | `#b89154`     | AUTO execution mode badge |
+| `kagan.modePair`    | `#6fa3d4`    | `#6fa3d4`     | PAIR execution mode badge |
+
+Usage in code:
+
+```typescript
+// Reference via ThemeColor — never hard-coded hex
+item.color = new vscode.ThemeColor("kagan.railRunning");
+```
+
+### Casing rules
+
+- **UPPERCASE:** TreeView section/column labels (`BACKLOG`, `IN PROGRESS`, `REVIEW`, `DONE`), mode badges.
+- **Sentence case:** All command titles, tooltips, status bar text, notifications, button labels.
+- **No emoji.** Use codicon syntax (`$(check)`, `$(pulse)`, etc.) in VS Code surfaces that support it.
+
+### Status bar
+
+The brand glyph `ᘚᘛ` (U+15DA U+15DB) prefixes all status bar states. Color is driven by `kagan.railRunning` (connected) and `kagan.railIdle` (disconnected).
 
 ______________________________________________________________________
 

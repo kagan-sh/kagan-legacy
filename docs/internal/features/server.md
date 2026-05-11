@@ -158,7 +158,7 @@ Once a session is active, the server pushes streaming events over SSE:
 | `CHAT_INTERRUPTED`        | Turn stopped by user interrupt     |
 | `CHAT_SESSION_UPDATED`    | Session title or metadata changed  |
 | `CHAT_BUSY`               | Agent busy on another turn         |
-| `TOOL_PERMISSION_REQUEST` | Agent is waiting for tool approval |
+| `CHAT_PERMISSION_REQUEST` | Agent is waiting for tool approval |
 
 ______________________________________________________________________
 
@@ -200,9 +200,41 @@ curl -X POST "http://localhost:8765/api/integrations/{name}/sync?repo=owner/repo
 
 ______________________________________________________________________
 
+## Session Endpoints
+
+The SessionOverlay is driven by versioned session routes.
+
+### Listing sessions
+
+```bash
+curl http://localhost:8765/api/v1/sessions
+curl "http://localhost:8765/api/v1/sessions?project_id=<PROJECT_ID>"
+```
+
+Returns `SessionsResponse` — a `sessions` list of `SessionItemResponse`
+entries for orchestrator, task, and general sessions. Active sessions sort
+before terminal sessions, then newest `updated_at` first within each group.
+
+*Tests:* `tests/server/test_sessions_route.py`.
+
+### Replaying a session
+
+```bash
+curl "http://localhost:8765/api/v1/sessions/<SESSION_ID>/replay?limit=200&direction=forward"
+curl "http://localhost:8765/api/v1/sessions/<SESSION_ID>/replay?cursor=<CURSOR>&direction=backward"
+```
+
+Returns `SessionReplayPage` — an ordered `events` list, a `next_cursor`
+(format: `created_at|id`), and `has_more`. `direction` is `forward` (default)
+or `backward`; `limit` is bounded at 1000.
+
+*Tests:* `tests/server/test_session_replay_route.py`.
+
+______________________________________________________________________
+
 ## Analytics Routes
 
-Registered in `src/kagan/server/_analytics_routes.py`. All endpoints require an active project context — if none is set, they return an empty list or object rather than erroring. Used by the web dashboard's analytics views and by agents deciding which backend to invoke.
+Registered in `src/kagan/server/_analytics_routes.py`. All endpoints require an active project context — if none is set, they return an empty list or object rather than erroring. Used by backend selection, VS Code commands, and external clients.
 
 | Endpoint                                                          | Purpose                                                                                             |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |

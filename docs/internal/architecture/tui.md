@@ -75,14 +75,14 @@ KaganApp (Textual App)
 ├── KanbanScreen             # Main screen after project selected
 │   ├── BoardView            # 4-column kanban (BACKLOG → DONE)
 │   ├── TaskInspector        # Docked details panel
-│   ├── ChatPanel            # Docked / fullscreen AI Panel
+│   ├── OrchestratorOverlay  # Modal assistant surface (orchestrator / attached streams)
 │   └── PeekOverlay          # Task preview on P
 │
 ├── WorkspaceScreen          # Orchestrator-first workspace with session sidebar + full chat surface
 │   ├── Session sidebar      # Searchable orchestrator conversation list
 │   └── ChatPanel            # Full-width main conversation surface
 │
-├── (kanban_chat helpers)     # ACP payload extraction, stream chunk helpers (not a Screen)
+├── (_chat_runner helpers)    # ACP payload extraction, stream chunk helpers (not a Screen)
 │
 ├── TaskScreen               # Primary task detail screen pushed from kanban after inspector-open
 │
@@ -93,7 +93,7 @@ KaganApp (Textual App)
 │   ├── WorktreePanel        # File-level diff stats per modified file
 │   ├── CommitsPanel         # Task-branch commits since base
 │   ├── DiffPreviewPanel     # Unified diff of selected file
-│   └── ChatPanel            # Docked / fullscreen AI Panel streaming from agent
+│   └── SessionOverlay       # Docked / fullscreen session surface
 │
 ├── RepoPickerModal          # Ctrl+R — switch project / repo
 ├── PairInstructionsModal    # Pre-launch backend readiness check
@@ -178,7 +178,7 @@ ______________________________________________________________________
 | `KanbanScreen`     | `tasks`         | `reactive[list[Task]]`      | Board tasks                  |
 | `KanbanScreen`     | `selected`      | `var[str \| None]`          | Selected task ID             |
 | `KanbanScreen`     | `filter_text`   | `var[str]`                  | Search filter                |
-| `KanbanScreen`     | `chat_visible`  | `var[bool]`                 | AI Panel open state          |
+| `KanbanScreen`     | `chat_visible`  | `var[bool]`                 | SessionOverlay open state    |
 | `WorkspaceScreen`  | `session_items` | `list[ChatSessionListItem]` | Orchestrator session sidebar |
 | `SessionDashboard` | `session`       | `reactive[Session \| None]` | Active execution run         |
 
@@ -212,6 +212,66 @@ Full keybinding tables are in `docs/internal/features/tui.md`.
 
 ______________________________________________________________________
 
+## Orchestrator Overlay
+
+`OrchestratorOverlay` (`src/kagan/tui/screens/orchestrator_overlay.py`) is the
+global agent-stream switcher mounted via `app.SCREENS["orchestrator-overlay"]`
+and bound on `APP_BINDINGS` as **`Ctrl+Space`** (**Orchestrator (toggle)**).
+Kanban, Task, and Session Dashboard additionally use **`Ctrl+.`** (`toggle_chat`,
+footer label **Sessions**) to push the same overlay (often with task context).
+When the overlay is already the top screen, `Ctrl+Space` pops it.
+
+Two modes:
+
+| Mode             | Behaviour                                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator** | Sends messages to the project orchestrator chat session.                                                          |
+| **Session**      | Re-streams a worker or reviewer session: replay from persisted events, live tail from the core task event stream. |
+
+`Esc` is layered: from a session stream it returns back to orchestrator
+mode; from orchestrator mode it closes the overlay. `Ctrl+Space` mirrors `Esc`.
+
+The overlay composes a breadcrumb header (`Orchestrator` /
+`Worker · running · …`), a `ChatPanel`, and a `SessionList`
+(`src/kagan/tui/widgets/session_list.py`) under the chat input. The list
+polls `client.list_session_items()`, renders one row per active session, and
+on `Enter` posts an `SessionSelected` message carrying the target session id.
+From the chat input, `↓` focuses the bar; from the bar, `Esc` returns focus to
+the input. `Ctrl+Up` and `Ctrl+Down` (declared with `priority=True` so they
+fire even when the bar is the focused descendant) cycle through
+`[Orchestrator, ...running workers/reviewers]`, matching by `session_id`
+rather than list index. Keys are declared on `ORCHESTRATOR_OVERLAY_BINDINGS` /
+`RUNNING_AGENTS_BAR_BINDINGS` in `keybindings.py`.
+
+Because `OrchestratorOverlay` is a `ModalScreen`, parent-screen bindings
+like `Ctrl+.` are shadowed while the overlay is mounted. The
+embedded `ChatPanel` runs in `set_footer_mode("overlay")` and rebuilds its
+hint string to advertise only keys that fire inside the overlay — the
+panel-level shortcuts that the parent owns are dropped from the hint.
+
+`TaskScreen` integrates with the overlay on show:
+
+- `BACKLOG` tasks push the overlay automatically so the user can talk to the
+  orchestrator about the task before launching an agent.
+- In-progress tasks call `client.resolve_active_session(task_id)` and
+  auto-attach to the resulting session when one exists.
+
+### Removed surfaces
+
+The overlay supersedes the embedded per-task chat:
+
+- `screens/_task_chat.py` and `screens/_task_stream.py` were deleted.
+- The embedded `ChatPanel` region inside `screens/_task_review.py` was removed.
+- `TaskScreen` is now a header + tabs (Overview / Changes / Review) and a
+  static `#ts-chat-hint` widget that points the user at the overlay.
+
+References to `action_open_task_chat`, `_task_chat` mixins, and the per-screen
+`ctrl+f` / `ctrl+.` chat bindings have been scrubbed across `app.py`,
+`kanban.py`, `session_dashboard.py`, `_chat_runner.py`, and the
+`task_event_handler` helpers.
+
+______________________________________________________________________
+
 ## Chat Integration
 
 ### ChatSession
@@ -242,6 +302,73 @@ Slash commands and plan/permission flows are behavioral — see `docs/internal/f
 
 ______________________________________________________________________
 
+## Frame-Stream EventSource
+
+The TUI uses the `EventSource` interface (`src/kagan/tui/_event_source.py`) to
+consume the frame-stream subsystem. Two implementations are available and
+selected at boot time by `KaganApp`.
+
+### Interface contract
+
+Both implementations expose two coroutines with identical signatures:
+
+- `snapshot(session_id, kind, from_seq) -> EntrySnapshot` — point-in-time
+  snapshot of all entries from `from_seq` onward. Used to pre-fill a chat panel
+  on (re-)open.
+- `subscribe(session_id, kind, from_seq) -> AsyncIterator[Frame]` — yields
+  backlog frames then tails live frames.
+
+### Implementations
+
+| Class               | Mode                 | Backed by                                                    |
+| ------------------- | -------------------- | ------------------------------------------------------------ |
+| `InProcEventSource` | local / default      | `kagan.core._event_log.EventLog` (same instance as the core) |
+| `HttpEventSource`   | remote (`--connect`) | `httpx.AsyncClient` + `Last-Event-ID` auto-reconnect         |
+
+`InProcEventSource` requires the **same** `EventLog` instance from
+`KaganCore._event_log` — not a fresh `EventLog(engine)`, which would not receive
+live-tail notifications.
+
+`HttpEventSource` reconnects on connection loss after a `_HTTP_RETRY_DELAY`
+(5 s) back-off. It is unit-tested with `MockTransport` only; full remote-TUI
+integration tests are a known gap (see `docs/internal/testing.md`).
+
+### Reducer
+
+`kagan.tui._frame_reducer.apply_frame(state, frame)` is a pure function that
+maps typed `Frame` objects onto a `dict[int, Entry]`. It mirrors the
+server-side `reduce_frames` but operates on the typed union rather than raw
+`FrameRow` dicts. Returns a new dict (never mutates input).
+
+```python
+from kagan.tui._frame_reducer import Entry, apply_frame
+
+state: dict[int, Entry] = {}
+for frame in frames:
+    state = apply_frame(state, frame)
+```
+
+`FrameSnapshot` replaces state entirely. `FramePatch` with `op="append"` or
+`op="finalize"` creates stubs for missing entries (out-of-order tolerance).
+`FrameReady` and `FrameResume` are meta-frames and do not touch entry state.
+
+### Screen consumers
+
+Screens that subscribe to the frame stream:
+
+- `orchestrator_sessions.ensure_loaded()` — loads chat session history.
+- `orchestrator_overlay._replay_task_session` — starts a live-tail worker for
+  the selected task session.
+- `_chat_runner.subscribe_session` — drives the `ChatPanel` with live tokens.
+- `session_dashboard._stream_events` — populates `LiveOutputPanel`.
+
+**Worker lifecycle rule:** every overlay or screen that owns a live
+`subscribe()` iterator must call `_cancel_live_task_worker` in its
+dismiss/session-switch path. Failing to cancel leaves orphaned async iterators
+that block `wait_for_workers()` in tests.
+
+______________________________________________________________________
+
 ## Styling Strategy
 
 Three TCSS layers, ascending specificity:
@@ -254,7 +381,7 @@ Three TCSS layers, ascending specificity:
 styles/
 ├── app.tcss              # theme vars ($primary, $surface, etc.)
 ├── kanban.tcss           # board columns, card styles
-├── chat.tcss             # AI Panel, messages, input
+├── chat.tcss             # SessionOverlay, messages, input
 ├── task_screen.tcss      # task screen layout
 ├── session_dashboard.tcss # dashboard layout + panels
 └── workspace.tcss        # workspace layout + session sidebar
@@ -283,10 +410,16 @@ src/kagan/tui/
 │   ├── welcome.py           # WelcomeScreen
 │   ├── setup.py             # OnboardingFlow (modal)
 │   ├── kanban.py            # KanbanScreen
-│   ├── kanban_chat.py       # ACP payload + stream chunk helpers (not a Screen class)
+│   ├── _chat_runner.py      # ACP payload + stream chunk helpers (not a Screen class)
+│   ├── _task_review.py      # Task review screen helpers
+│   ├── orchestrator_overlay.py  # OrchestratorOverlay ModalScreen — global agent stream switcher
 │   ├── workspace.py         # WorkspaceScreen
-│   ├── task_screen.py       # TaskScreen
+│   ├── task_screen.py       # TaskScreen (header + Overview/Changes/Review tabs + chat hint)
 │   ├── session_dashboard.py # SessionDashboardScreen
+│   ├── analytics.py         # AnalyticsModal
+│   ├── doctor_modal.py      # DoctorModal
+│   ├── session_resume_modal.py
+│   ├── file_picker.py
 │   ├── review_no_criteria.py
 │   ├── repo_picker.py
 │   ├── gateway.py           # PairInstructionsModal
@@ -312,6 +445,7 @@ src/kagan/tui/
 │   ├── task_inspector.py    # TaskInspector
 │   ├── task_diff_pane.py    # TaskDiffPane
 │   ├── chat.py              # ChatPanel, MessageList, ChatInput, SlashComplete
+│   ├── session_list.py        # SessionList — picker shown under the orchestrator overlay input
 │   ├── streaming.py         # StreamingOutput, OutputChunk, ToolCallView
 │   ├── diff.py              # DiffView, DiffStats
 │   ├── permission.py        # PermissionPrompt
@@ -353,3 +487,42 @@ ______________________________________________________________________
 ## Data Flow Summary
 
 All screens/widgets call core's namespaced API directly via `self.app.core`. Workers iterate `core.task.events.stream()` — reactive `asyncio.Event` signaling. Data flows down via `data_bind`, messages bubble up via Textual message passing. Watch methods fire on reactive changes.
+
+______________________________________________________________________
+
+## Design System
+
+The TUI is the **flagship** surface and holds to the strictest interpretation of the Kagan design system. The canonical bundle lives at `kagan-design-system/` (design-tool export). HTML/CSS recreations of the TUI are in `kagan-design-system/project/ui_kits/tui/`.
+
+### Content rules
+
+| Context                  | Rule          | Example                                      |
+| ------------------------ | ------------- | -------------------------------------------- |
+| Column headers           | UPPERCASE     | `BACKLOG`, `IN PROGRESS`, `REVIEW`, `DONE`   |
+| Eyebrow / section labels | UPPERCASE     | `CHANGES`, `AGENT LOG`, `PLAN`, `SESSIONS`   |
+| Mode badges              | UPPERCASE     | `AUTO`, `PAIR`                               |
+| Modal titles             | Sentence case | `Delete task`, `Approve task?`, `Kagan help` |
+| Toast / notify messages  | Sentence case | `Merged and moved to done`, `Task approved`  |
+| Keybinding descriptions  | lowercase     | `new task`, `open`, `back`                   |
+| Inline hint rows         | lowercase     | `[a] approve   [e] edit   Esc to close`      |
+
+### No emoji
+
+Emoji are forbidden. Replace with canonical unicode geometric glyphs:
+`✓` `✗` `↗` `∿` `▸` `▾` `●` `○` `◉` `◎` `█▄▀`
+
+`⚠` (U+26A0) is excluded — use `!` instead.
+`📋` (U+1F4CB) and similar emoji code points are strictly forbidden.
+
+### Motion / accessibility
+
+`MOTION_REDUCED` in `src/kagan/tui/theme.py` gates spinner / pulse animations.
+Seeded from `REDUCED_MOTION=1` in the environment. When set, `StatusBar` skips
+the wave-frame animation timer.
+
+### Palette reference (`.tui` scope)
+
+The canonical token values are defined in `colors_and_type.css` under the `.tui` class.
+`KAGAN_THEME` in `src/kagan/tui/theme.py` must stay aligned with those hex values.
+Key tokens: `primary=#d4a84b`, `secondary=#3fb58e`, `accent=#C27C4E`,
+`background=#0B0A09`, `surface=#151311`, `panel=#1E1B17`, `border=#2A251F`.

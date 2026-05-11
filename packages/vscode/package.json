@@ -42,21 +42,98 @@
     "workspaceContains:.kagan/attach_context.json"
   ],
   "contributes": {
+    "colors": [
+      {
+        "id": "kagan.primary",
+        "description": "Kagan primary accent — aged amber phosphor",
+        "defaults": {
+          "dark": "#d4a84b",
+          "light": "#b89154",
+          "highContrast": "#d4a84b"
+        }
+      },
+      {
+        "id": "kagan.railRunning",
+        "description": "Kagan status rail — running / in progress",
+        "defaults": {
+          "dark": "#3fb58e",
+          "light": "#1a8563",
+          "highContrast": "#3fb58e"
+        }
+      },
+      {
+        "id": "kagan.railWarning",
+        "description": "Kagan status rail — warning",
+        "defaults": {
+          "dark": "#e6c07b",
+          "light": "#a87b25",
+          "highContrast": "#e6c07b"
+        }
+      },
+      {
+        "id": "kagan.railReview",
+        "description": "Kagan status rail — review",
+        "defaults": {
+          "dark": "#c27c4e",
+          "light": "#a8653a",
+          "highContrast": "#c27c4e"
+        }
+      },
+      {
+        "id": "kagan.railIdle",
+        "description": "Kagan status rail — idle / backlog",
+        "defaults": {
+          "dark": "#777777",
+          "light": "#8a7f72",
+          "highContrast": "#777777"
+        }
+      },
+      {
+        "id": "kagan.modeAuto",
+        "description": "Kagan execution mode badge — AUTO",
+        "defaults": {
+          "dark": "#d4a84b",
+          "light": "#b89154",
+          "highContrast": "#d4a84b"
+        }
+      },
+      {
+        "id": "kagan.modePair",
+        "description": "Kagan execution mode badge — PAIR",
+        "defaults": {
+          "dark": "#6fa3d4",
+          "light": "#6fa3d4",
+          "highContrast": "#6fa3d4"
+        }
+      }
+    ],
     "chatParticipants": [
       {
         "id": "kagan.agent",
         "fullName": "Kagan",
         "name": "kagan",
-        "description": "Chat with the Kagan orchestrator, watch tasks, and check board status",
+        "description": "Chat with Kagan sessions and check board status",
         "isSticky": true,
         "commands": [
           {
-            "name": "watch",
-            "description": "Stream a task's live agent output"
-          },
-          {
             "name": "status",
             "description": "Show board status and running tasks"
+          },
+          {
+            "name": "sessions",
+            "description": "List all active sessions"
+          },
+          {
+            "name": "switch",
+            "description": "Switch to a session by ID"
+          },
+          {
+            "name": "stop",
+            "description": "Stop the selected session"
+          },
+          {
+            "name": "close",
+            "description": "Close the selected session"
           }
         ]
       }
@@ -75,13 +152,17 @@
         {
           "id": "kagan.board",
           "name": "Board"
+        },
+        {
+          "id": "kagan.agents",
+          "name": "Sessions"
         }
       ]
     },
     "commands": [
       {
         "command": "kagan.connect",
-        "title": "Connect to Server",
+        "title": "Connect to server",
         "category": "Kagan"
       },
       {
@@ -91,53 +172,53 @@
       },
       {
         "command": "kagan.board.refresh",
-        "title": "Refresh Board",
+        "title": "Refresh board",
         "category": "Kagan",
         "icon": "$(refresh)"
       },
       {
         "command": "kagan.task.create",
-        "title": "Create Task",
+        "title": "Create task",
         "category": "Kagan",
         "icon": "$(add)"
       },
       {
         "command": "kagan.task.run",
-        "title": "Run Task",
+        "title": "Run task",
         "category": "Kagan",
         "icon": "$(play)"
       },
       {
         "command": "kagan.task.cancel",
-        "title": "Cancel Task",
+        "title": "Cancel task",
         "category": "Kagan",
         "icon": "$(debug-stop)"
       },
       {
         "command": "kagan.task.open",
-        "title": "Open Task",
+        "title": "Open task",
         "category": "Kagan"
       },
       {
         "command": "kagan.task.delete",
-        "title": "Delete Task",
+        "title": "Delete task",
         "category": "Kagan",
         "icon": "$(trash)"
       },
       {
         "command": "kagan.task.move",
-        "title": "Move Task to Column",
+        "title": "Move task to column",
         "category": "Kagan"
       },
       {
         "command": "kagan.task.edit",
-        "title": "Edit Task",
+        "title": "Edit task",
         "category": "Kagan",
         "icon": "$(edit)"
       },
       {
         "command": "kagan.task.diff",
-        "title": "View Task Diff",
+        "title": "View task diff",
         "category": "Kagan",
         "icon": "$(diff)"
       },
@@ -161,45 +242,45 @@
       },
       {
         "command": "kagan.events.show",
-        "title": "Show Diagnostic Agent Log",
+        "title": "Show agent log",
         "category": "Kagan",
         "icon": "$(output)"
       },
       {
         "command": "kagan.terminal.attach",
-        "title": "Attach to Agent Terminal",
+        "title": "Attach to agent terminal",
         "category": "Kagan",
         "icon": "$(terminal)"
       },
       {
         "command": "kagan.chat.open",
-        "title": "Watch in Chat",
+        "title": "Open session in chat",
         "category": "Kagan",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "kagan.settings.agentBackend",
-        "title": "Set Default Agent Backend",
+        "title": "Set default agent backend",
         "category": "Kagan Settings"
       },
       {
         "command": "kagan.settings.reviewStrictness",
-        "title": "Set Review Strictness",
+        "title": "Set review strictness",
         "category": "Kagan Settings"
       },
       {
         "command": "kagan.settings.planningDepth",
-        "title": "Set Planning Depth",
+        "title": "Set planning depth",
         "category": "Kagan Settings"
       },
       {
         "command": "kagan.analytics.show",
-        "title": "Show Analytics Summary",
+        "title": "Show analytics summary",
         "category": "Kagan"
       },
       {
         "command": "kagan.analytics.export",
-        "title": "Export Analytics to JSON",
+        "title": "Export analytics to JSON",
         "category": "Kagan"
       },
       {
@@ -213,6 +294,29 @@
         "title": "Install Kagan CLI",
         "category": "Kagan",
         "icon": "$(question)"
+      },
+      {
+        "command": "kagan.switchSession",
+        "title": "Switch to session",
+        "category": "Kagan"
+      },
+      {
+        "command": "kagan.stopSession",
+        "title": "Stop session",
+        "category": "Kagan",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "kagan.closeSession",
+        "title": "Close session",
+        "category": "Kagan",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "kagan.newGeneralSession",
+        "title": "New general session",
+        "category": "Kagan",
+        "icon": "$(add)"
       }
     ],
     "menus": {
@@ -293,6 +397,16 @@
           "command": "kagan.terminal.attach",
           "when": "view == kagan.board && viewItem == task.IN_PROGRESS",
           "group": "3_observe"
+        },
+        {
+          "command": "kagan.stopSession",
+          "when": "view == kagan.agents && viewItem =~ /stop_1/",
+          "group": "1_session@1"
+        },
+        {
+          "command": "kagan.closeSession",
+          "when": "view == kagan.agents && viewItem =~ /close_1/",
+          "group": "1_session@2"
         }
       ],
       "commandPalette": [
@@ -353,13 +467,25 @@
         },
         {
           "command": "kagan.openInstallDocs"
+        },
+        {
+          "command": "kagan.stopSession",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.closeSession",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.newGeneralSession",
+          "when": "kagan.connected"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "kagan.board",
-        "contents": "Not connected to Kagan server.\n[Connect](command:kagan.connect)\n\nNo Kagan CLI on PATH?\n[Install Kagan CLI](command:kagan.openInstallDocs)",
+        "contents": "Not connected to a Kagan server.\n[Connect](command:kagan.connect)\n\nKagan CLI not found on PATH?\n[Install Kagan CLI](command:kagan.openInstallDocs)",
         "when": "!kagan.connected"
       }
     ],
@@ -400,11 +526,6 @@
           "type": "string",
           "default": "kagan",
           "description": "Command used to start the local Kagan server automatically; the extension runs `<command> serve`"
-        },
-        "kagan.autoWatchOnAttach": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically open the Chat panel and stream task output when the IDE is opened via Attach to Task"
         }
       }
     }

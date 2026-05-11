@@ -88,7 +88,7 @@ attached_launcher = "vscode"
 
 When you attach to a task from the TUI, web dashboard, or CLI, the extension can automatically open the task stream in chat so you can keep editing and watching the agent in one place.
 
-While a task is open in `/watch`, plain follow-up messages in the same chat conversation are sent back to that task. Starting a new VS Code chat conversation resets back to orchestrator chat.
+Task and orchestrator activity now appears through the unified Sessions surface. Select the task session you want to inspect or control; starting a new VS Code chat conversation resets back to orchestrator chat.
 
 See also: [Managed runs & interactive attach](managed-vs-interactive.md)
 

@@ -249,20 +249,42 @@ ______________________________________________________________________
 ### Streaming output
 
 **Given** the agent sends `AgentMessageChunk` events
-**When** `_OrchestratorACPClient` receives them
-**Then** each chunk is printed to the Rich console immediately with streaming animation, and turn finalization closes the live line without replaying the response.
+**When** `ChatEngine` emits assistant chunk events
+**Then** `CLIRenderer` prints each chunk to the Rich console immediately with streaming animation, and turn finalization closes the live line without replaying the response.
+
+**Given** the user reattaches to a finished agent session in the
+orchestrator overlay
+**When** replay events arrive from `/api/v1/sessions/{id}/replay`
+**Then** the panel renders the recorded transcript instantly — the
+typewriter animation is reserved for live tokens and never replays history.
 
 ______________________________________________________________________
 
 ### Tool call rendering
 
 **Given** the agent sends `ToolCallStart`
-**When** `_OrchestratorACPClient` receives it
+**When** `ChatEngine` emits it
 **Then** it prints the tool name and arguments.
 
 **Given** the agent sends `ToolCallProgress` updates
-**When** `_OrchestratorACPClient` receives them
+**When** `ChatEngine` emits them
 **Then** it updates the status indicator (pending ✓/✗).
+
+______________________________________________________________________
+
+### Permission requests
+
+**Given** the agent requests permission for a tool call
+**When** `ChatEngine` emits a `PermissionRequest`
+**Then** `PermissionUI` presents the inline trust-tier panel and resolves the request with `allow_once`, `allow_always`, `deny`, or `deny_feedback`.
+
+**Given** the user tries the removed `kagan chat --yolo` flag
+**When** Click parses the command
+**Then** the command exits with usage code 2 and points the user to valid options.
+
+**Given** the user wants permissive behavior for the current REPL session
+**When** a permission request appears
+**Then** they choose "Allow all for session" in the approval panel instead of setting a startup flag.
 
 ______________________________________________________________________
 
@@ -290,6 +312,27 @@ ______________________________________________________________________
 **Given** the agent process exits during handshake
 **When** ACP handshake fails
 **Then** it shows an error with the agent's stderr output and terminates the turn.
+
+______________________________________________________________________
+
+### ACP factory reconnect
+
+**Given** the long-lived ACP factory raises `BrokenPipeError`,
+`ConnectionResetError`, or `acp.RequestError` mid-conversation
+**When** the next prompt is dispatched
+**Then** the factory is restarted once in place (tear-down + respawn) and
+the prompt is retried. A second consecutive failure is surfaced as an
+error rather than retried again.
+
+**Given** the agent subprocess has exited between turns
+**When** the next prompt is dispatched
+**Then** the factory detects the dead process via a liveness check before
+sending and rebuilds the connection rather than writing into a closed pipe.
+
+**Given** the orchestrator turn produces no assistant text
+**When** the turn finalizes
+**Then** no synthetic `"No response from orchestrator"` row is appended to
+chat history. Empty turns are dropped from the persisted transcript.
 
 ______________________________________________________________________
 
@@ -369,29 +412,85 @@ ______________________________________________________________________
 
 **Given** the TUI opens a ChatPanel
 **When** it mounts
-**Then** it creates a `ChatController` and binds to the current scope.
+**Then** it binds to `app.orchestrator_sessions` and the shared TUI chat runner.
 
-**Given** the user types in the ChatPanel input
+**Given** the user types a slash command
 **When** they press Enter
-**Then** the message is processed by `ChatController.process_input()` and rendered in the panel.
+**Then** the widget uses the shared slash parser from `kagan.cli.chat.commands`
+and handles the TUI action locally.
 
-**Given** the agent streams output
-**When** chunks arrive via ACP
-**Then** they're rendered in real-time in the ChatPanel output area.
+**Given** the user sends a normal message
+**When** the turn runs
+**Then** `_chat_runner.py` drives `ChatEngine` / ACP helpers and renders
+`ChatEvent` updates into the widget.
+
+______________________________________________________________________
+
+## Resume Behavior
+
+The frame-stream subsystem (`event_log` table + `Last-Event-ID` SSE endpoints)
+provides durable resume across the following failure modes.
+
+### Window / tab close mid-turn
+
+Assistant text is persisted to `event_log` per token as `append` frames by
+`ChatEngine`. On reopen, the browser `EventSource` connects fresh (no
+`Last-Event-ID`), receives a full `snapshot` frame, and replays the complete
+transcript including any partial assistant turn.
+
+### Network drop
+
+The browser `EventSource` sends the native `Last-Event-ID` header on automatic
+reconnect. The server replays from `from_seq + 1`, emitting a catchup
+`snapshot` + `ready` before resuming live tail. No manual backoff is needed
+in the web client.
+
+### Server restart mid-turn
+
+`ChatEngine._TurnState` is in-process and is lost on restart. Partial assistant
+text written to `event_log` before the crash survives. Clients see finalized
+history on reload via the `snapshot` frame; the partial turn is presented as
+whatever was persisted (the `finalize` frame may be missing, leaving the entry
+`finalized=False` — rendered as an incomplete response).
+
+### Orphan reap on boot
+
+`reap_orphan_sessions` runs at server startup for sessions whose process state
+is stale:
+
+- **Alive PID** — emits a `FrameResume` (`type="resume"`) into `event_log`.
+  Connected clients see it as a `resume` SSE event and can surface an
+  "agent resumed" notice.
+- **Dead PID** — cascades the task to `BACKLOG` via `transition_task`, then
+  emits a `FramePatch(op="finalize", reason="orphan_reap")`. The partial
+  transcript is preserved up to that point.
+
+### Single-flight semantics
+
+`ChatEngine.try_claim_turn` / `_chat_routes._claim_turn_slot` enforce
+single-flight per session. A concurrent POST to `/api/chat/{id}/stream`
+returns 409 and presents the takeover UI. This behavior is unchanged by the
+frame-stream work.
+
+### Path-based idempotency
+
+Patches are addressed by stable `idx` values, not by seq. Re-applying the
+same patch (e.g., after a replay window overlap) is safe; no echo-suppression
+logic is required in consumers.
 
 ______________________________________________________________________
 
 ## Test Coverage
 
-| File                                             | Tests                                           |
-| ------------------------------------------------ | ----------------------------------------------- |
-| `tests/unit/test_chat_repl.py`                   | REPL entry points, loop behavior, scope binding |
-| `tests/unit/test_chat_commands.py`               | Slash command parsing and execution             |
-| `tests/unit/test_chat_policy.py`                 | Authorization checks and session gating         |
-| `tests/unit/test_chat_controller_streaming.py`   | ACP streaming, chunk handling, error paths      |
-| `tests/unit/test_chat_acp_warmup.py`             | Warmup handshake + prompt initialization        |
-| `tests/tui/test_chat_modes.py`                   | Mode switching in Textual chat widgets          |
-| `tests/tui/test_chat_overlay.py`                 | Fullscreen chat overlays and panel visibility   |
-| `tests/tui/test_task_screen_chat_persistence.py` | Task chat state across screen navigation        |
+| File                                           | Tests                                                 |
+| ---------------------------------------------- | ----------------------------------------------------- |
+| `tests/unit/test_chat_repl.py`                 | REPL entry points, loop behavior, scope binding       |
+| `tests/unit/test_chat_commands.py`             | Slash command parsing and execution                   |
+| `tests/unit/test_chat_policy.py`               | Authorization checks and session gating               |
+| `tests/unit/test_chat_controller_streaming.py` | ACP streaming, chunk handling, error paths            |
+| `tests/unit/test_chat_acp_warmup.py`           | Warmup handshake + prompt initialization              |
+| `tests/cli/test_chat_sessions.py`              | `/switch`, `/stop`, `/close` through `ChatController` |
+| `tests/unit/test_chat_picker_choice.py`        | `_resolve_picker_choice` boundary cases               |
+| `tests/unit/test_chat_rail_rendering.py`       | Agents-rail formatting (header + detail rows)         |
 
 **All tests use mocked ACP connections.** Real agent spawn is integration-level.

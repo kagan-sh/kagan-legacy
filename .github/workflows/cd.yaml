@@ -10,7 +10,6 @@ on:
       - "docs/**"
       - "*.md"
       - ".github/assets/**"
-      - "mkdocs.yml"
       - ".readthedocs.yaml"
   workflow_dispatch:
     inputs:
@@ -163,7 +162,7 @@ jobs:
         run: uv sync --frozen --dev
 
       - name: Build documentation
-        run: uv run mkdocs build
+        run: uv run mkdocs build -f docs/mkdocs.yml
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

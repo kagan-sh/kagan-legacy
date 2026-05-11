@@ -473,6 +473,19 @@ class KaganDriver:
         """Get paginated execution logs for a task."""
         return await self._driver.task_get_logs(task_id, limit=limit, offset=offset)
 
+    async def read_task_frames(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+    ) -> list[Any]:
+        """Read all EventLog frames (kind='task') for the given task.
+
+        If *session_id* is omitted the most recent session for the task is used.
+        Returns a list of FrameRow objects from the EventLog.
+        """
+        return await self._driver.read_task_frames(task_id, session_id=session_id)
+
     async def set_repo_default_branch(
         self, repo_id: str, branch: str, *, mark_configured: bool = False
     ) -> dict[str, object]:
@@ -547,6 +560,30 @@ class KaganDriver:
 
     async def detach_task(self, task_id: str) -> dict[str, Any]:
         return await self._driver.detach_task(task_id)
+
+    async def simulate_boot_reap(self) -> int:
+        """Simulate a server boot-time orphan reap against the current DB.
+
+        Calls ``reap_orphan_sessions`` with the driver's live ``KaganCore``
+        client so callers can assert on frame emission without spinning up
+        a full server.  Returns the count of reaped (dead-PID) sessions.
+        """
+        from kagan.core._orphan_reap import reap_orphan_sessions
+
+        assert self._ctx is not None, "Driver not booted"
+        return await reap_orphan_sessions(self._ctx)
+
+    async def read_frames(
+        self,
+        session_id: str,
+        kind: str = "task",
+    ) -> list[Any]:
+        """Return all FrameRow objects from EventLog for ``(session_id, kind)``."""
+        from kagan.core._event_log import EventLog
+
+        assert self._ctx is not None, "Driver not booted"
+        event_log = EventLog(self._ctx.engine)
+        return await event_log.history(session_id, kind)
 
     async def wait_for_status(
         self,

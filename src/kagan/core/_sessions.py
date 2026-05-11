@@ -523,6 +523,9 @@ class Sessions:
             # that wait_idle() can synchronise callers waiting for the
             # session to finish processing (settlement rule).
             self._events.register_agent_end_subscriber(session_obj.id)
+            # W3: emit the initial assistant create frame into EventLog so the
+            # SSE endpoint (W4) can surface the running agent entry from seq=0.
+            await self._events.notify_agent_spawn(session_obj.id)
 
             if agent_backend == "fake-agent":
                 from kagan.core._fake_agent import spawn_fake_agent_via_acp

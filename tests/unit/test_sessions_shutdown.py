@@ -36,6 +36,9 @@ class _FakeEvents:
     def register_agent_end_subscriber(self, session_id: str, count: int = 1) -> None:
         pass
 
+    async def notify_agent_spawn(self, session_id: str) -> None:
+        pass
+
 
 async def _stub_get_task(_task_id: str) -> Any:
     raise AssertionError("_get_task should not run in this shutdown path")

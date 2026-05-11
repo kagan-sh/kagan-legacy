@@ -18,6 +18,7 @@ from kagan.core._db_helpers import (
     _sa_col,
     _utc_now,
 )
+from kagan.core._event_log import EventLog
 from kagan.core._events import BoardEvent, Events, list_events
 from kagan.core._security import scan_text_for_injection
 from kagan.core._session_helpers import DetachResult
@@ -107,9 +108,11 @@ class Tasks:
         self._active_project_id: str | None = None
         self._client = client
         self._db_path = db_path
+        _event_log = EventLog(engine)
         self.events = Events(
             engine,
             signals,
+            event_log=_event_log,
         )
         self.sessions = Sessions(
             engine,

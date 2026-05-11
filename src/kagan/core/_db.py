@@ -13,7 +13,7 @@ from loguru import logger
 from sqlalchemy import Connection, Engine, event
 from sqlmodel import create_engine
 
-_HEAD_REVISION = "a3f9d1c2e4b5"
+_HEAD_REVISION = "823ad30ac625"
 _LEGACY_REVISION_REMAP = {
     "5b95758fdb4d": "base",
     "0001_v060_to_latest": "0001_v060_to_latest",

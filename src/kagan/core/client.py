@@ -27,6 +27,7 @@ from kagan.core._agent import cleanup_all_spawned_processes
 from kagan.core._analytics import Analytics
 from kagan.core._audit import _make_audit_log_ns
 from kagan.core._db import create_db_engine, default_db_path, get_db_version
+from kagan.core._event_log import EntryIndexProvider, EventLog
 from kagan.core._events import Events
 from kagan.core._persona import PersonaPresetOps
 from kagan.core._preflight import PreflightCheckResult, run_all_checks
@@ -54,10 +55,14 @@ class KaganCore:
         self.analytics = Analytics(self._engine)
         self.persona_presets = PersonaPresetOps(self.settings, self.audit_log)
         self.chat_sessions = ChatSessions(self._engine, self.settings)
+        self._event_log = EventLog(self._engine)
+        self._chat_entry_idx = EntryIndexProvider(self._engine)
         self.chat = ChatEngine(
             sessions=self.chat_sessions,
             acp_factory=make_spawn_per_turn_acp_factory(client=self),
             title_generator=self._make_default_title_generator(),
+            event_log=self._event_log,
+            entry_idx=self._chat_entry_idx,
         )
         self._closed = False
 

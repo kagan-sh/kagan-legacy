@@ -72,6 +72,10 @@ async def test_emit_non_persistent_event_streams_without_db_write(
     events = cast("Any", Events.__new__(Events))
     events._engine = cast("Any", object())
     events._signals = {}
+    events._event_log = None
+    events._agent_end_pending = {}
+    events._agent_end_idle = {}
+    events._running_assistant_idx = {}
     queue: asyncio.Queue[SessionEvent] = asyncio.Queue(maxsize=1)
     events._live_queues = {"task-1": [queue]}
     events._global_live_queues = []

@@ -62,6 +62,10 @@ def test_tool_call(chat_workdir: Path, chat_home: Path, tmp_path: Path) -> None:
         # (2)+(3) tool lifecycle visible in transcript
         assert "tool finished" in after_send
 
+        # Wait for REPL to re-enter prompt_async before sending ctrl_d;
+        # the toolbar message-counter bump signals the prompt is active.
+        pty.read_until_contains("1 msg", timeout=15, after=mark)
+
         pty.send_key("ctrl_d")
         assert pty.wait(timeout=10) == 0
     finally:

@@ -13,19 +13,23 @@ from __future__ import annotations
 
 import contextlib
 import errno
-import fcntl
 import os
-import pty
 import re
 import select
 import struct
 import subprocess
 import sys
-import termios
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+# Unix-only stdlib modules.  Guarded so collection succeeds on Windows;
+# tests that need a PTY are skipped via ``pytestmark`` at the test-module level.
+if sys.platform != "win32":
+    import fcntl
+    import pty
+    import termios
 
 if TYPE_CHECKING:
     from collections.abc import Callable

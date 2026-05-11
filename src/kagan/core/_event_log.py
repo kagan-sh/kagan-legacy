@@ -361,11 +361,19 @@ class EventLog:
         session_id: str,
         kind: str,
         from_seq: int = 0,
+        *,
+        queue_registered: asyncio.Event | None = None,
     ) -> AsyncIterator[FrameRow]:
         """Yield backlog from ``from_seq``, then live tail.
 
         The backlog is replayed from the DB before the live queue is
         registered, so no frames are missed between the two phases.
+
+        queue_registered
+            When set, ``.set()`` is invoked immediately before the first
+            ``await`` on the live queue (after backlog + catch-up). Tests can
+            ``await queue_registered.wait()`` before appending live frames so
+            they never race registration.
         """
         # Phase 1 — replay backlog
         backlog = await self.history(session_id, kind, from_seq=from_seq)
@@ -389,6 +397,9 @@ class EventLog:
             yield row
             if row.seq > max_yielded:
                 max_yielded = row.seq
+
+        if queue_registered is not None:
+            queue_registered.set()
 
         try:
             while True:

@@ -110,22 +110,21 @@ async def test_subscribe_yields_snapshot_then_live(
 
     collected: list[FrameRow] = []
 
+    live_ready = asyncio.Event()
+
     async def _consume() -> None:
-        async for row in event_log.subscribe(session_id, "chat"):
+        async for row in event_log.subscribe(
+            session_id,
+            "chat",
+            queue_registered=live_ready,
+        ):
             collected.append(row)
             if len(collected) >= 4:
                 break
 
-    # Start consumer; it will block waiting for live frames after backlog
+    # Start consumer; await registration before appending live frames
     task = asyncio.create_task(_consume())
-
-    deadline = asyncio.get_running_loop().time() + 3.0
-    while asyncio.get_running_loop().time() < deadline:
-        if len(collected) >= 2:
-            break
-        await asyncio.sleep(0)
-    else:
-        pytest.fail("consumer did not drain backlog within timeout")
+    await asyncio.wait_for(live_ready.wait(), timeout=3.0)
 
     # Emit two live frames
     await event_log.append(session_id, "chat", {"phase": "live", "i": 2})
@@ -278,22 +277,22 @@ async def test_subscribe_two_clients_see_identical_frames(
 
     target = 3  # backlog(1) + live(2)
 
-    async def _consumer(sink: list[FrameRow]) -> None:
-        async for row in event_log.subscribe(session_id, "chat"):
+    reg_a = asyncio.Event()
+    reg_b = asyncio.Event()
+
+    async def _consumer(sink: list[FrameRow], registered: asyncio.Event) -> None:
+        async for row in event_log.subscribe(
+            session_id,
+            "chat",
+            queue_registered=registered,
+        ):
             sink.append(row)
             if len(sink) >= target:
                 break
 
-    task_a = asyncio.create_task(_consumer(client_a))
-    task_b = asyncio.create_task(_consumer(client_b))
-
-    deadline = asyncio.get_running_loop().time() + 3.0
-    while asyncio.get_running_loop().time() < deadline:
-        if len(client_a) >= 1 and len(client_b) >= 1:
-            break
-        await asyncio.sleep(0)
-    else:
-        pytest.fail("subscribers did not finish backlog within timeout")
+    task_a = asyncio.create_task(_consumer(client_a, reg_a))
+    task_b = asyncio.create_task(_consumer(client_b, reg_b))
+    await asyncio.wait_for(asyncio.gather(reg_a.wait(), reg_b.wait()), timeout=3.0)
 
     # Emit two live frames
     await event_log.append(session_id, "chat", {"slot": 1})

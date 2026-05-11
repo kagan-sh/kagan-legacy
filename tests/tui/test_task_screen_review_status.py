@@ -94,6 +94,45 @@ async def test_overview_hints_surface_review_actions_for_review_tasks(board: Kag
         assert "reject" in hint_text
 
 
+async def test_review_task_manual_overview_tab_stays_on_overview(board: KaganDriver) -> None:
+    from textual.containers import VerticalScroll
+    from textual.widgets import TabbedContent
+
+    from kagan.tui import KaganApp
+    from kagan.tui.screens.task_screen import TaskScreen
+
+    task = await board.create_task(
+        "Review task with criteria",
+        acceptance_criteria=["The overview tab remains usable."],
+    )
+    await board.move_task(task.id, TaskStatus.IN_PROGRESS)
+    await board.move_task(task.id, TaskStatus.REVIEW)
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        app.push_screen(TaskScreen(task_id=task.id))
+        for _ in range(10):
+            await pilot.pause()
+            tabs = app.screen.query_one("#ts-tabs", TabbedContent)
+            if tabs.active == "review":
+                break
+
+        screen = cast("TaskScreen", app.screen)
+        screen.action_tab_overview()
+        await pilot.pause()
+        await screen._refresh_runtime_state()
+        await pilot.pause()
+
+        tabs = app.screen.query_one("#ts-tabs", TabbedContent)
+        focused = app.screen.focused
+
+        assert tabs.active == "overview"
+        assert isinstance(focused, VerticalScroll)
+        assert focused.id == "ts-overview-scroll"
+
+
 async def test_reject_modal_enter_submits_feedback_and_moves_task_to_in_progress(
     board: KaganDriver,
 ) -> None:

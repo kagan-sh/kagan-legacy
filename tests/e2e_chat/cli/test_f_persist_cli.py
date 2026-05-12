@@ -75,13 +75,15 @@ def test_session_persist_and_restore(chat_workdir: Path, chat_home: Path, tmp_pa
     try:
         # Wait for the restore banner, then for replayed turn text (may arrive in a
         # later PTY chunk than the "Resumed transcript:" header on some platforms).
-        pty2.read_until_contains("Resumed transcript", timeout=20)
-        mark_after_banner = pty2.mark()
+        # Anchor `after=` at the character after the banner text — not `pty2.mark()`
+        # (buffer end), which can land past the whole replay when one `read()` returns
+        # everything on fast machines (Greptile).
+        buf_with_banner = pty2.read_until_contains("Resumed transcript", timeout=20)
+        _banner = "Resumed transcript"
+        mark_after_banner = buf_with_banner.index(_banner) + len(_banner)
         pty2.read_until_contains("persist reply", timeout=20, after=mark_after_banner)
         full = pty2.normalised_text()
         assert "remember this" in full, f"Restored transcript missing user line:\n{full[-2000:]}"
-        # Exclude any boot-time "Type a request" that appeared before the resume banner
-        # (Greptile): require a match in the post-banner slice, like pty1's `after=mark`.
         pty2.read_until_contains("Type a request", timeout=20, after=mark_after_banner)
 
         pty2.send_key("ctrl_d")

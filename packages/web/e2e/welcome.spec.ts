@@ -15,7 +15,7 @@ test.describe("Welcome", () => {
 
     await test.step("welcome actions and dialogs", async () => {
       await page.goto("/welcome", { waitUntil: "domcontentloaded" });
-      await page.waitForLoadState("networkidle");
+      await page.waitForLoadState("load");
 
       await expect(
         page.getByRole("button", { name: /^new project$/i }),

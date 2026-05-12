@@ -31,6 +31,7 @@ export class SessionsTreeProvider
   private disposed = false;
 
   constructor(private readonly client: KaganClient) {
+    this.refresh();
     this.pollTimer = setInterval(() => void this.refresh(), 5_000);
   }
 

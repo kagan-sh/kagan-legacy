@@ -495,7 +495,7 @@ async function handleSwitch(
     }
 
     state.selectedSessionId = matched.id;
-    state.activeRawChatSessionId = matched.chat_session_id;
+    state.activeRawChatSessionId = matched.chat_session_id ?? matched.id;
     state.selectedSessionType = matched.type;
     state.selectedSessionRole = matched.role;
 

@@ -792,7 +792,7 @@ wheels = [
 
 [[package]]
 name = "kagan"
-version = "0.19.0b37"
+version = "0.19.0b38"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },

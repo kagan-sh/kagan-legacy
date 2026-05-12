@@ -13,6 +13,108 @@
 
 
 
+## v0.19.0-beta.38 (2026-05-12)
+
+
+
+
+### Bug Fixes
+
+- **e2e_chat**: Anchor restore-session waits for Greptile
+  ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+- **e2e_chat**: Stabilize persist CLI exit on Ctrl-D
+  ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+- **e2e_chat**: Stabilize persist CLI exit on main CI
+  ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- Sync uv.lock with pyproject ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Continuous Integration
+
+- **release**: Refresh uv.lock during semantic-release build
+  ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Testing
+
+- **e2e_chat**: Anchor restore waits on post-banner index, not EOF mark
+  ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+- **e2e_chat**: Fix restore PTY waits after Resumed transcript
+  ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+- **e2e_chat**: Gate Type a request wait on post-resume PTY slice
+  ([#165](https://github.com/kagan-sh/kagan/pull/165),
+  [`af0543c`](https://github.com/kagan-sh/kagan/commit/af0543c29339166486eca980719defa3025fe3ef))
+
+
+
+
+
 ## v0.19.0-beta.37 (2026-05-12)
 
 

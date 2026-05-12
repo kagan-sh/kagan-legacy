@@ -2,12 +2,15 @@
 //
 // Stopgap renderer — the primary agent output surface is the Chat
 // Participant (@kagan).  This channel serves as a diagnostic log.
+//
+// Live updates arrive via the per-task KaganEventSource frame stream
+// (GET /api/tasks/{id}/sse) rather than the global SSE broadcast.
 
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import { SSE_TYPE } from "@kagan/shared-api-client";
+import type { KaganEventSource } from "../api/event-source.js";
 import { renderEvent } from "@kagan/shared-api-client";
-import type { WireEvent, WireTask, SSEMessage } from "@kagan/shared-api-client";
+import type { WireEvent, WireTask } from "@kagan/shared-api-client";
 
 // ── Output Channel ──────────────────────────────────────────────────────────
 
@@ -15,12 +18,17 @@ export class AgentOutputProvider implements vscode.Disposable {
   activeTaskId: string | null = null;
   private readonly channel: vscode.OutputChannel;
   private lastWasText = false;
+  private taskEs: KaganEventSource | null = null;
 
   constructor(private readonly client: KaganClient) {
     this.channel = vscode.window.createOutputChannel("Kagan: Agent Log");
   }
 
   async showTask(task: WireTask): Promise<void> {
+    // Close any existing per-task stream before opening a new one.
+    this.taskEs?.close();
+    this.taskEs = null;
+
     this.activeTaskId = task.id;
     this.lastWasText = false;
     this.channel.clear();
@@ -31,13 +39,23 @@ export class AgentOutputProvider implements vscode.Disposable {
       this.renderEvent(event);
     }
 
-    this.channel.show(true);
-  }
+    // Subscribe to live task frame events for ongoing updates.
+    const es = this.client.subscribeTaskEvents(task.id);
+    this.taskEs = es;
 
-  onSSE(msg: SSEMessage): void {
-    if (msg.type !== SSE_TYPE.SESSION_EVENT) return;
-    if (msg.task_id !== this.activeTaskId) return;
-    this.renderEvent(msg.event);
+    es.onPatch((patch) => {
+      // Task frame patches carry agent output in text appends.
+      if (patch.op === "append" && typeof patch.value === "string") {
+        this.channel.append(patch.value);
+        this.lastWasText = true;
+      }
+    });
+
+    es.onError((err) => {
+      console.warn("[kagan] agent output frame stream error:", err.message);
+    });
+
+    this.channel.show(true);
   }
 
   private renderEvent(event: WireEvent): void {
@@ -114,6 +132,8 @@ export class AgentOutputProvider implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.taskEs?.close();
+    this.taskEs = null;
     this.channel.dispose();
   }
 }

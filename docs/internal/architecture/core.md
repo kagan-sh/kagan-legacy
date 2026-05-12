@@ -65,7 +65,7 @@ kagan/core/
 ├── _persona.py            # persona pipeline definitions
 ├── _preflight.py          # system health checks
 ├── _projects.py           # project repository
-├── _prompts.py            # three-layer prompt resolution
+├── _prompts/              # three-layer prompt resolution and packaged prompt text
 ├── _repetition_guard.py   # loop detection for tool calls
 ├── _reviews.py            # review repository
 ├── _sessions.py           # agent session repository
@@ -89,8 +89,6 @@ kagan/core/
 │
 └── adapters/              # adapter sub-package
     ├── __init__.py
-    ├── pi_rpc.py          # JSONL-framed RPC adapter for pi-coding-agent
-    ├── pi_rpc_messages.py # Typed message models for pi RPC protocol
     └── db/                # database adapters
 ```
 
@@ -238,9 +236,9 @@ Three-layer hierarchy:
 | **Layer 1** | `additional_instructions` setting   | Single text field appended to all prompts |
 | **Layer 2** | `.kagan/prompts/*.md` dotfiles      | Full replacement; bypasses Layers 0 and 1 |
 
-Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`.
+Key functions in `_prompts`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`.
 
-`execution.md` dotfiles may include template placeholders (`{task_title}`, `{task_description}`). If rendering fails, Kagan falls back to default compiled prompt.
+`execution.md` dotfiles may include template placeholders (`{title}`, `{description}`, `{acceptance_criteria}`). If rendering fails, Kagan falls back to default compiled prompt.
 
 #### Project Learnings Injection
 
@@ -266,22 +264,20 @@ A task can be executed across multiple sessions with different personas in seque
 
 `tasks.events.stream()` is an async generator yielding `SessionEvent` rows reactively using `asyncio.Event` signaling (not polling). When `emit()` inserts a row, it signals waiting streams. A 5-second safety timeout ensures liveness.
 
-### Three Streaming Paths
+### Two Streaming Paths
 
-|                   | ACP (managed)                     | MCP (interactive / external)         | Pi RPC (pi-coding-agent)            |
-| ----------------- | --------------------------------- | ------------------------------------ | ----------------------------------- |
-| **When**          | ACP-capable backends              | Interactive launches, IDE hosts      | `pi-coding-agent` backend           |
-| **Transport**     | Direct STDIO JSON-RPC (ACP)       | Agent spawns kagan MCP as subprocess | JSONL over subprocess stdin/stdout  |
-| **Bidirectional** | Yes — kagan sends prompts, cancel | No — caller invokes tools            | Yes — kagan sends commands, abort   |
-| **Process**       | Kagan owns (can terminate)        | Agent runs in external environment   | Kagan owns (long-lived per session) |
+|                   | ACP (managed)                     | MCP (interactive / external)         |
+| ----------------- | --------------------------------- | ------------------------------------ |
+| **When**          | ACP-capable backends              | Interactive launches, IDE hosts      |
+| **Transport**     | Direct STDIO JSON-RPC (ACP)       | Agent spawns kagan MCP as subprocess |
+| **Bidirectional** | Yes — kagan sends prompts, cancel | No — caller invokes tools            |
+| **Process**       | Kagan owns (can terminate)        | Agent runs in external environment   |
 
 **Path A — ACP:** Backends with `ACP_STREAMING` capability use piped stdin/stdout. Events flow through `KaganACPClient.session_update()` → `map_acp_update_to_event()` → `Events.emit()`. A repetition guard hashes tool calls and cancels stuck agents (≥4 identical calls in last 10).
 
 **Path B — MCP:** Agent discovers `.mcp.json` in worktree and spawns `kagan mcp --session-id {id}`. MCP tool calls write events to the DB.
 
-**Path C — Pi RPC:** `pi-coding-agent` uses `adapters/pi_rpc.PiRpcClient`. The process is spawned once per session and kept alive across prompts. `translate_pi_rpc_message()` converts pi JSONL frames to `AgentEvent` instances. See the Pi RPC adapter section below.
-
-All three converge at `tasks.events.stream()`.
+Both converge at `tasks.events.stream()`.
 
 ### Secret Scrubbing
 
@@ -344,25 +340,24 @@ Created per-repo via `client._git_for_task()`. Operations: `worktree_add`, `work
 
 Kagan supports any CLI-based coding agent through a backend registry.
 
-| Backend           | CLI Executable | Notes                                           |
-| ----------------- | -------------- | ----------------------------------------------- |
-| `claude-code`     | `claude`       | Anthropic                                       |
-| `codex`           | `codex`        | OpenAI                                          |
-| `gemini-cli`      | `gemini`       | Google                                          |
-| `kimi-cli`        | `kimi`         | Moonshot                                        |
-| `github-copilot`  | `copilot`      | GitHub                                          |
-| `goose`           | `goose`        | Block                                           |
-| `openhands`       | `openhands`    | Open-source                                     |
-| `opencode`        | `opencode`     | Open-source                                     |
-| `auggie`          | `auggie`       | Augment                                         |
-| `amp`             | `amp`          | Sourcegraph                                     |
-| `docker-cagent`   | `cagent`       | Docker                                          |
-| `stakpak`         | `stakpak`      | Infrastructure                                  |
-| `mistral-vibe`    | `vibe`         | Mistral                                         |
-| `vt-code`         | `vtcode`       | VT Code                                         |
-| `pi-coding-agent` | `npx`          | Pi (Mariozechner) — JSONL-RPC, not CLI-launched |
+| Backend          | CLI Executable | Notes          |
+| ---------------- | -------------- | -------------- |
+| `claude-code`    | `claude`       | Anthropic      |
+| `codex`          | `codex`        | OpenAI         |
+| `gemini-cli`     | `gemini`       | Google         |
+| `kimi-cli`       | `kimi`         | Moonshot       |
+| `github-copilot` | `copilot`      | GitHub         |
+| `goose`          | `goose`        | Block          |
+| `openhands`      | `openhands`    | Open-source    |
+| `opencode`       | `opencode`     | Open-source    |
+| `auggie`         | `auggie`       | Augment        |
+| `amp`            | `amp`          | Sourcegraph    |
+| `docker-cagent`  | `cagent`       | Docker         |
+| `stakpak`        | `stakpak`      | Infrastructure |
+| `mistral-vibe`   | `vibe`         | Mistral        |
+| `vt-code`        | `vtcode`       | VT Code        |
 
-**Backend aliases:** `claude` → `claude-code`; `gemini` → `gemini-cli`; `kimi` → `kimi-cli`; `pi` → `pi-coding-agent`.
+**Backend aliases:** `claude` → `claude-code`; `gemini` → `gemini-cli`; `kimi` → `kimi-cli`.
 
 **Launch sequence:**
 
@@ -389,64 +384,6 @@ Kagan supports any CLI-based coding agent through a backend registry.
 | **neovim**                                  | Neovim at worktree        |
 
 The `.mcp.json` file tells the environment to discover kagan's MCP server scoped to this session.
-
-### `adapters/pi_rpc.py` — Pi RPC Adapter
-
-`pi-coding-agent` does not accept a prompt as a CLI argument. Instead, it exposes a JSONL-framed
-RPC protocol over subprocess stdin/stdout. `PiRpcClient` in `adapters/pi_rpc.py` wraps that
-protocol so the rest of the system interacts with a familiar async interface.
-
-**Wire framing.** Commands to the agent are JSON objects written one per line to stdin. Events
-from the agent arrive as JSON objects one per line on stdout (`AgentSessionEvent` shape from the
-pi protocol). Neither direction uses length prefixes or delimiters beyond the newline.
-
-**Byte guards (CWE-770).** Two limits cap runaway output: 10 MB per JSONL line
-(`_PI_RPC_MAX_LINE_BYTES`) and 500 MB cumulative per prompt invocation
-(`_PI_RPC_MAX_CUMULATIVE_BYTES`). The cumulative counter resets at the start of each `prompt()`
-call, so a long-lived client across many prompts does not accumulate the budget.
-
-**Lifecycle.** `PiRpcClient` is an async context manager. On `__aenter__`, it spawns
-`npx @mariozechner/pi-coding-agent --mode rpc` via `asyncio.create_subprocess_exec`. Pi's process
-does not auto-exit after completing a prompt, so the caller is responsible for termination.
-`aclose()` sends `SIGTERM`, waits up to 2 seconds (`_KILL_GRACE_SECONDS`), then sends `SIGKILL`
-if the process has not exited.
-
-**Event translation.** `translate_pi_rpc_message()` converts a single parsed pi frame into an
-`AgentEvent`. The mapping:
-
-| Pi frame type           | `AgentEvent` variant  | Notes                                          |
-| ----------------------- | --------------------- | ---------------------------------------------- |
-| `agent_start`           | `AgentStart`          |                                                |
-| `agent_end`             | `AgentEnd`            | Also sets `done = True` to end the read loop   |
-| `turn_start`            | `TurnStart`           | turn_index supplied by caller counter          |
-| `turn_end`              | `TurnEnd`             |                                                |
-| `message_start`         | `MessageStart`        | Assistant messages only; user messages skipped |
-| `message_update`        | `MessageUpdate`       | `text_delta` and `thinking_delta` only         |
-| `message_end`           | `MessageEnd`          | Assistant messages only                        |
-| `tool_execution_start`  | `ToolExecutionStart`  |                                                |
-| `tool_execution_update` | `ToolExecutionUpdate` |                                                |
-| `tool_execution_end`    | `ToolExecutionEnd`    |                                                |
-| `compaction_start`      | `CompactionOccurred`  | `compaction_end` is ignored (start suffices)   |
-| `response`              | `None`                | RPC ack frames                                 |
-| `extension_ui_request`  | `None`                | UI frames not applicable in headless mode      |
-| anything else           | `None`                | Silently discarded                             |
-
-**Cancellation.** `prompt()` accepts an `asyncio.Event cancel_event`. When set, a background
-task sends `{"type": "abort"}` to stdin. The read loop still drains remaining output until EOF
-or `agent_end`.
-
-**Backend registry hook.** `_agent.py` registers `pi-coding-agent` with
-`BackendCapability.PI_RPC_STREAMING`. The capability is distinct from `ACP_STREAMING` because
-the transport and launch model differ: pi is not a detached process and does not report through
-MCP. The `_sessions.py` run path currently routes all non-ACP backends through the detached
-launcher (`spawn_agent`); wiring `PI_RPC_STREAMING` to call `PiRpcClient.prompt()` instead is
-a pending integration step.
-
-**Message models.** `adapters/pi_rpc_messages.py` contains typed dataclass models
-(`PiAgentStart`, `PiMessageUpdate`, `PiToolCallStart`, etc.) and `parse_pi_rpc_message()`, which
-validates raw dicts against those models. `translate_pi_rpc_message()` pattern-matches on those
-typed instances, not on raw dicts, so unknown future pi frame types are safely discarded rather
-than raising.
 
 ### `_config.py` — Bootstrap Config
 
@@ -490,6 +427,77 @@ Frontend → KaganCore → Launcher (tmux/IDE/nvim)
    │          │              │── user works with agent
    │◄─ events via MCP ───────│── agent uses kagan MCP
 ```
+
+## Session Attach + Replay
+
+`kagan.core` exposes a small foundation for the orchestrator-chat overlay shipped
+across the TUI, web, VS Code, and CLI. The goal is for any frontend to (a) list
+the agents currently running across a project, (b) resolve "the most relevant"
+session for a task, (c) attach a chat to that session, and (d) replay or live-tail
+its event history.
+
+### `_sessions_query.resolve_active_session(sessions)`
+
+Pure, total function in `src/kagan/core/_sessions_query.py`. Takes the full
+session history for a single task and returns the session a UI should focus by
+default. Priority:
+
+1. Worker session whose status is in `{PENDING, RUNNING}` (most recent wins on ties)
+1. Reviewer session whose status is in `{PENDING, RUNNING}`
+1. Most-recent reviewer session (any status)
+1. Most-recent worker session (any status)
+1. Otherwise, the most-recent session regardless of role; `None` if the list is
+   empty.
+
+The function never raises. Frontends consume it via
+`client.resolve_active_session(task_id)`, which loads the history through
+`list_task_sessions` first.
+
+### Unified Session Items
+
+`client.list_session_items(project_id=None)` returns a unified read model for
+orchestrator, task, and general sessions. The server serializes these rows as
+`SessionItemResponse` values via `/api/v1/sessions`; each item carries its
+session type, task role when applicable, status, title, timestamps, and action
+capabilities.
+
+Task execution sessions remain owned by task lifecycle flows. Chat sessions are
+selected explicitly by their `SessionItem.id`; current clients no longer route
+chat through durable task-attachment columns.
+
+### Chat lifecycle notifications
+
+Session transition hooks append lifecycle events for replay and session
+surfaces without polluting chat message history. Project-wide notifications
+remain best-effort and are logged at warning level when they fail.
+
+### Lifecycle hook in `transitions.transition_session`
+
+After the DB commit succeeds, `transition_session` calls
+`_notify_chat_on_session_transition`. Notifications are best-effort — failures
+are logged at warning level and never block the transition. Fires:
+
+| Source → target                                 | Notification kind |
+| ----------------------------------------------- | ----------------- |
+| anything → `RUNNING` (when not already RUNNING) | `agent_started`   |
+| anything → `COMPLETED`                          | `agent_finished`  |
+| anything → `FAILED` / `CANCELLED`               | `agent_stopped`   |
+
+The summary string includes the task title and (when present) the agent role,
+e.g. `"Implement /attach (worker) finished"`.
+
+### Public `KaganCore` surface
+
+| Method                                             | Purpose                                                         |
+| -------------------------------------------------- | --------------------------------------------------------------- |
+| `await client.list_session_items(project_id=None)` | List orchestrator, task, and general sessions as unified items. |
+| `await client.resolve_active_session(task_id)`     | Pick "the most relevant" session for `task_id` (or `None`).     |
+
+Internal cross-cutting helpers `db_async`, `db_sync`, `sa_col`, and
+session read helpers are also re-exported from `kagan.core` so server route
+modules do not need to import private modules directly.
+
+______________________________________________________________________
 
 ## Logging
 

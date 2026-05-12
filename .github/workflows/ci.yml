@@ -3,18 +3,14 @@ name: CI
 on:
   pull_request:
     paths-ignore:
-      - "docs/**"
       - "*.md"
       - ".github/assets/**"
-      - "mkdocs.yml"
       - ".readthedocs.yaml"
   push:
     branches: [main]
     paths-ignore:
-      - "docs/**"
       - "*.md"
       - ".github/assets/**"
-      - "mkdocs.yml"
       - ".readthedocs.yaml"
   schedule:
     - cron: "0 3 * * *"

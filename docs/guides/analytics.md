@@ -1,11 +1,11 @@
 ---
 title: Analytics & Metrics
-description: Track agent performance, session activity, and export analytics data across all Kagan surfaces.
+description: Track agent performance, session activity, and export analytics data.
 ---
 
 # Analytics & Metrics
 
-Kagan tracks performance metrics across your agent runs, giving you visibility into success rates, execution times, and session patterns. Access analytics from the TUI, web dashboard, CLI, VS Code extension, or programmatically via MCP.
+Kagan tracks performance metrics across your agent runs, giving you visibility into success rates, execution times, and session patterns. Access analytics from the TUI, CLI, VS Code extension, or programmatically via MCP.
 
 ## What Gets Tracked
 
@@ -39,43 +39,6 @@ The modal shows:
 - `r` — Refresh data
 - `e` — Export analytics to JSON (`kagan-analytics.json` in current directory)
 - `Esc` — Close modal
-
-### Web Dashboard
-
-Navigate to the **Analytics** page from the main navigation.
-
-The web analytics page includes four tabs for different views:
-
-#### Backend Tab
-
-- **KPI Cards**: Quick stats at the top
-  - Total Sessions
-  - Success Rate
-  - Average Duration (weighted by backend)
-  - Retry Rate
-- **Backend Performance Table**: Detailed per-backend metrics
-- **Duration by Backend**: Bar chart showing average session times
-- **Session Activity Timeline**: Line chart of daily session counts over 30 days
-
-#### By-Role Tab
-
-- **Performance by Agent Role**: Success rates and duration metrics for Worker, Orchestrator, and Reviewer roles
-- **Role Comparison by Backend**: See which agent roles perform best on each backend
-
-#### By-Task-Type Tab
-
-- **Performance by Task Type**: Success rates for different task classifications (code implementation, bug fix, refactoring, etc.)
-- **Backend × Task Type Matrix**: Cross-tabulation showing how each backend handles different task types
-
-#### Combined Tab
-
-- **Backend × Role × Task Type Matrix**: Three-dimensional breakdown showing optimal combinations (e.g., "claude-code excels at code implementation tasks as a worker")
-
-**Export:** Click the **Export** button in the header to download analytics as JSON.
-
-**Time Range:** Use the dropdown (top right) to filter by last 7, 14, or 30 days.
-
-**Glossary:** Click the help icon (?) to view definitions of metrics and success criteria.
 
 ### CLI — Chat REPL
 
@@ -162,7 +125,7 @@ Returns: Combined export with both datasets above
 | **Active days**    | Days when you ran at least one session   |
 | **Success rate**   | Overall percentage of completed sessions |
 
-### KPI Cards (Web)
+### Summary Metrics
 
 - **Total Sessions**: Count of all session runs in the selected time window
 - **Success Rate**: Percentage of sessions that completed (not failed or cancelled)
@@ -255,7 +218,8 @@ Export analytics daily and feed into a team dashboard or analytics tool (Grafana
 Include analytics in your build pipeline to validate that agent success rates stay above a threshold:
 
 ```bash
-kagan /analytics export > analytics.json
+kagan chat
+/analytics export analytics.json
 jq '.backend_stats[].success_rate' analytics.json | awk '{if ($1 < 0.8) exit 1}'
 ```
 
@@ -354,7 +318,6 @@ Use this if you need to comply with data retention policies or privacy regulatio
 - **Duration data** includes only backends that report timing; backends without timing data don't affect the average
 - **Role inference** is based on task status transitions; edge cases may not be correctly identified
 - Historical data is not archived; if you clear your database, analytics history is lost
-- **Combined analytics** displays the top 50 entries due to result size; use filters or export for full data
 
 ## Troubleshooting
 
@@ -365,12 +328,12 @@ You haven't run any sessions yet. Run a task with any agent, and analytics will 
 ### Metrics show 0% success
 
 - Confirm tasks have actually completed (check TUI board status)
-- Verify the time window matches when you ran sessions (use the date picker on web dashboard)
+- Verify the export or command range matches when you ran sessions
 
 ### Export fails
 
 - Ensure you have write permissions in the target directory
-- Check that your project has an active repository linked (`/project` in CLI, or Projects page in web)
+- Check that your project has an active repository linked
 
 ### Missing backends
 

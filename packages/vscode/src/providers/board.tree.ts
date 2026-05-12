@@ -111,7 +111,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
     item.tooltip = this.buildTooltip(task);
     item.description = this.buildDescription(task);
     item.command = {
-      title: "Open Task",
+      title: "Open task",
       command: "kagan.task.open",
       arguments: [element],
     };
@@ -135,7 +135,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
     const lines = [task.title];
     if (task.description) lines.push(task.description);
     if (task.agent_backend) lines.push(`Agent: ${task.agent_backend}`);
-    if (task.active_session) lines.push(`Session: ${task.active_session.status}`);
+    if (task.active_session) lines.push(`Session status: ${task.active_session.status}`);
     return lines.join("\n");
   }
 

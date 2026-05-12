@@ -14,9 +14,10 @@ ______________________________________________________________________
 
 1. **Thin client** -- workflow logic stays in Python (`kagan.core`); the web app coordinates API calls and renders state.
 1. **Owned primitives** -- shadcn/Radix components live in-repo and are styled through Kagan tokens in `src/app.css`.
-1. **Dark-first IDE shell** -- the app uses a persistent activity bar, contextual header, Quick Actions, and workspace panels across routes.
+1. **Single shell, two tabs** -- the app shell is a 44 px title bar over a collapsible 252 px sidebar and a content surface. Title-bar tabs switch between `Workspace` (`/chat`) and `Kanban` (`/board`); task detail and settings render inside the same shell.
 1. **Single integration boundary** -- all server communication flows through `apiClient` (REST) and `streamSSE` (Server-Sent Events).
-1. **Route-level workspaces** -- board, task, chat, and settings share common panel/header primitives instead of bespoke page chrome.
+1. **One command surface** -- `Spotlight` (Cmd/Ctrl+K) unifies task search, command-palette commands, and session switching. There is no separate command palette.
+1. **Status terminology is canonical** -- display labels are exactly `Backlog`, `In Progress`, `Review`, `Done` across web/TUI/chat. Never rename to `RUN` or other variants from external mockups.
 
 ______________________________________________________________________
 
@@ -30,24 +31,26 @@ packages/web/src/
 ├── routes.tsx
 ├── pages/
 │   ├── board-page.tsx
-│   ├── workspace-page.tsx      # orchestrator-first workspace (session sidebar + conversation surface)
-│   ├── task-detail-page.tsx    # unified task workspace (Overview, Changes, Review tabs)
-│   ├── chat-page.tsx
+│   ├── chat-page.tsx           # workspace tab content (renders inside shell)
+│   ├── task-detail-page.tsx    # task tab content (Overview, Changes, Review)
 │   ├── settings-page.tsx
-│   ├── welcome-page.tsx        # onboarding/project setup page
+│   ├── welcome-page.tsx        # onboarding/project setup (rendered outside shell)
+│   └── workspace-page.tsx      # legacy redirect → /chat
 ├── components/
+│   ├── shell/                  # title bar, sidebar, spotlight, new-session dialog
 │   ├── board/
 │   ├── chat/
-│   ├── layout/
-│   ├── session/
+│   ├── layout/                 # remaining dialogs only (add-repo, create-project, help-overlay)
+│   ├── session/                # session bodies + picker + commits panel
 │   ├── settings/
 │   ├── shared/
-│   ├── workspace/
 │   └── ui/
 └── lib/
     ├── api/
-    ├── atoms/
+    ├── atoms/                  # board, ui, theme, connection, presence, shell
+    ├── commands/               # registry consumed by Spotlight
     ├── hooks/
+    ├── sessions/               # type guards (SessionKind narrowing)
     └── utils/
 ```
 
@@ -73,15 +76,22 @@ ______________________________________________________________________
 - `board-dialogs.tsx` -- shared dialog orchestration for board actions
 - `first-boot-tutorial-dialog.tsx` -- first-run onboarding tutorial dialog
 
+### `shell/`
+
+- `shell-layout.tsx` — root layout: 44 px title bar + 252 px collapsible sidebar + outlet. Owns the project-active gate, global hotkeys (Cmd+K, Cmd+\\, Cmd+1/2, N, /), and dialog mounts (Spotlight, NewSessionDialog, SessionPicker, HelpOverlay, IntegrationImport).
+- `title-bar.tsx` — window chrome (traffic lights), back/forward, sidebar toggle, project glyph, Workspace ↔ Kanban tabs, search trigger, daemon pill, settings link, theme toggle.
+- `sidebar.tsx` — primary actions (`New task`, `New session`, `Board`, `Agents`; all sentence case). `Agents` opens a popover — it is not a route link. Sessions section is collapsible; shows orchestrator and general sessions only (task-bound sessions are nested under their task in the Tasks section). Search input appears when sessions > 8. "View all sessions" link (opens `SessionPicker`) is visible only when sessions > 4. Tasks section is collapsible; shows the active project's tasks grouped by status (`Backlog → In Progress → Review → Done`). Each task row has a chevron that expands to reveal nested worker (`W` badge) and reviewer (`R` badge) session children; child badges are lane-coloured. Hovering a task row reveals a Run / Open action at the right edge. Session rows show a status dot (idle / running / review streaming state) and a per-row delete button on hover with a 2 s confirm pair that calls `apiClient.closeSession`. Footer: Settings link + version chip fetched from `apiClient.getHealth`.
+- `spotlight.tsx` — Cmd+K overlay: unified search across tasks, commands (from `lib/commands/registry`), and sessions. Replaces the legacy CommandPalette.
+- `new-session-dialog.tsx` — modal that creates orchestrator or general sessions via `apiClient.createSession`.
+
 ### `session/`
 
-- `chat-side-panel.tsx` -- right-rail streaming overlay with lane toggle and LIVE indicator
-- `orchestrator-chat-panel.tsx` -- orchestrator conversation with streaming and interrupt
-- `event-stream.tsx` -- event list renderer for session output
-- `session-picker.tsx` -- global session switcher
-- `follow-up-queue.tsx` -- queued follow-up message management
-- `task-commits-panel.tsx` -- commit history panel for a task workspace
-- `chat-overlay-empty-state.tsx` -- empty state for the chat overlay when no session is active
+- `GeneralSessionBody.tsx` / `OrchestratorSessionBody.tsx` / `TaskSessionBody.tsx` — route the active row to `ChatView` + `useChatSession`
+- `session-picker.tsx` — session switcher chrome (kept for the `nav-session-switcher` command; sessions are also reachable through the shell sidebar)
+- `event-stream.tsx` — event list renderer for task-scoped output
+- `follow-up-queue.tsx` — queued follow-up messages for a task session
+- `task-commits-panel.tsx` — commit history panel for a task workspace
+- `chat-overlay-empty-state.tsx` — empty state when no session is selected
 
 ### `chat/`
 
@@ -92,11 +102,22 @@ ______________________________________________________________________
 
 ### `layout/`
 
-- `context-bar.tsx` -- active project/repo selector; guarantees an active repo when possible and prompts for Add Repository when required
+- `add-repo-dialog.tsx` — repo-add modal triggered by ContextBar successor flows (creation/import paths)
+- `create-project-dialog.tsx` — project-create modal
+- `help-overlay.tsx` — keyboard shortcuts overlay reachable via `?` / commands
+- `resize-handle.tsx` — generic horizontal resize handle (used by chat-page sidebar)
 
-### `workspace/`
+> Legacy shell pieces (`activity-bar.tsx`, `context-bar.tsx`, `header-bar.tsx`, `mobile-tabs.tsx`, `palette.tsx`, `app-layout.tsx`) were removed when `components/shell/` landed. Project switching now lives inside Welcome and Settings flows; sidebar primary actions cover the rest.
 
-- `workspace-sidebar.tsx` -- orchestrator session list with search, create, and delete actions
+______________________________________________________________________
+
+## Sessions Surface
+
+Sessions are first-class in the shell sidebar, not in a docked overlay.
+
+`useSessionList` polls `GET /api/v1/sessions` and seeds the **Sessions** section in `Sidebar`. Orchestrator and general sessions show up directly; task-bound sessions are reached through the relevant task on the Kanban tab. Clicking a session navigates to `/chat/:id`, which renders inside the Workspace tab. The legacy `SessionOverlay` was removed; `selectedSessionAtom` and `sessionOverlayLayoutAtom` are kept only as compatibility shims and are not consumed by the shell.
+
+`Spotlight` (Cmd/Ctrl+K) provides a session group alongside tasks and commands so any session is one keystroke away from any view. The `nav-session-switcher` command opens `SessionPicker`, retained for users who prefer the modal switcher.
 
 ______________________________________________________________________
 
@@ -104,48 +125,108 @@ ______________________________________________________________________
 
 Custom hooks in `src/lib/hooks/`:
 
-- `use-event-stream.ts` -- connects SSE event stream to the Jotai atom graph
-- `use-task-events.ts` -- subscribes to task-scoped session events via CustomEvent dispatch
-- `use-board-dnd.ts` -- drag-and-drop state and handlers for the kanban board
-- `use-board-keyboard.ts` -- keyboard navigation and shortcuts for the board
-- `use-follow-up-queue.ts` -- manages the follow-up message queue for a task session
-- `use-mobile.ts` -- responsive breakpoint detection
+- `use-entry-stream.ts` — **frame-stream hook** for chat and task SSE endpoints. Opens a native `EventSource(url, { withCredentials: true })`. Maintains `Map<idx, FrameEntry>` state via an inline reducer that handles `snapshot`, `ready`, `patch` (create/append/finalize), and `resume` frames. Hook owns the connection lifecycle; EventSource is closed on unmount or when `url` changes. URL builders: `apiClient.chatEventsUrl(sessionId)` and `apiClient.taskEventsUrl(taskId)`.
+- `use-chat-session.ts` — **per-session** streaming, interrupt, queue, and slash-command state for one chat id (hook-local `useState`; live events from `use-entry-stream`)
+- `use-session-overlay.ts` — compatibility shim over `selectedSessionAtom`/`sessionOverlayLayoutAtom`; preserved for chat panels but no longer drives a docked rail
+- `use-session-list.ts` — polls unified session list for the overlay/workspace
+- `use-session-actions.ts` — stop/close session helpers
+- `use-event-stream.ts` — connects `GET /api/events/stream` to the Jotai atom graph (board + task events; separate from `use-entry-stream`)
+- `use-task-events.ts` — subscribes to task-scoped session events via `CustomEvent` dispatch
+- `use-board-dnd.ts` — drag-and-drop state and handlers for the kanban board
+- `use-board-keyboard.ts` — keyboard navigation and shortcuts for the board
+- `use-follow-up-queue.ts` — manages the follow-up message queue for a task session
+- `use-mobile.ts` — responsive breakpoint detection
+
+Removed hooks (W9b cleanup): `use-chat-watch.ts` (`GET /api/chat/sessions/{id}/watch`),
+`pollForTurnCompletion`, `localStreamingRef`, and the window-reopen probe. These
+were replaced by `use-entry-stream` which uses native `EventSource` and
+`Last-Event-ID` resume.
 
 ______________________________________________________________________
 
 ## State Architecture
 
-- **Jotai atoms** in `src/lib/atoms/` hold authentication, board, chat, connection, theme, and UI shell state.
-- **ContextBar** coordinates active project/repo selection and seeds `boardRepoFilterAtom`; if repos exist it keeps one selected, and if none exist it opens the Add Repository dialog.
+- **Jotai atoms** in `src/lib/atoms/` hold authentication, board, connection, theme, UI shell, and session-overlay chrome (open/layout/selection). **Chat streaming buffers, pending queues, and stream entries are not global atoms** — they live inside `useChatSession` (hook-local state) so concurrent sessions cannot race.
+- **`src/lib/atoms/chat.ts`** exports **types and constants** only (`ChatStreamEntry`, pending-queue types, `PENDING_QUEUE_MAX`), not writable singleton atoms.
+- **`shell-layout.tsx`** runs the project-active gate on mount; if no active project exists it redirects to `/welcome`. Active-repo selection now lives inside Welcome and Settings flows (the title bar no longer hosts a project/repo switcher).
 - **Route-local state** handles page-specific loading, tab selection, and transient form state.
-- **SSE sync** lives in `use-event-stream.ts` and feeds board/task updates into the atom graph. Chat streaming uses per-turn SSE via `POST /api/chat/{id}/stream`.
+- **Board/task SSE sync** lives in `use-event-stream.ts` and feeds `TASK_UPDATED` / `SESSION_EVENT` updates into the atom graph. **Live chat and task session UI** consumes the frame-stream endpoints via `use-entry-stream`: `GET /api/sessions/{id}/events` (chat) and `GET /api/tasks/{id}/sse` (task). Sending a turn still opens `POST /api/chat/{id}/stream` (per-turn SSE body drained for backpressure).
 
 ______________________________________________________________________
 
 ## Design System
 
-- **UI library:** shadcn/ui + Radix primitives (owned in-repo under `src/components/ui/`). No migration planned — Radix a11y coverage (focus traps, keyboard nav, screen readers) is load-bearing for complex interactive patterns.
-- **Design direction:** Expressive Minimalism (Linear/Vercel-inspired). Monochrome dark base, warm gold primary (`#d4a84b`), generous whitespace, subtle borders via surface shade layers, quiet micro-animations, selective glassmorphism on overlays only, keyboard-first interaction.
-- **Typography:** `IBM Plex Sans` is the UI font; `JetBrains Mono` is reserved for code, IDs, diffs, and telemetry labels.
-- **Tokens:** Global tokens, motion defaults, and shell surfaces live in `src/app.css` (60+ CSS custom properties).
-- **Shared primitives:** `src/components/shared/workspace.tsx` provides reusable headers, panels, sticky action bars, inspector sections, and action-oriented empty states.
-- **Reference apps:** Linear, Vercel Dashboard, Raycast, Cursor, Supabase Dashboard.
+The canonical design system bundle lives at `/Users/aorumbayev/Downloads/kagan-design-system/` (not in version control). The source of truth for web tokens is `packages/web/src/app.css`.
+
+### Token source of truth
+
+`src/app.css` holds all CSS custom properties — color, type, spacing, radius, shadow, motion, and A11y tokens. Do not add color literals inline; always use a named token (`var(--card)`, `var(--primary)`, etc.). The canonical palette is:
+
+- **Amber primary:** `#d4a84b` (`--primary`, `--ring`)
+- **Warm-black foundation** in light: `#f2eee5` (page) / `#ece5d8` (card)
+- **Slate near-black** in dark: `hsl(240 6% 6%)` (page) / `hsl(240 5% 9%)` (card)
+- **Semantic:** danger `#b93125` (light) / `#ef4444` (dark), review `#a8653a` / `#c27c4e`
+
+### Content rules
+
+- **Sentence case** for all UI copy: page headings, buttons, menu items, dialog titles, tooltips.
+- **UPPERCASE only** for terminal-style labels: column headers (`BACKLOG`, `IN PROGRESS`, `REVIEW`, `DONE`), eyebrow tags, section labels (`CHANGES`, `AGENT LOG`), mode badges (`AUTO`, `PAIR`).
+- **Lowercase** for inline TUI-style hints in the web (`press / to open spotlight`, `esc to close`).
+- **No emoji.** Use unicode geometric glyphs (`✓ ✗ ↗ ∿ ▸ ●`) or Lucide icons.
+- **Editorial-technical voice:** no exclamation marks, no hype words, no first-person plural except legal/credit.
+
+### Iconography
+
+Lucide icons at `strokeWidth={1.75}` for all UI affordances. The send button is the sole exception (`strokeWidth={1.75}` maintained). Raw inline SVGs also use `strokeWidth="1.75"`.
+
+### Radius, borders, shadows
+
+- Base radius `--radius: 0.5rem` (8px). Chips: `--radius-sm: 0.375rem` (6px).
+- `rounded-full` is legitimate only for dot indicators, traffic-light chrome, avatar circles, toggle thumbs, and scroll-area thumbs. All other chips and labels use `rounded` or no radius class.
+- Borders are 1 px hairline. No thick borders. No bluish-purple gradients (warm/amber vertical fades on surfaces are acceptable).
+
+### Primitives
+
+- `src/components/ui/eyebrow.tsx` — uppercase eyebrow label (`font-code text-[10px] font-semibold uppercase tracking-[0.22em]`). Use for section labels, column heads, mode badges.
+- `src/components/ui/industrial-frame.tsx` — 12×12 amber L-bracket corner pinning for CRT-viewport framing. At most one per screen.
+
+### UI library
+
+shadcn/ui + Radix primitives (owned in-repo under `src/components/ui/`). Radix a11y coverage (focus traps, keyboard nav, screen readers) is load-bearing — do not replace with custom implementations.
+
+### Typography
+
+`IBM Plex Sans` for UI; `JetBrains Mono` for code, IDs, diffs, telemetry, and eyebrow labels. The `ᘚᘛ` logo glyph is set in `font-family: var(--font-mono)`, `font-weight: 600`, `letter-spacing: -0.04em`, `font-feature-settings: "liga" 0`.
+
+### Animation
+
+Origami-style transitions only: `perspective(800px) rotateX(-3deg)→0` fades. No bounce, spring, or rubber-band. All animations disable cleanly under `prefers-reduced-motion` (global override in `src/app.css`).
 
 ______________________________________________________________________
 
 ## Routing
 
-- `/board` -- kanban board and inspector/AI Panel rails
-- `/workspace` -- orchestrator-first workspace with session sidebar and full-width conversation surface
-- `/task/:id` -- unified task workspace with 3 tabs: **Overview**, **Changes**, **Review**
-- `/task/:id?lane=worker|reviewer` -- deep-link that auto-opens the ChatSidePanel overlay for live streaming
-- `/chat/:id` -- orchestrator conversation
-- `/settings` -- categorized system configuration
-- `/welcome` -- onboarding/project setup page
+All authenticated routes mount inside `components/shell/shell-layout.tsx`.
 
-Global overlays in app layout include Session Switcher (`Cmd/Ctrl+Shift+K`) and Help (`?`/`F1`).
+- `/welcome` -- onboarding/project setup (rendered **outside** the shell)
+- `/board` -- Kanban tab (selected by `title-bar.tsx`)
+- `/chat`, `/chat/:id` -- Workspace tab; `/chat/:id` scopes to a session
+- `/task/:id` -- inline task detail (Overview, Changes, Review tabs)
+- `/task/:id?lane=worker|reviewer` -- deep-link that opens a task session in the conversation surface
+- `/settings` -- categorized system configuration; reached from sidebar footer or Spotlight
+- `/workspace`, `/analytics` -- legacy redirects (`→ /chat`)
 
-`Cmd/Ctrl+Shift+W` toggles between `/board` and `/workspace`. On `/workspace`, the route itself is the orchestrator surface, so the app-level AI rail stays hidden.
+Global hotkeys (handled in `shell-layout.tsx`):
+
+| Combo            | Action                                    |
+| ---------------- | ----------------------------------------- |
+| Cmd/Ctrl+K       | Open Spotlight                            |
+| Cmd/Ctrl+\\      | Toggle sidebar                            |
+| Cmd/Ctrl+1       | Workspace tab                             |
+| Cmd/Ctrl+2       | Kanban tab                                |
+| Cmd/Ctrl+Shift+L | Toggle theme (handled in `title-bar.tsx`) |
+| `N`              | New task (when no field is focused)       |
+| `/`              | Open Spotlight                            |
 
 The app is SPA-only and configured through `src/routes.tsx`.
 
@@ -160,7 +241,9 @@ The task detail page (`/task/:id`) selects its initial tab based on task state:
 | Has workspace (other statuses)    | **Changes**  |
 | Fallback                          | **Overview** |
 
-When a task has an active session, the **ChatSidePanel** overlay auto-opens on the right rail. The overlay shows live streaming output with a Worker/Reviewer lane toggle in its header and a LIVE indicator. URL query parameter `?lane=worker|reviewer` controls which lane is active and triggers the overlay to open. The ChatSidePanel filters events by the active session ID.
+When a task has an active session, the inline conversation surface inside
+the task content renders the agent stream. `?lane=worker|reviewer` controls
+which session lane is selected on first paint.
 
 ______________________________________________________________________
 
@@ -178,7 +261,7 @@ ______________________________________________________________________
   - auto-reconnects with exponential backoff (1s → 30s)
   - dispatches `SESSION_EVENT` via `CustomEvent('kagan:session-event')` for component-level subscription
   - refreshes `/api/presence` and posts presence heartbeats so task cards can show live watchers
-- **Chat streaming** uses per-turn SSE (`POST /api/chat/{id}/stream`) — `OrchestratorChatPanel` manages streaming state locally, syncs session summary changes back to `/workspace`, and passes `disableSend` to `ChatInputBar`
+- **Chat streaming** — `useChatSession` posts turns to `POST /api/chat/{id}/stream` and listens on `GET /api/chat/sessions/{id}/watch` for `ChatWatchEvent` frames (chunks, tools, done, permission requests). Stream/buffer state is **per hook instance**, not global Jotai.
 - **Commands** (run, cancel, follow-up, interrupt) use REST endpoints via `apiClient`
 
 Bundled web mode talks to the same local server instance that serves the SPA. It does not perform QR pairing or token auth.

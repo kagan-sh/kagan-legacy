@@ -11,21 +11,22 @@
 
 ______________________________________________________________________
 
-Manage tasks, stream live agent output, send follow-ups to a watched task, review diffs, and merge -- all through native VS Code APIs. Works with 14 agent backends including Claude Code, Cursor, Windsurf, and more.
+Manage tasks, inspect unified sessions, stream live orchestrator output, review diffs, and merge -- all through native VS Code APIs. Works with 14 agent backends including Claude Code, Cursor, Windsurf, and more.
 
 ## Features
 
-| Feature           | VS Code Surface  | How to access                              |
-| ----------------- | ---------------- | ------------------------------------------ |
-| Orchestrator chat | Chat Participant | `@kagan <message>` in Chat panel           |
-| Watch task output | Chat Participant | `@kagan /watch` or click chat icon on task |
-| Board status      | Chat Participant | `@kagan /status`                           |
-| Kanban board      | Sidebar TreeView | Click the Kagan icon in the Activity Bar   |
-| Task diffs        | SCM diff editor  | Right-click task > View Diff               |
-| Review verdicts   | Comments panel   | Open a task in Review status               |
-| Agent terminal    | Terminal         | Right-click running task > Attach Terminal |
-| Diagnostic log    | Output Channel   | Command: Show Agent Output                 |
-| Settings commands | Command Palette  | Cmd/Ctrl+Shift+P → type "Kagan"            |
+| Feature           | VS Code Surface  | How to access                                     |
+| ----------------- | ---------------- | ------------------------------------------------- |
+| Orchestrator chat | Chat Participant | `@kagan <message>` in Chat panel                  |
+| List sessions     | Chat Participant | `@kagan /sessions`                                |
+| Switch session    | Chat Participant | `@kagan /switch orch:<prefix>` or click a session |
+| Board status      | Chat Participant | `@kagan /status`                                  |
+| Kanban board      | Sidebar TreeView | Click the Kagan icon in the Activity Bar          |
+| Task diffs        | SCM diff editor  | Right-click task > View Diff                      |
+| Review verdicts   | Comments panel   | Open a task in Review status                      |
+| Agent terminal    | Terminal         | Right-click running task > Attach Terminal        |
+| Diagnostic log    | Output Channel   | Command: Show Agent Output                        |
+| Settings commands | Command Palette  | Cmd/Ctrl+Shift+P → type "Kagan"                   |
 
 ## Install
 
@@ -69,15 +70,14 @@ Full docs: <https://docs.kagan.sh/guides/vscode-extension/>
 
 ## Settings
 
-| Setting                   | Default          | Description                      |
-| ------------------------- | ---------------- | -------------------------------- |
-| `kagan.serverUrl`         | `localhost:8765` | Server host:port                 |
-| `kagan.protocol`          | `http`           | Connection protocol (http/https) |
-| `kagan.authToken`         |                  | Bearer token for authentication  |
-| `kagan.autoConnect`       | `true`           | Connect on activation            |
-| `kagan.autoStartServer`   | `true`           | Auto-start local server          |
-| `kagan.serverCommand`     | `kagan`          | CLI command for auto-start       |
-| `kagan.autoWatchOnAttach` | `true`           | Auto-stream output on IDE attach |
+| Setting                 | Default          | Description                      |
+| ----------------------- | ---------------- | -------------------------------- |
+| `kagan.serverUrl`       | `localhost:8765` | Server host:port                 |
+| `kagan.protocol`        | `http`           | Connection protocol (http/https) |
+| `kagan.authToken`       |                  | Bearer token for authentication  |
+| `kagan.autoConnect`     | `true`           | Connect on activation            |
+| `kagan.autoStartServer` | `true`           | Auto-start local server          |
+| `kagan.serverCommand`   | `kagan`          | CLI command for auto-start       |
 
 ## Commands
 

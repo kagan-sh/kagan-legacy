@@ -23,7 +23,10 @@ repos:
           - id: trailing-whitespace
             exclude: ^(tests/snapshots/__snapshots__/|.*\.svg$)
           - id: check-yaml
-            exclude: ^(mkdocs\.yml$|.*\.svg$)
+            # --unsafe permits mkdocs-material's !!python/name: emoji tags
+            # while still validating YAML structure.
+            args: [--unsafe]
+            exclude: ^.*\.svg$
           - id: check-merge-conflict
           - id: mixed-line-ending
             args: [--fix=lf]
@@ -81,5 +84,5 @@ repos:
             name: wire drift check
             entry: uv run python scripts/check_wire_drift.py
             language: system
-            files: ^(src/kagan/server/responses\.py|packages/web/src/lib/api/generated-wire-types\.ts)$
+            files: ^(src/kagan/server/responses\.py|packages/shared/api-client/src/wire\.ts)$
             pass_filenames: false

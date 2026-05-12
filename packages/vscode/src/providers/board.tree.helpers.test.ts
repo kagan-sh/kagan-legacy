@@ -49,10 +49,10 @@ describe("board tree helpers", () => {
 
   it("keeps command labels and board labels on the same source of truth", () => {
     expect(TASK_COLUMN_LABELS).toEqual({
-      BACKLOG: "Backlog",
-      IN_PROGRESS: "In Progress",
-      REVIEW: "Review",
-      DONE: "Done",
+      BACKLOG: "BACKLOG",
+      IN_PROGRESS: "IN PROGRESS",
+      REVIEW: "REVIEW",
+      DONE: "DONE",
     });
   });
 });

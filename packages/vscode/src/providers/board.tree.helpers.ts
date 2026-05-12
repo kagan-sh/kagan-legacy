@@ -1,10 +1,10 @@
 import { TASK_COLUMNS, type TaskStatus, type WireTask } from "@kagan/shared-api-client";
 
 export const TASK_COLUMN_LABELS: Record<TaskStatus, string> = {
-  BACKLOG: "Backlog",
-  IN_PROGRESS: "In Progress",
-  REVIEW: "Review",
-  DONE: "Done",
+  BACKLOG: "BACKLOG",
+  IN_PROGRESS: "IN PROGRESS",
+  REVIEW: "REVIEW",
+  DONE: "DONE",
 };
 
 export function groupTasksByStatus(tasks: WireTask[]): Map<TaskStatus, WireTask[]> {

@@ -5,15 +5,152 @@ import {
   type BackendStats,
   type ChatMessageDetailResponse,
   type TurnStatusResponse,
-  type ChatWatchEvent,
   type DoctorReportResponse,
   type Mention,
   type SearchMentionsInput,
   type SessionTimelineEntry,
   type TurnInProgressResponse,
 } from "@kagan/shared-api-client";
+import { KaganEventSource, type AuthConfig, type EventSourceLike } from "./event-source.js";
 
 export { ApiError };
+
+// ── FetchBackedEventSource ────────────────────────────────────────────────────
+// A minimal EventSource-like implementation backed by fetch/streamRequest.
+// Satisfies the EventSourceLike interface in event-source.ts so KaganEventSource
+// can use it without touching a native global EventSource (unavailable in Node).
+//
+// Lifecycle: construction starts a reconnect loop.  On EOF or transport failure
+// the loop waits SSE_RECONNECT_MS and opens a new stream, sending Last-Event-ID
+// only after at least one SSE `id:` line has been observed (never `""`).
+
+const SSE_RECONNECT_MS = 3_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+type SSEListener = (event: { type: string; data: string; lastEventId: string }) => void;
+
+class FetchBackedEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+
+  readyState: number = FetchBackedEventSource.CONNECTING;
+  onerror: ((e: { type: string }) => void) | null = null;
+
+  private readonly listeners: Map<string, SSEListener[]> = new Map();
+  private controller = new AbortController();
+  private lastEventId = "";
+
+  constructor(
+    private readonly client: KaganClient,
+    private readonly url: string,
+  ) {
+    void this.connectLoop();
+  }
+
+  addEventListener(type: string, handler: SSEListener): void {
+    const list = this.listeners.get(type) ?? [];
+    list.push(handler);
+    this.listeners.set(type, list);
+  }
+
+  close(): void {
+    this.readyState = FetchBackedEventSource.CLOSED;
+    this.controller.abort();
+  }
+
+  private async connectLoop(): Promise<void> {
+    while (this.readyState !== FetchBackedEventSource.CLOSED) {
+      const { signal } = this.controller;
+      if (signal.aborted) {
+        return;
+      }
+
+      this.readyState = FetchBackedEventSource.CONNECTING;
+      try {
+        const headers: Record<string, string> = { Accept: "text/event-stream" };
+        if (this.lastEventId) {
+          headers["Last-Event-ID"] = this.lastEventId;
+        }
+
+        const response = await this.client.streamRequest(this.url, {
+          headers,
+          signal,
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`SSE frame stream failed: ${response.status}`);
+        }
+
+        this.readyState = FetchBackedEventSource.OPEN;
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = "";
+
+        try {
+          while (this.readyState === FetchBackedEventSource.OPEN) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+
+            buffer += value;
+            const blocks = buffer.split("\n\n");
+            buffer = blocks.pop()!;
+
+            for (const block of blocks) {
+              this.dispatchBlock(block);
+            }
+          }
+        } finally {
+          await reader.cancel().catch(() => {});
+        }
+      } catch {
+        // Transport error (network failure, non-2xx): notify subscribers, then reconnect.
+        if (signal.aborted || this.readyState === FetchBackedEventSource.CLOSED) {
+          return;
+        }
+        this.onerror?.({ type: "error" });
+      }
+
+      if (this.readyState === FetchBackedEventSource.CLOSED) {
+        return;
+      }
+
+      await sleep(SSE_RECONNECT_MS);
+    }
+  }
+
+  private dispatchBlock(block: string): void {
+    // Parse SSE block: event:, data:, id: lines.
+    let eventType = "message";
+    let data = "";
+    let id = "";
+
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) {
+        eventType = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        data = data ? `${data}\n${line.slice(5).trim()}` : line.slice(5).trim();
+      } else if (line.startsWith("id:")) {
+        id = line.slice(3).trim();
+      }
+    }
+
+    if (!data) return; // No data = keepalive or comment.
+
+    if (id) this.lastEventId = id;
+
+    const handlers = this.listeners.get(eventType) ?? [];
+    for (const h of handlers) {
+      h({ type: eventType, data, lastEventId: this.lastEventId });
+    }
+  }
+}
 
 export interface KaganClientConfig {
   baseUrl: string;
@@ -25,12 +162,17 @@ export interface KaganClientConfig {
  * VS Code KaganClient — extends the shared KaganApiClient.
  *
  * Inherits all HTTP plumbing (auth headers, envelope unwrapping, URL
- * normalisation) from the shared class. This subclass adds:
- *   - chatStream() with 409 TURN_IN_PROGRESS special handling
- *   - watchChatSession() with reconnection and catch-up logic
- *   - VS Code-specific endpoints (analytics, mentions, doctor, github)
- *   - streamRequest() — raw fetch helper for SSE paths that must bypass
- *     envelope unwrapping (streaming SSE, /health raw status)
+ * normalisation, session/task/project/analytics CRUD) from the shared class.
+ * `streamRequest()` is also inherited — it is a base-class helper for raw SSE
+ * paths that bypass envelope unwrapping.
+ *
+ * This subclass adds only VS Code-specific behaviour:
+ *   - chatStream() override — 409 TURN_IN_PROGRESS detection before the base
+ *     class error path, using streamRequest() for auth-aware raw fetch
+ *   - ping() override — forwards auth headers via streamRequest() (the base
+ *     implementation issues a no-auth GET /health)
+ *   - GitHub integration endpoints (preflight, detect-repo, preview, sync)
+ *   - getDoctor() convenience alias for getDoctorReport()
  */
 export class KaganClient extends KaganApiClient {
   constructor(
@@ -104,120 +246,6 @@ export class KaganClient extends KaganApiClient {
       throw new ApiError(response.status, `Chat stream failed: ${response.status}`);
     }
     return response;
-  }
-
-  /**
-   * Subscribe to the per-session SSE watch stream.
-   * Returns a dispose function; call it to unsubscribe and close the stream.
-   * On unexpected disconnects, waits 3 s then reconnects automatically.
-   * After reconnect, catches up via GET /messages?after_id=lastSeenId.
-   */
-  watchChatSession(
-    sessionId: string,
-    onEvent: (event: ChatWatchEvent) => void,
-    onError?: (err: Error) => void,
-  ): () => void {
-    let disposed = false;
-    let controller = new AbortController();
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastSeenId = 0;
-
-    const clearReconnect = () => {
-      if (reconnectTimer !== null) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    };
-
-    const scheduleReconnect = () => {
-      if (disposed) return;
-      clearReconnect();
-      reconnectTimer = setTimeout(() => void reconnect(), 3_000);
-    };
-
-    const reconnect = async () => {
-      if (disposed) return;
-      // Catch up on missed messages before resuming the watch stream
-      try {
-        const missed = await this.getChatMessages(sessionId, lastSeenId);
-        for (const msg of missed) {
-          lastSeenId = Math.max(lastSeenId, msg.id);
-          const event: ChatWatchEvent = msg.role === "user"
-            ? { t: "CHAT_USER_MESSAGE", message_id: msg.id, content: msg.content }
-            : {
-                t: "CHAT_ASSISTANT_MESSAGE",
-                message_id: msg.id,
-                content: msg.content,
-                terminated: msg.terminated_at_user_request,
-              };
-          onEvent(event);
-        }
-      } catch {
-        // Best-effort — don't block reconnect on catch-up failure
-      }
-      if (!disposed) void startWatch();
-    };
-
-    const startWatch = async () => {
-      if (disposed) return;
-      controller = new AbortController();
-      const { signal } = controller;
-
-      try {
-        // Streaming SSE — bypasses envelope unwrapping, auth added by streamRequest()
-        const response = await this.streamRequest(
-          this.getFullUrl(`/api/chat/sessions/${sessionId}/watch`),
-          { headers: { Accept: "text/event-stream" }, signal },
-        );
-
-        if (!response.ok || !response.body) {
-          throw new Error(`Watch stream failed: ${response.status}`);
-        }
-
-        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-        let buffer = "";
-
-        try {
-          while (!disposed) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += value;
-            const parts = buffer.split("\n\n");
-            buffer = parts.pop()!;
-
-            for (const part of parts) {
-              const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
-              if (!dataLine) continue;
-              try {
-                const event = JSON.parse(dataLine.slice(6)) as ChatWatchEvent;
-                if ("id" in event && typeof (event as Record<string, unknown>).id === "number") {
-                  lastSeenId = Math.max(lastSeenId, (event as Record<string, unknown>).id as number);
-                }
-                onEvent(event);
-              } catch {
-                // Malformed JSON or keepalive — skip
-              }
-            }
-          }
-        } finally {
-          await reader.cancel().catch(() => {});
-        }
-      } catch (err) {
-        if (signal.aborted) return; // Intentional — no reconnect
-        onError?.(err instanceof Error ? err : new Error(String(err)));
-        scheduleReconnect();
-        return;
-      }
-
-      // Natural EOF — reconnect
-      scheduleReconnect();
-    };
-
-    void startWatch();
-
-    return () => {
-      disposed = true;
-      clearReconnect();
-      controller.abort();
-    };
   }
 
   // ── Analytics ──────────────────────────────────────────────────────────
@@ -307,16 +335,59 @@ export class KaganClient extends KaganApiClient {
     return this.get<DoctorReportResponse>("/api/doctor");
   }
 
-  // ── Private ────────────────────────────────────────────────────────────
+  // ── Frame stream subscriptions ─────────────────────────────────────────────
 
   /**
-   * Raw fetch with auth headers appended — for streaming paths (SSE, /health)
-   * that must bypass the envelope-unwrapping request() pipeline.
+   * Subscribe to the per-session frame stream.
+   * GET /api/sessions/{sessionId}/events (kind=chat)
+   *
+   * Returns a KaganEventSource that emits snapshot/ready/patch/resume frames.
+   * Centralises URL construction — providers must not build this URL directly.
    */
-  private async streamRequest(url: string, init?: RequestInit): Promise<Response> {
-    return this._fetchImpl(url, {
-      ...init,
-      headers: { ...init?.headers, ...this.getAuthHeaders() },
-    });
+  subscribeSessionEvents(sessionId: string): KaganEventSource {
+    const url = this.getFullUrl(`/api/sessions/${sessionId}/events`);
+    const auth = { ...this.getAuthConfig(), appendTokenToQuery: false };
+    return new KaganEventSource({ url, auth }, this.makeFetchEventSource());
   }
+
+  /**
+   * Subscribe to the per-task frame stream.
+   * GET /api/tasks/{taskId}/sse (kind=task)
+   *
+   * Uses /sse suffix to avoid collision with the paginated history endpoint.
+   * Returns a KaganEventSource that emits snapshot/ready/patch/resume frames.
+   * Centralises URL construction — providers must not build this URL directly.
+   */
+  subscribeTaskEvents(taskId: string): KaganEventSource {
+    const url = this.getFullUrl(`/api/tasks/${taskId}/sse`);
+    const auth = { ...this.getAuthConfig(), appendTokenToQuery: false };
+    return new KaganEventSource({ url, auth }, this.makeFetchEventSource());
+  }
+
+  /**
+   * Returns an EventSource-compatible factory backed by streamRequest.
+   *
+   * This keeps all HTTP through KaganClient rather than using a naked
+   * EventSource constructor (which would bypass auth headers).  The factory
+   * creates a FetchBackedEventSource per URL that uses Node's readable-stream
+   * fetch API to parse SSE frames.
+   */
+  private makeFetchEventSource(): (url: string) => EventSourceLike {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const client = this;
+    return (url: string) => new FetchBackedEventSource(client, url);
+  }
+
+  /**
+   * Returns an AuthConfig snapshot for use in KaganEventSource.
+   * Callers that use a header-capable factory may set `appendTokenToQuery: false`
+   * so the bearer is not duplicated in the URL (see `subscribeSessionEvents`).
+   */
+  getAuthConfig(): AuthConfig {
+    return {
+      baseUrl: this.getFullUrl(""),
+      token: this._token,
+    };
+  }
+
 }

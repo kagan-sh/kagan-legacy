@@ -125,4 +125,166 @@ describe("KaganClient", () => {
       body: undefined,
     });
   });
+
+  it("lists unified sessions", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            sessions: [
+              {
+                id: "sess-1",
+                type: "orchestrator",
+                role: null,
+                status: "RUNNING",
+                title: "Orchestrator",
+                backend: null,
+                project_id: null,
+                task_id: null,
+                session_id: null,
+                chat_session_id: null,
+                updated_at: "2026-05-08T10:00:00Z",
+                capabilities: {
+                  can_chat: true,
+                  can_stream: true,
+                  can_replay: true,
+                  can_stop: true,
+                  can_close: true,
+                  has_kagan_tools: true,
+                },
+              },
+            ],
+          },
+          error: null,
+          error_code: null,
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const client = new KaganClient("127.0.0.1:8765");
+    const result = await client.getSessions();
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].type).toBe("orchestrator");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:8765/api/v1/sessions",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("creates a unified session", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            id: "sess-new",
+            type: "general",
+            role: null,
+            status: "RUNNING",
+            title: "General",
+            backend: "claude-code",
+            project_id: null,
+            task_id: null,
+            session_id: null,
+            chat_session_id: null,
+            updated_at: "2026-05-08T10:00:00Z",
+            capabilities: {
+              can_chat: true,
+              can_stream: true,
+              can_replay: true,
+              can_stop: true,
+              can_close: true,
+              has_kagan_tools: false,
+            },
+          },
+          error: null,
+          error_code: null,
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const client = new KaganClient("127.0.0.1:8765");
+    const result = await client.createSession({ type: "general", backend: "claude-code" });
+    expect(result.type).toBe("general");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:8765/api/v1/sessions",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("stops a session", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: true, data: {}, error: null, error_code: null }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const client = new KaganClient("127.0.0.1:8765");
+    await expect(client.stopSession("sess-1")).resolves.toEqual({});
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:8765/api/v1/sessions/sess-1/stop",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("closes a session", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: true, data: {}, error: null, error_code: null }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const client = new KaganClient("127.0.0.1:8765");
+    await expect(client.closeSession("sess-1")).resolves.toEqual({});
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:8765/api/v1/sessions/sess-1/close",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("subscribeSessionEvents omits token from URL and still sends Authorization", async () => {
+    const errors: Error[] = [];
+    const seen: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      seen.push(u);
+      return Promise.reject(new Error("network down"));
+    });
+
+    const client = new KaganClient("127.0.0.1:8765", "http", "secret-token");
+    const es = client.subscribeSessionEvents("abc");
+    es.onError((e) => errors.push(e));
+
+    const deadline = Date.now() + 3_000;
+    while (errors.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const evtUrl = seen.find((u) => u.includes("/api/sessions/abc/events"));
+    expect(evtUrl).toBeDefined();
+    expect(evtUrl).not.toMatch(/token=/);
+    expect(evtUrl).not.toContain("secret-token");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toContain("SSE frame stream");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      evtUrl!,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer secret-token" }),
+      }),
+    );
+
+    es.close();
+  });
 });

@@ -12,15 +12,15 @@ Open the VS Code Chat panel (`Cmd+Shift+I` or the chat icon in the sidebar), the
 
 **Commands:**
 
-- `@kagan /watch` or `@kagan /watch <task name>` -- Stream a task's live agent output. Shows brief recent history then streams in real-time until the agent completes. For non-running tasks, shows the most recent events. Plain follow-up messages in that same chat conversation are sent back to the watched task.
 - `@kagan /status` -- Board summary table + running tasks.
+- `@kagan /switch <session-id>` -- Switch the chat panel to a session.
+- `@kagan /stop` -- Stop the selected session.
+- `@kagan /close` -- Close the selected session.
 - `@kagan` with no message -- Shows board status.
-
-**Quick access from the board:** Click the chat icon ($(comment-discussion)) on any IN_PROGRESS or REVIEW task in the sidebar tree to open the Chat panel pre-filled with `/watch <task>`.
 
 **Action buttons** appear after streaming: Approve, Reject, Merge, View Diff, or Run Task, depending on the task's status.
 
-The participant is `isSticky` -- once selected, follow-up messages stay in the `@kagan` context. Starting a fresh conversation clears both the orchestrator session handle and any watched-task follow-up routing.
+The participant is `isSticky` -- once selected, follow-up messages stay in the `@kagan` context. Starting a fresh conversation clears the orchestrator session handle.
 
 ______________________________________________________________________
 
@@ -81,13 +81,21 @@ For running tasks, "Attach Terminal" opens the agent's working environment:
 
 ______________________________________________________________________
 
-## Auto-Watch on Attach
+## Sessions
 
-When you attach to a task from the TUI, web dashboard, or CLI, and the task opens in VS Code (or Cursor, Windsurf, Kiro, Antigravity), the extension automatically opens the Chat panel streaming that task's live agent output. Zero extra clicks.
+The `@kagan` chat panel can switch to any running worker or reviewer session.
 
-This works because the server writes a small context file (`.kagan/attach_context.json`) into the worktree when launching the IDE. The extension detects it on activation, verifies the task is still running, and opens `@kagan /watch`.
+- **Tree view.** A "Sessions" view (`kagan.agents`) sits alongside the board tree.
+  Each node shows a worker / reviewer session with role, elapsed time, and token
+  totals. Clicking a node runs `kagan.switchSession`.
+- **`@kagan /switch <id>`.** Accepts either a full UUID or an 8-char prefix.
+- **Commands.** `kagan.switchSession`, `kagan.stopSession`, and `kagan.closeSession`
+  are available from the tree-view inline icons and the command palette (when
+  `kagan.connected`).
 
-Disable with `kagan.autoWatchOnAttach: false` if you prefer the old behavior.
+*Tests:* `packages/vscode/src/providers/chat.participant.helpers.test.ts`
+(prompt parsing + session resolution). Real UI smoke coverage belongs in
+`packages/vscode/test/e2e/`.
 
 ______________________________________________________________________
 
@@ -102,10 +110,31 @@ ______________________________________________________________________
 
 ## Settings
 
-| Setting                   | Default                 | Description                           |
-| ------------------------- | ----------------------- | ------------------------------------- |
-| `kagan.serverUrl`         | `http://localhost:8765` | Kagan server URL                      |
-| `kagan.autoConnect`       | `true`                  | Connect on startup                    |
-| `kagan.autoStartServer`   | `true`                  | Start local server if none is running |
-| `kagan.serverCommand`     | `kagan`                 | CLI command for local auto-start      |
-| `kagan.autoWatchOnAttach` | `true`                  | Auto-open Chat on attach              |
+| Setting                 | Default                 | Description                           |
+| ----------------------- | ----------------------- | ------------------------------------- |
+| `kagan.serverUrl`       | `http://localhost:8765` | Kagan server URL                      |
+| `kagan.autoConnect`     | `true`                  | Connect on startup                    |
+| `kagan.autoStartServer` | `true`                  | Start local server if none is running |
+| `kagan.serverCommand`   | `kagan`                 | CLI command for local auto-start      |
+
+______________________________________________________________________
+
+## Design System
+
+The extension applies the Kagan Design System within the constraints of the VS Code extension API.
+
+### Kanban board TreeView
+
+Column labels follow the canonical UPPERCASE taxonomy: **BACKLOG**, **IN PROGRESS**, **REVIEW**, **DONE**. Task item labels are sentence case (the task title as authored).
+
+### Status bar
+
+The brand glyph `ᘚᘛ kagan` is the status bar prefix. Connection state is color-coded via Kagan theme token contributions (`kagan.railRunning`, `kagan.railIdle`), which VS Code themes can override.
+
+### Theme color tokens
+
+Defined in `package.json` under `contributes.colors`. See `docs/internal/architecture/vscode.md` for the full token table and values.
+
+### Voice
+
+All user-facing strings (command titles, tooltips, notifications, button labels) use sentence case. No exclamation marks. No hype words. Declarative: "Task deleted", "Session stopped", not "Task successfully deleted!"

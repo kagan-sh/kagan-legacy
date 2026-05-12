@@ -87,7 +87,7 @@ describe("DoctorStatusProvider", () => {
 
     const item = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]
       .value as { text: string };
-    expect(item.text).toBe("Kagan: ready");
+    expect(item.text).toBe("$(check) ᘚᘛ kagan: ready");
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 
@@ -99,7 +99,7 @@ describe("DoctorStatusProvider", () => {
 
     const item = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]
       .value as { text: string };
-    expect(item.text).toBe("$(alert) Kagan: degraded");
+    expect(item.text).toBe("$(alert) ᘚᘛ kagan: degraded");
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 
@@ -113,7 +113,7 @@ describe("DoctorStatusProvider", () => {
 
     const item = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]
       .value as { text: string };
-    expect(item.text).toBe("$(warning) Kagan: setup needed");
+    expect(item.text).toBe("$(warning) ᘚᘛ kagan: setup needed");
     await vi.waitFor(() =>
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
         "Kagan: setup needed — one or more required checks failed.",

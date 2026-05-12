@@ -252,4 +252,39 @@ describe("KaganClient", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+
+  it("subscribeSessionEvents omits token from URL and still sends Authorization", async () => {
+    const errors: Error[] = [];
+    const seen: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const u = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      seen.push(u);
+      return Promise.reject(new Error("network down"));
+    });
+
+    const client = new KaganClient("127.0.0.1:8765", "http", "secret-token");
+    const es = client.subscribeSessionEvents("abc");
+    es.onError((e) => errors.push(e));
+
+    const deadline = Date.now() + 3_000;
+    while (errors.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const evtUrl = seen.find((u) => u.includes("/api/sessions/abc/events"));
+    expect(evtUrl).toBeDefined();
+    expect(evtUrl).not.toMatch(/token=/);
+    expect(evtUrl).not.toContain("secret-token");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toContain("SSE frame stream");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      evtUrl!,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer secret-token" }),
+      }),
+    );
+
+    es.close();
+  });
 });

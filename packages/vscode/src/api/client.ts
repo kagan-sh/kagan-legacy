@@ -110,9 +110,11 @@ class FetchBackedEventSource {
           await reader.cancel().catch(() => {});
         }
       } catch {
+        // Transport error (network failure, non-2xx): notify subscribers, then reconnect.
         if (signal.aborted || this.readyState === FetchBackedEventSource.CLOSED) {
           return;
         }
+        this.onerror?.({ type: "error" });
       }
 
       if (this.readyState === FetchBackedEventSource.CLOSED) {
@@ -344,7 +346,7 @@ export class KaganClient extends KaganApiClient {
    */
   subscribeSessionEvents(sessionId: string): KaganEventSource {
     const url = this.getFullUrl(`/api/sessions/${sessionId}/events`);
-    const auth = this.getAuthConfig();
+    const auth = { ...this.getAuthConfig(), appendTokenToQuery: false };
     return new KaganEventSource({ url, auth }, this.makeFetchEventSource());
   }
 
@@ -358,7 +360,7 @@ export class KaganClient extends KaganApiClient {
    */
   subscribeTaskEvents(taskId: string): KaganEventSource {
     const url = this.getFullUrl(`/api/tasks/${taskId}/sse`);
-    const auth = this.getAuthConfig();
+    const auth = { ...this.getAuthConfig(), appendTokenToQuery: false };
     return new KaganEventSource({ url, auth }, this.makeFetchEventSource());
   }
 
@@ -378,9 +380,8 @@ export class KaganClient extends KaganApiClient {
 
   /**
    * Returns an AuthConfig snapshot for use in KaganEventSource.
-   * The token is included so KaganEventSource can append it as a query param
-   * to the SSE URL — required because EventSource does not support custom
-   * request headers natively.
+   * Callers that use a header-capable factory may set `appendTokenToQuery: false`
+   * so the bearer is not duplicated in the URL (see `subscribeSessionEvents`).
    */
   getAuthConfig(): AuthConfig {
     return {

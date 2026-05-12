@@ -7,10 +7,12 @@
  *
  * Frame types from wire.ts: FrameSnapshot | FrameReady | FramePatch | FrameResume.
  *
- * Auth strategy: query-param token appended to the URL so the native
- * EventSource constructor (or polyfill) carries it on every request without
- * needing a custom headers hook.  Cookie-based auth also works because
- * EventSource respects cookies automatically.
+ * Auth strategy: by default a query-param token is appended so the native
+ * EventSource constructor (or polyfill) can authenticate without custom
+ * headers.  When the injected factory uses `streamRequest` (auth headers),
+ * pass `appendTokenToQuery: false` on `AuthConfig` so the bearer is not
+ * duplicated in the URL (logs / proxies).  Cookie-based auth still works
+ * because EventSource sends cookies automatically.
  *
  * EventSource polyfill: VS Code runs in Node 18+ where EventSource is NOT a
  * global.  Rather than pulling in an npm dependency we accept a factory
@@ -44,8 +46,13 @@ export interface EntryStreamState {
 export interface AuthConfig {
   /** Full base URL of the Kagan server, e.g. "http://localhost:8765". */
   baseUrl: string;
-  /** Optional bearer token — appended as ?token= query param when present. */
+  /** Optional bearer token — appended as ?token= when `appendTokenToQuery` is true. */
   token?: string;
+  /**
+   * When true or omitted, append `?token=` for header-less transports (browser EventSource).
+   * Set false when the factory uses fetch + Authorization (VS Code `FetchBackedEventSource`).
+   */
+  appendTokenToQuery?: boolean;
 }
 
 export interface KaganEventSourceOptions {
@@ -205,7 +212,8 @@ export class KaganEventSource {
   // ── Internal ────────────────────────────────────────────────────────────────
 
   private open(): void {
-    const url = buildUrl(this.opts.url, this.opts.auth.token);
+    const appendToken = this.opts.auth.appendTokenToQuery !== false;
+    const url = buildUrl(this.opts.url, this.opts.auth.token, appendToken);
     const es = this.esFactory(url);
     this.es = es;
 
@@ -276,8 +284,8 @@ export class KaganEventSource {
 
 // ── URL builder ───────────────────────────────────────────────────────────────
 
-function buildUrl(url: string, token?: string): string {
-  if (!token) return url;
+function buildUrl(url: string, token: string | undefined, appendTokenToQuery: boolean): string {
+  if (!token || !appendTokenToQuery) return url;
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}token=${encodeURIComponent(token)}`;
 }

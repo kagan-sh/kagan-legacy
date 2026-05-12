@@ -365,8 +365,14 @@ async function handleChat(
           const retryResponse = await client.chatStream(state.activeRawChatSessionId, text, abort.signal);
           await streamChatResponse(retryResponse, stream, abort.signal);
           return;
-        } catch {
-          // fall through to generic error
+        } catch (retryErr) {
+          if (abort.signal.aborted) return;
+          const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          stream.markdown(`\n\n**Error:** Could not resume chat after interrupt: ${retryMessage}\n`);
+          state.activeRawChatSessionId = null;
+          state.selectedSessionId = null;
+          state.selectedSessionType = null;
+          return;
         }
       }
       return;
@@ -629,8 +635,11 @@ async function handleGeneralTurn(
           const retryResponse = await client.chatStream(state.activeRawChatSessionId!, text, abort.signal);
           await streamChatResponse(retryResponse, stream, abort.signal);
           return;
-        } catch {
-          // fall through to generic error
+        } catch (retryErr) {
+          if (abort.signal.aborted) return;
+          const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          stream.markdown(`\n\n**Error:** Could not resume chat after interrupt: ${retryMessage}\n`);
+          return;
         }
       }
       return;

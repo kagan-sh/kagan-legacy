@@ -336,4 +336,22 @@ describe("KaganEventSource", () => {
     void es;
     expect(capturedUrls[0]).toContain("token=test-tok");
   });
+
+  it("omits token query param when appendTokenToQuery is false", () => {
+    const capturedUrls: string[] = [];
+    const es = new KaganEventSource(
+      {
+        url: "http://localhost:8765/api/sessions/sess-1/events",
+        auth: { baseUrl: "http://localhost:8765", token: "test-tok", appendTokenToQuery: false },
+      },
+      (u) => {
+        capturedUrls.push(u);
+        return new FakeEventSource() as unknown as EventSourceLike;
+      },
+    );
+
+    void es;
+    expect(capturedUrls[0]).toBe("http://localhost:8765/api/sessions/sess-1/events");
+    expect(capturedUrls[0]).not.toContain("token=");
+  });
 });

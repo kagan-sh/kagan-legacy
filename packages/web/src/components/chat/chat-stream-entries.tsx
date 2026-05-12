@@ -75,7 +75,7 @@ export function ChatStreamEntries({ entries, showReasoning = false }: ChatStream
 
 function StreamTextBlock({ content }: { content: string }) {
   return (
-    <div className="flex gap-3 py-3" data-testid="chat-stream-agent-text">
+    <div className="flex gap-3 py-3" data-testid="chat-stream-agent-text" data-role="assistant">
       <Avatar className="mt-0.5 size-6 shrink-0">
         <AvatarFallback className="bg-[var(--muted)]">
           <Bot className="size-3.5 text-[var(--muted-foreground)]" />

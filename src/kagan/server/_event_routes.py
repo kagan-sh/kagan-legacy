@@ -280,8 +280,20 @@ async def _sse_generator(
                     if kind_msg == "end":
                         return
                     row = payload
-                    frame_data = json.dumps(row.frame)
-                    yield _sse_event(row.seq, "patch", frame_data)
+                    frame_dict = row.frame if isinstance(row.frame, dict) else dict(row.frame)
+                    sse_kind = frame_dict.get("type")
+                    if sse_kind not in ("patch", "resume"):
+                        logger.warning(
+                            "Live SSE tail: unexpected frame type "
+                            "session={} kind={} seq={} type={}",
+                            session_id,
+                            kind,
+                            row.seq,
+                            sse_kind,
+                        )
+                        sse_kind = "patch"
+                    frame_data = json.dumps(frame_dict)
+                    yield _sse_event(row.seq, sse_kind, frame_data)
         except (GeneratorExit, asyncio.CancelledError, ConnectionError):
             return
         finally:

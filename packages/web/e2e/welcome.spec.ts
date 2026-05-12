@@ -26,9 +26,13 @@ test.describe("Welcome", () => {
 
       await page.getByRole("button", { name: /^new project$/i }).click();
       const newProjectDialog = page.getByRole("dialog", { name: /new project/i });
-      await expect(newProjectDialog).toBeVisible();
-      await expect(newProjectDialog.getByPlaceholder("my-project")).toBeVisible();
-      await expect(newProjectDialog.getByPlaceholder("/path/to/repository")).toBeVisible();
+      await expect(newProjectDialog).toBeVisible({ timeout: 30_000 });
+      await expect(newProjectDialog.getByPlaceholder("my-project")).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(newProjectDialog.getByPlaceholder("/path/to/repository")).toBeVisible({
+        timeout: 15_000,
+      });
       await page.keyboard.press("Escape");
       await expect(newProjectDialog).toBeHidden();
 

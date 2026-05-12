@@ -53,9 +53,12 @@ def test_session_persist_and_restore(chat_workdir: Path, chat_home: Path, tmp_pa
 
         mark = pty1.send_line("remember this")
         pty1.read_until_contains("persist reply", timeout=15, after=mark)
+        # Wait until the REPL counter / prompt_async is idle again; Ctrl-D during
+        # composing can be ignored and caused ubuntu+3.14 main CI to hang at exit.
+        pty1.read_until_contains("1 msg", timeout=20, after=mark)
 
         pty1.send_key("ctrl_d")
-        assert pty1.wait(timeout=90) == 0
+        assert pty1.wait(timeout=120) == 0
     finally:
         pty1.close()
 
@@ -70,14 +73,20 @@ def test_session_persist_and_restore(chat_workdir: Path, chat_home: Path, tmp_pa
         args=["--session-id", session_id],
     )
     try:
-        pty2.read_until_prompt_ready(timeout=15)
-
+        # Wait for the restore banner, then for replayed turn text (may arrive in a
+        # later PTY chunk than the "Resumed transcript:" header on some platforms).
+        # Anchor `after=` at the character after the banner text — not `pty2.mark()`
+        # (buffer end), which can land past the whole replay when one `read()` returns
+        # everything on fast machines (Greptile).
+        buf_with_banner = pty2.read_until_contains("Resumed transcript", timeout=20)
+        _banner = "Resumed transcript"
+        mark_after_banner = buf_with_banner.index(_banner) + len(_banner)
+        pty2.read_until_contains("persist reply", timeout=20, after=mark_after_banner)
         full = pty2.normalised_text()
-        assert "persist reply" in full or "remember this" in full, (
-            f"Restored transcript missing prior turn:\n{full[-1000:]}"
-        )
+        assert "remember this" in full, f"Restored transcript missing user line:\n{full[-2000:]}"
+        pty2.read_until_contains("Type a request", timeout=20, after=mark_after_banner)
 
         pty2.send_key("ctrl_d")
-        assert pty2.wait(timeout=90) == 0
+        assert pty2.wait(timeout=120) == 0
     finally:
         pty2.close()

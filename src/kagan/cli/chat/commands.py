@@ -58,6 +58,10 @@ class SlashAction(Enum):
     SWITCH_REPO = "switch_repo"
     SHOW_REPO = "show_repo"
     SHOW_APPROVALS = "show_approvals"
+    SWITCH_SESSION = "switch_session"
+    STOP_SESSION = "stop_session"
+    CLOSE_SESSION = "close_session"
+    TOGGLE_REASONING = "toggle_reasoning"
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +87,10 @@ class SlashCommandOutcome:
     repo_info_requested: bool = False
     action: SlashAction = SlashAction.NONE
     data: str | None = None
+    switch_session_id: str | None = None
+    stop_session: bool = False
+    close_session: bool = False
+    reasoning_mode: str | None = None  # "on" | "off" | "toggle"
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,8 +206,23 @@ def _handle_clear(
 
 
 def _handle_new(
-    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
+    arg = invocation.arg.strip()
+    if arg.lower().startswith("general"):
+        # /new general --agent <backend>
+        parts = arg.split()
+        backend: str | None = None
+        if "--agent" in parts:
+            idx = parts.index("--agent")
+            if idx + 1 < len(parts):
+                backend = parts[idx + 1]
+        return SlashCommandOutcome(
+            handled=True,
+            new_session_requested=True,
+            action=SlashAction.NEW_SESSION,
+            data=f"general:{backend}" if backend else "general",
+        )
     return SlashCommandOutcome(
         handled=True, new_session_requested=True, action=SlashAction.NEW_SESSION
     )
@@ -215,6 +238,43 @@ def _handle_sessions(
         sessions_query=query,
         action=SlashAction.LIST_SESSIONS,
         data=query,
+    )
+
+
+def _handle_switch(
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    target = invocation.arg.strip()
+    if not target:
+        return SlashCommandOutcome(
+            handled=True,
+            action=SlashAction.SWITCH_SESSION,
+            error_lines=("Usage: /switch <session-id>",),
+        )
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.SWITCH_SESSION,
+        switch_session_id=target,
+    )
+
+
+def _handle_stop(
+    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.STOP_SESSION,
+        stop_session=True,
+    )
+
+
+def _handle_close(
+    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    return SlashCommandOutcome(
+        handled=True,
+        action=SlashAction.CLOSE_SESSION,
+        close_session=True,
     )
 
 
@@ -341,14 +401,14 @@ def _handle_flow(
         )
     goal = invocation.arg.strip()
     lines: list[str] = [
-        "Structured flow: Plan -> Execute -> Orchestrate",
+        "Structured flow: Plan → Execute → Orchestrate",
         "PLAN: State the outcome, constraints, and acceptance criteria in 1-3 bullets.",
         "EXECUTE: Implement one small step at a time and verify each step.",
         "ORCHESTRATE: Summarize what changed, what was verified, and the next action.",
     ]
     if goal:
         lines.insert(1, f"Goal: {goal}")
-    lines.append("Tip: Start your next message with 'Plan for: <goal>' to begin explicitly.")
+    lines.append("Tip: start your next message with 'Plan for: <goal>' to begin explicitly.")
     return SlashCommandOutcome(handled=True, info_lines=tuple(lines), action=SlashAction.SHOW_INFO)
 
 
@@ -371,13 +431,28 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
     )
     registry.register(
         name="new",
-        description="Start a new chat session",
+        description="Start a new chat session (/new general --agent <backend>)",
         handler=_handle_new,
     )
     registry.register(
         name="sessions",
-        description="List or attach chat sessions",
+        description="List all sessions (orchestrator, task, general)",
         handler=_handle_sessions,
+    )
+    registry.register(
+        name="switch",
+        description="Select a session: /switch <session-id>",
+        handler=_handle_switch,
+    )
+    registry.register(
+        name="stop",
+        description="Stop the selected live session",
+        handler=_handle_stop,
+    )
+    registry.register(
+        name="close",
+        description="Close the selected chat session",
+        handler=_handle_close,
     )
     registry.register(
         name="status",
@@ -421,7 +496,7 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
     )
     registry.register(
         name="flow",
-        description="Show guided Plan -> Execute -> Orchestrate flow",
+        description="Show guided Plan → Execute → Orchestrate flow",
         handler=_handle_flow,
     )
     # Mark flow as orchestrator-only after registration
@@ -429,7 +504,7 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
     registry._commands["flow"] = SlashCommand(
         spec=SlashCommandSpec(
             name="flow",
-            description="Show guided Plan -> Execute -> Orchestrate flow",
+            description="Show guided Plan → Execute → Orchestrate flow",
             orchestrator_only=True,
         ),
         handler=flow_cmd.handler,

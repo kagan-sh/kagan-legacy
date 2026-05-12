@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 import sys
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -33,6 +32,22 @@ from kagan.runtime_env import (
 )
 
 pytestmark = [pytest.mark.unit]
+
+
+def _merge_os_environ(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    """Overlay *env* on the process environment (``patch.dict(..., clear=False)``)."""
+
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+
+
+def _replace_os_environ(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    """Replace the process environment with *env* (``patch.dict(..., clear=True)``)."""
+
+    for k in list(os.environ):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
 
 
 class TestIsSensitiveKey:
@@ -184,15 +199,15 @@ class TestNoisyEnvKeys:
         assert noisy_env_keys("unknown") == ()
         assert noisy_env_keys("freebsd") == ()
 
-    def test_defaults_to_sys_platform(self) -> None:
+    def test_defaults_to_sys_platform(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default should use sys.platform."""
-        with patch.object(sys, "platform", "darwin"):
-            keys = noisy_env_keys()
-            assert "MallocStackLogging" in keys
+        monkeypatch.setattr(sys, "platform", "darwin")
+        keys = noisy_env_keys()
+        assert "MallocStackLogging" in keys
 
-        with patch.object(sys, "platform", "linux"):
-            keys = noisy_env_keys()
-            assert keys == ()
+        monkeypatch.setattr(sys, "platform", "linux")
+        keys = noisy_env_keys()
+        assert keys == ()
 
 
 class TestStripNoisyEnvironmentVariables:
@@ -253,47 +268,43 @@ class TestStripNoisyEnvironmentVariables:
         assert isinstance(removed, tuple)
         assert len(removed) == 2
 
-    def test_defaults_to_sys_platform(self) -> None:
+    def test_defaults_to_sys_platform(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should default to sys.platform when not specified."""
         env: MutableMapping[str, str] = {
             "MallocStackLogging": "1",
             "PATH": "/usr/bin",
         }
-        with patch.object(sys, "platform", "darwin"):
-            removed = strip_noisy_environment_variables(env)
-            assert "MallocStackLogging" in removed
+        monkeypatch.setattr(sys, "platform", "darwin")
+        removed = strip_noisy_environment_variables(env)
+        assert "MallocStackLogging" in removed
 
         env = {"MallocStackLogging": "1", "PATH": "/usr/bin"}
-        with patch.object(sys, "platform", "linux"):
-            removed = strip_noisy_environment_variables(env)
-            assert "MallocStackLogging" not in removed
+        monkeypatch.setattr(sys, "platform", "linux")
+        removed = strip_noisy_environment_variables(env)
+        assert "MallocStackLogging" not in removed
 
 
 class TestSanitizeStartupEnvironment:
     """Tests for sanitize_startup_environment function."""
 
-    def test_removes_noisy_vars_from_os_environ(self) -> None:
+    def test_removes_noisy_vars_from_os_environ(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should remove noisy variables from os.environ."""
-        with patch.dict(
-            "os.environ",
-            {"MallocStackLogging": "1", "PATH": "/usr/bin"},
-            clear=False,
-        ):
-            with patch.object(sys, "platform", "darwin"):
-                removed = sanitize_startup_environment()
-                # Windows uppercases env keys, so compare case-insensitively
-                removed_upper = {k.upper() for k in removed}
-                assert "MALLOCSTACKLOGGING" in removed_upper
-                assert "MallocStackLogging" not in os.environ
+        _merge_os_environ(monkeypatch, {"MallocStackLogging": "1", "PATH": "/usr/bin"})
+        monkeypatch.setattr(sys, "platform", "darwin")
+        removed = sanitize_startup_environment()
+        # Windows uppercases env keys, so compare case-insensitively
+        removed_upper = {k.upper() for k in removed}
+        assert "MALLOCSTACKLOGGING" in removed_upper
+        assert "MallocStackLogging" not in os.environ
 
-    def test_preserves_non_noisy_vars(self) -> None:
+    def test_preserves_non_noisy_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should preserve non-noisy variables."""
         test_env = {"PATH": "/usr/bin", "HOME": "/home/user"}
-        with patch.dict("os.environ", test_env, clear=True):
-            with patch.object(sys, "platform", "darwin"):
-                sanitize_startup_environment()
-                assert os.environ.get("PATH") == "/usr/bin"
-                assert os.environ.get("HOME") == "/home/user"
+        _replace_os_environ(monkeypatch, test_env)
+        monkeypatch.setattr(sys, "platform", "darwin")
+        sanitize_startup_environment()
+        assert os.environ.get("PATH") == "/usr/bin"
+        assert os.environ.get("HOME") == "/home/user"
 
 
 class TestBuildSanitizedSubprocessEnvironment:
@@ -361,16 +372,16 @@ class TestBuildSanitizedSubprocessEnvironment:
         assert "PYTHONHOME" not in result
         assert "PYTHONDONTWRITEBYTECODE" not in result
 
-    def test_strips_noisy_vars_per_platform(self) -> None:
+    def test_strips_noisy_vars_per_platform(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should strip noisy variables based on platform."""
         base_env = {
             "PATH": "/usr/bin",
             "HOME": "/home/user",
             "MallocStackLogging": "1",
         }
-        with patch.object(sys, "platform", "darwin"):
-            result = build_sanitized_subprocess_environment(base_env)
-            assert "MallocStackLogging" not in result
+        monkeypatch.setattr(sys, "platform", "darwin")
+        result = build_sanitized_subprocess_environment(base_env)
+        assert "MallocStackLogging" not in result
 
         # On Linux, MallocStackLogging should not be in base result
         # but let's verify the logic doesn't add it
@@ -451,21 +462,20 @@ class TestBuildSanitizedSubprocessEnvironment:
         assert "HOME" in result
         assert len(result) == 2
 
-    def test_uses_os_environ_when_base_env_none(self) -> None:
+    def test_uses_os_environ_when_base_env_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should use os.environ when base_env is None."""
-        with patch.dict(
-            "os.environ",
+        _replace_os_environ(
+            monkeypatch,
             {
                 "PATH": "/usr/bin",
                 "HOME": "/home/user",
                 "API_KEY": "secret",
             },
-            clear=True,
-        ):
-            result = build_sanitized_subprocess_environment()
-            assert "PATH" in result
-            assert "HOME" in result
-            assert "API_KEY" not in result
+        )
+        result = build_sanitized_subprocess_environment()
+        assert "PATH" in result
+        assert "HOME" in result
+        assert "API_KEY" not in result
 
     def test_returns_dict(self) -> None:
         """Should return a dictionary."""
@@ -485,7 +495,7 @@ class TestBuildSanitizedSubprocessEnvironment:
         assert set(base_env.keys()) == original_keys
         assert "API_KEY" in base_env
 
-    def test_combined_sensitive_and_noisy_removal(self) -> None:
+    def test_combined_sensitive_and_noisy_removal(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should handle both sensitive and noisy vars correctly."""
         base_env = {
             "PATH": "/usr/bin",
@@ -493,12 +503,12 @@ class TestBuildSanitizedSubprocessEnvironment:
             "API_KEY": "secret",
             "MallocStackLogging": "1",
         }
-        with patch.object(sys, "platform", "darwin"):
-            result = build_sanitized_subprocess_environment(base_env)
-            assert "PATH" in result
-            assert "HOME" in result
-            assert "API_KEY" not in result
-            assert "MallocStackLogging" not in result
+        monkeypatch.setattr(sys, "platform", "darwin")
+        result = build_sanitized_subprocess_environment(base_env)
+        assert "PATH" in result
+        assert "HOME" in result
+        assert "API_KEY" not in result
+        assert "MallocStackLogging" not in result
 
     def test_case_sensitivity_of_sensitive_patterns(self) -> None:
         """Sensitive patterns should be matched case-insensitively."""
@@ -617,7 +627,7 @@ class TestIntegrationScenarios:
         assert "NODE_ENV" in result
         assert "API_KEY" not in result
 
-    def test_macos_malloc_debugging_stripped(self) -> None:
+    def test_macos_malloc_debugging_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that macOS malloc debugging vars are stripped."""
         macos_env = {
             "PATH": "/usr/bin",
@@ -625,10 +635,10 @@ class TestIntegrationScenarios:
             "MallocStackLogging": "1",
             "MallocStackLoggingNoCompact": "1",
         }
-        with patch.object(sys, "platform", "darwin"):
-            result = build_sanitized_subprocess_environment(macos_env)
-            assert "MallocStackLogging" not in result
-            assert "MallocStackLoggingNoCompact" not in result
+        monkeypatch.setattr(sys, "platform", "darwin")
+        result = build_sanitized_subprocess_environment(macos_env)
+        assert "MallocStackLogging" not in result
+        assert "MallocStackLoggingNoCompact" not in result
 
     def test_allow_extra_overrides_sensitive_in_base(self) -> None:
         """Test that allow_extra can add a sensitive var even if base had it."""
@@ -672,13 +682,13 @@ class TestEssentialEnvSelector:
         }
         assert required <= _ESSENTIAL_ENV_WINDOWS
 
-    def test_defaults_to_sys_platform(self) -> None:
+    def test_defaults_to_sys_platform(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without an argument, _essential_env() consults sys.platform."""
-        with patch.object(sys, "platform", "win32"):
-            assert _essential_env() is _ESSENTIAL_ENV_WINDOWS
+        monkeypatch.setattr(sys, "platform", "win32")
+        assert _essential_env() is _ESSENTIAL_ENV_WINDOWS
 
-        with patch.object(sys, "platform", "linux"):
-            assert _essential_env() is _ESSENTIAL_ENV_POSIX
+        monkeypatch.setattr(sys, "platform", "linux")
+        assert _essential_env() is _ESSENTIAL_ENV_POSIX
 
 
 class TestBuildSanitizedWindowsPlatform:

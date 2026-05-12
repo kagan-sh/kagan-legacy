@@ -9,7 +9,6 @@ export type IntentKind =
   | 'create-task'
   | 'search'
   | 'chat'
-  | 'navigate-analytics'
   | 'navigate-settings'
   | 'navigate-board'
   | 'navigate-workspace'
@@ -67,7 +66,6 @@ interface NavRule {
 }
 
 const NAV_RULES: readonly NavRule[] = [
-  { kind: 'navigate-analytics', route: '/analytics', label: 'Open analytics', triggers: ['analytics', 'metrics', 'stats'] },
   { kind: 'navigate-settings', route: '/settings', label: 'Open settings', triggers: ['settings', 'preferences', 'config'] },
   { kind: 'navigate-board', route: '/board', label: 'Open board', triggers: ['board', 'kanban', 'tasks list'] },
   { kind: 'navigate-workspace', route: '/workspace', label: 'Open workspace', triggers: ['workspace', 'conversations', 'chats'] },
@@ -110,7 +108,7 @@ export function classifyIntent(input: string): ClassifiedIntent {
   const lower = raw.toLowerCase();
   const head = firstWord(lower);
 
-  // Navigation — "show analytics", "open settings".
+  // Navigation — "open settings", "go to board".
   if (NAV_VERBS.some((v) => lower.startsWith(v))) {
     for (const rule of NAV_RULES) {
       if (rule.triggers.some((t) => lower.includes(t))) {
@@ -187,8 +185,6 @@ export function describeIntent(intent: ClassifiedIntent, rawInput: string): stri
       return 'Ask in chat';
     case 'search':
       return `Search tasks for "${rawInput}"`;
-    case 'navigate-analytics':
-      return 'Open analytics';
     case 'navigate-settings':
       return 'Open settings';
     case 'navigate-board':

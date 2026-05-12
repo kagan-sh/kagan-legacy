@@ -1,13 +1,11 @@
-import builtins
+from __future__ import annotations
+
 import contextlib
-import functools
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from sqlalchemy import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -29,6 +27,11 @@ from kagan.core.errors import (
 from kagan.core.models import Project, Repository, Task
 
 if TYPE_CHECKING:
+    import builtins
+    from collections.abc import Awaitable, Callable
+
+    from sqlalchemy import Engine
+
     from kagan.core.client import KaganCore
 
 
@@ -357,36 +360,49 @@ async def resolve_repo_path(
 
 # ── Slim class wrapper (state-mutating methods only) ──────────────────────
 
-# Read-only passthroughs resolved via __getattr__:
-_PASSTHROUGH_MAP: dict[str, Any] = {
-    "get": get_project,
-    "list": list_projects,
-    "add_repo": add_repo,
-    "repos": list_repos,
-    "set_repo_default_branch": set_repo_default_branch,
-    "find_by_repo": find_project_by_repo,
-    "find_by_name": find_project_by_name,
-    "inspect_folder": inspect_project_folder,
-    "resolve_repo": resolve_repo,
-}
-
 
 class Projects:
-    def __init__(self, engine: Engine, client: "KaganCore") -> None:
+    def __init__(self, engine: Engine, client: KaganCore) -> None:
         self._engine = engine
         self._client = client
 
-    # ── Module-function passthroughs bound at attribute access time ────────
+    async def get(self, project_id: str) -> Project:
+        return await get_project(self._engine, project_id)
 
-    def __getattr__(self, name: str) -> Any:
-        fn = _PASSTHROUGH_MAP.get(name)
-        if fn is None:
-            raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
-        return functools.partial(fn, self._engine)
+    async def list(self) -> list[Project]:
+        return await list_projects(self._engine)
+
+    async def add_repo(self, project_id: str, repo_path: str) -> Repository:
+        return await add_repo(self._engine, project_id, repo_path)
+
+    async def repos(self, project_id: str) -> list[Repository]:  # type: ignore[unsupported-operation]
+        return await list_repos(self._engine, project_id)
+
+    async def set_repo_default_branch(
+        self, project_id: str, repo_id: str, branch: str
+    ) -> Repository:
+        return await set_repo_default_branch(self._engine, project_id, repo_id, branch)
+
+    async def find_by_repo(self, repo_path: str) -> Project | None:
+        return await find_project_by_repo(self._engine, repo_path)
+
+    async def find_by_name(self, name: str) -> Project | None:
+        return await find_project_by_name(self._engine, name)
+
+    async def inspect_folder(self, folder_path: str | Path) -> ProjectFolderResolution:
+        return await inspect_project_folder(self._engine, folder_path)
+
+    async def resolve_repo(
+        self,
+        project_id: str,
+        *,
+        selected_repo_id: str | None = None,
+    ) -> Repository:
+        return await resolve_repo(self._engine, project_id, selected_repo_id=selected_repo_id)
 
     # ── Methods that mutate client state ────────────────────────────────────
 
-    async def create(self, name: str, *, repo_paths: list[str] | None = None) -> Project:
+    async def create(self, name: str, *, repo_paths: list[str] | None = None) -> Project:  # type: ignore[unsupported-operation]
         return await create_project(
             self._engine,
             name,

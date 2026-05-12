@@ -5,8 +5,8 @@ to prevent path traversal, shell injection, and directory escaping attacks.
 """
 
 import re
+import types
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -68,7 +68,7 @@ SPECIAL_CHAR_PAYLOADS = [
 class TestResolveWorktreePathValidation:
     """Tests for _resolve_worktree_path() function validating task IDs."""
 
-    def test_valid_uuid_accepted(self, tmp_path: Path, monkeypatch):
+    def test_valid_uuid_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should accept valid UUID format task IDs."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -83,7 +83,7 @@ class TestResolveWorktreePathValidation:
             # Verify the resolved path is within base directory
             assert _is_path_within_base(result, tmp_path)
 
-    def test_valid_uuid_variants_accepted(self, tmp_path: Path, monkeypatch):
+    def test_valid_uuid_variants_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should accept UUIDs with different casing."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -93,7 +93,9 @@ class TestResolveWorktreePathValidation:
         assert result.name == upper_uuid
 
     @pytest.mark.parametrize("payload", PATH_TRAVERSAL_PAYLOADS)
-    def test_path_traversal_rejected(self, tmp_path: Path, monkeypatch, payload: str):
+    def test_path_traversal_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str
+    ):
         """_resolve_worktree_path() should reject path traversal attempts."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -104,7 +106,9 @@ class TestResolveWorktreePathValidation:
         assert any(word in error_msg for word in ["invalid", "traversal", "path", "task"])
 
     @pytest.mark.parametrize("payload", SHELL_INJECTION_PAYLOADS)
-    def test_shell_injection_rejected(self, tmp_path: Path, monkeypatch, payload: str):
+    def test_shell_injection_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str
+    ):
         """_resolve_worktree_path() should reject shell injection attempts."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -115,7 +119,9 @@ class TestResolveWorktreePathValidation:
         assert any(word in error_msg for word in ["invalid", "format", "task", "shell"])
 
     @pytest.mark.parametrize("payload", SPECIAL_CHAR_PAYLOADS)
-    def test_special_characters_rejected(self, tmp_path: Path, monkeypatch, payload: str):
+    def test_special_characters_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str
+    ):
         """_resolve_worktree_path() should reject task IDs with special characters."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -125,7 +131,7 @@ class TestResolveWorktreePathValidation:
         error_msg = str(exc_info.value).lower()
         assert any(word in error_msg for word in ["invalid", "format", "task"])
 
-    def test_directory_escaping_detected(self, tmp_path: Path, monkeypatch):
+    def test_directory_escaping_detected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should detect and prevent path escaping base directory."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -138,7 +144,7 @@ class TestResolveWorktreePathValidation:
         error_msg = str(exc_info.value).lower()
         assert any(word in error_msg for word in ["escape", "outside", "traversal", "invalid"])
 
-    def test_resolved_path_is_normalized(self, tmp_path: Path, monkeypatch):
+    def test_resolved_path_is_normalized(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should return a normalized, absolute path."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -150,21 +156,21 @@ class TestResolveWorktreePathValidation:
         # Path should be normalized (no .. or . components)
         assert str(result) == str(result.resolve())
 
-    def test_empty_task_id_rejected(self, tmp_path: Path, monkeypatch):
+    def test_empty_task_id_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should reject empty task IDs."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
         with pytest.raises((ValueError, ValidationError, WorktreeError)):
             Worktrees._resolve_worktree_path("")
 
-    def test_none_task_id_rejected(self, tmp_path: Path, monkeypatch):
+    def test_none_task_id_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should reject None task IDs."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
         with pytest.raises((TypeError, ValidationError, WorktreeError)):
             Worktrees._resolve_worktree_path(None)  # type: ignore[arg-type]
 
-    def test_non_string_task_id_rejected(self, tmp_path: Path, monkeypatch):
+    def test_non_string_task_id_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should reject non-string task IDs."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -175,7 +181,7 @@ class TestResolveWorktreePathValidation:
 class TestWorktreePathSecurityEdgeCases:
     """Edge case security tests for worktree path validation."""
 
-    def test_unicode_in_task_id_rejected(self, tmp_path: Path, monkeypatch):
+    def test_unicode_in_task_id_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should reject task IDs with unicode characters."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -190,7 +196,9 @@ class TestWorktreePathSecurityEdgeCases:
             with pytest.raises((ValueError, ValidationError, WorktreeError)):
                 Worktrees._resolve_worktree_path(payload)
 
-    def test_double_encoding_attempts_rejected(self, tmp_path: Path, monkeypatch):
+    def test_double_encoding_attempts_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """_resolve_worktree_path() should reject URL/double-encoded paths."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -203,7 +211,7 @@ class TestWorktreePathSecurityEdgeCases:
             with pytest.raises((ValueError, ValidationError, WorktreeError)):
                 Worktrees._resolve_worktree_path(payload)
 
-    def test_null_byte_injection_rejected(self, tmp_path: Path, monkeypatch):
+    def test_null_byte_injection_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """_resolve_worktree_path() should reject null byte injection attempts."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -217,7 +225,9 @@ class TestWorktreePathSecurityEdgeCases:
             with pytest.raises((ValueError, ValidationError, WorktreeError)):
                 Worktrees._resolve_worktree_path(payload)
 
-    def test_very_long_task_id_resolves_safely(self, tmp_path: Path, monkeypatch):
+    def test_very_long_task_id_resolves_safely(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """_resolve_worktree_path() handles long but valid task IDs without errors."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -225,7 +235,9 @@ class TestWorktreePathSecurityEdgeCases:
         result = Worktrees._resolve_worktree_path(long_payload)
         assert result.parent == tmp_path
 
-    def test_path_with_control_characters_rejected(self, tmp_path: Path, monkeypatch):
+    def test_path_with_control_characters_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """_resolve_worktree_path() should reject task IDs with control characters."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -246,28 +258,40 @@ class TestCreateMethodValidation:
     """Tests verifying that create() method properly uses path validation."""
 
     @pytest.mark.asyncio
-    async def test_create_validates_task_id_before_use(self, tmp_path: Path, monkeypatch):
+    async def test_create_validates_task_id_before_use(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """create() should validate task ID before using it in path construction."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
-        # Verify _resolve_worktree_path is called during create().
-        # Instead of mocking the full async chain, test the static method directly.
-        with patch("kagan.core._worktrees._resolve_worktree_path") as mock_resolve:
-            mock_resolve.return_value = tmp_path / "worktrees" / "valid-task-id"
-            # Calling the static method with a valid ID should invoke _resolve_worktree_path
-            result = Worktrees._resolve_worktree_path("valid-task-id")
-            assert result == tmp_path / "worktrees" / "valid-task-id"
-            mock_resolve.assert_called_once_with("valid-task-id")
+        resolve_calls: list[str] = []
+
+        def tracked_resolve(task_id: str) -> Path:
+            resolve_calls.append(task_id)
+            return tmp_path / "worktrees" / task_id
+
+        monkeypatch.setattr(Worktrees, "_resolve_worktree_path", staticmethod(tracked_resolve))
+
+        result = Worktrees._resolve_worktree_path("valid-task-id")
+        assert result == tmp_path / "worktrees" / "valid-task-id"
+        assert resolve_calls == ["valid-task-id"]
 
     @pytest.mark.asyncio
-    async def test_create_rejects_malicious_task_id(self, tmp_path: Path, monkeypatch):
+    async def test_create_rejects_malicious_task_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """create() should reject malicious task IDs before any filesystem operations."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
-        mock_engine = MagicMock()
-        mock_client = MagicMock()
-        mock_client.tasks.get = AsyncMock(side_effect=ValueError("bad task"))
-        worktrees = Worktrees(mock_engine, mock_client)
+        async def _bad_get(*a, **kw):
+            raise ValueError("bad task")
+
+        fake_client = types.SimpleNamespace(
+            tasks=types.SimpleNamespace(get=_bad_get),
+            projects=types.SimpleNamespace(repos=None),  # not reached; tasks.get raises first
+        )
+        fake_engine = types.SimpleNamespace()
+        worktrees = Worktrees(fake_engine, fake_client)  # type: ignore[arg-type]
 
         # Attempt to create worktree with path traversal task ID
         malicious_task_id = "../../../etc/passwd"
@@ -281,7 +305,9 @@ class TestCreateMethodValidation:
 class TestPathResolutionIntegration:
     """Integration tests for path resolution with actual filesystem."""
 
-    def test_resolved_path_does_not_escape_with_symlink(self, tmp_path: Path, monkeypatch):
+    def test_resolved_path_does_not_escape_with_symlink(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """_resolve_worktree_path() should handle symlinks in base directory safely."""
         monkeypatch.setenv("KAGAN_WORKTREE_BASE", str(tmp_path))
 
@@ -297,7 +323,9 @@ class TestPathResolutionIntegration:
         # Result should still be within the original base path
         assert _is_path_within_base(result, tmp_path)
 
-    def test_resolved_path_with_relative_base(self, tmp_path: Path, monkeypatch):
+    def test_resolved_path_with_relative_base(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """_resolve_worktree_path() should handle relative base paths correctly."""
         # Use a relative path as base (simulated)
         rel_base = tmp_path / "worktrees"

@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { renderEvent } from '@/lib/api/event-rendering';
+import { EVENT_TYPE } from '@kagan/shared-api-client';
 import type { WireEvent } from '@kagan/shared-api-client';
 
 export type StreamedStatus =
@@ -49,16 +50,17 @@ const MAX_LOG_CHARS = 60;
 function summarizeEvent(event: WireEvent): { text: string; status: StreamedStatus | null } {
   const payload = (event.payload ?? {}) as Record<string, unknown>;
   const renderable = renderEvent(event.type, payload, event.id, event.session_id ?? '');
+  const eventType = event.type.toLowerCase();
   let text = '';
   let status: StreamedStatus | null = null;
 
-  if (event.type === 'AGENT_COMPLETED') status = 'completed';
-  else if (event.type === 'AGENT_FAILED') status = 'failed';
+  if (eventType === EVENT_TYPE.AGENT_COMPLETED) status = 'completed';
+  else if (eventType === EVENT_TYPE.AGENT_FAILED) status = 'failed';
   else if (
-    event.type === 'OUTPUT_CHUNK' ||
-    event.type === 'TOOL_CALL_START' ||
-    event.type === 'TOOL_CALL_UPDATE' ||
-    event.type === 'AGENT_STATUS'
+    eventType === EVENT_TYPE.OUTPUT_CHUNK ||
+    eventType === EVENT_TYPE.TOOL_CALL_START ||
+    eventType === EVENT_TYPE.TOOL_CALL_UPDATE ||
+    eventType === EVENT_TYPE.AGENT_STATUS
   ) {
     status = 'running';
   }

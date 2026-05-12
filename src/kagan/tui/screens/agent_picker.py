@@ -40,7 +40,7 @@ class AgentPickerModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="agent-picker-container"):
-            yield Static("Switch Global Agent", classes="modal-title")
+            yield Static("Switch global agent", classes="modal-title")
             yield Static(
                 "Select the default agent for orchestrator chat and managed task runs.",
                 id="agent-picker-description",

@@ -1,22 +1,28 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import json
 import re
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 from textual import on
-from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
 from textual.events import Click, MouseScrollDown, MouseScrollUp, MouseUp, Resize
 from textual.message import Message
 from textual.reactive import var
-from textual.widget import Widget
 from textual.widgets import Markdown, Static
-from textual.widgets.markdown import MarkdownStream
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
+    from textual.timer import Timer
+    from textual.widget import Widget
+    from textual.widgets.markdown import MarkdownStream
 
 from kagan.tui._osc8 import file_link
 from kagan.tui.keybindings import (
@@ -194,9 +200,16 @@ class ToolCallView(Vertical):
         self.result = result
         self.kind = kind
         self.has_content = bool((args or "").strip() or (result or "").strip())
+        self._started_at: float = time.monotonic()
+        self._elapsed_at: float | None = None
+        self._tick_timer: Timer | None = None
 
     def set_status(self, status: str) -> None:
         self.status = status
+        normalized = self._normalized_status()
+        if normalized != "running" and self._elapsed_at is None:
+            self._elapsed_at = time.monotonic() - self._started_at
+            self._stop_tick()
         self._refresh()
 
     def set_result(self, result: str | None) -> None:
@@ -242,10 +255,41 @@ class ToolCallView(Vertical):
         self._refresh()
         self._sync_content_bounds()
         self.call_after_refresh(self._sync_content_bounds)
+        if self._normalized_status() == "running":
+            self._tick_timer = self.set_interval(1.0, self._tick)
+
+    def on_unmount(self) -> None:
+        self._stop_tick()
 
     def on_resize(self, _: Resize) -> None:
         self._sync_content_bounds()
         self.call_after_refresh(self._sync_content_bounds)
+
+    def _tick(self) -> None:
+        """Called at 1Hz while running to update the elapsed-time display."""
+        if self._normalized_status() != "running":
+            self._stop_tick()
+            return
+        with contextlib.suppress(NoMatches):
+            header = self.query_one("#tool-call-header", Static)
+            header.update(self._header_line())
+
+    def _stop_tick(self) -> None:
+        if self._tick_timer is not None:
+            self._tick_timer.stop()
+            self._tick_timer = None
+
+    def _elapsed_str(self) -> str:
+        """Return human-readable elapsed time, or empty string before 1s."""
+        if self._elapsed_at is not None:
+            ms = self._elapsed_at * 1000
+            if ms < 1000:
+                return f"{ms:.0f}ms"
+            return f"{self._elapsed_at:.1f}s"
+        running_for = time.monotonic() - self._started_at
+        if running_for < 1.0:
+            return ""
+        return f"{running_for:.0f}s"
 
     def _refresh(self) -> None:
         self._apply_status_classes()
@@ -308,12 +352,6 @@ class ToolCallView(Vertical):
         "error": "failed",
     }
 
-    _STATUS_LABELS: dict[str, str] = {
-        "running": "running",
-        "completed": "done",
-        "failed": "failed",
-    }
-
     _KEY_ARG_PRIORITY = (
         "title",
         "name",
@@ -346,21 +384,25 @@ class ToolCallView(Vertical):
         return None
 
     def _header_line(self) -> str:
-        expand = "▼" if self.expanded and self.has_content else ("▶" if self.has_content else "•")
         status = self._normalized_status()
-        status_label = self._STATUS_LABELS.get(status, status)
+        if status == "failed":
+            glyph = "✗"
+        elif self.expanded and self.has_content:
+            glyph = "▾"
+        else:
+            glyph = "▸"
         title = self.title.strip() or (self.tool_id or "tool")
-        hint = ""
-        if self.has_content:
-            hint = " · Enter to collapse" if self.expanded else " · Enter to expand"
+        elapsed = self._elapsed_str()
         key_arg = self._extract_key_arg()
         if key_arg:
             key, value = key_arg
             # Render file paths as clickable OSC 8 hyperlinks when supported.
             label = value[:50]
             display_value = file_link(value, label) if key == "path" else label
-            return f"{expand} {title} ({key}: {display_value}) · {status_label}{hint}"
-        return f"{expand} {title} · {status_label}{hint}"
+            base = f"{glyph} {title} ({key}: {display_value})"
+        else:
+            base = f"{glyph} {title}"
+        return f"{base} {elapsed}".rstrip() if elapsed else base
 
     def _normalized_status(self) -> str:
         raw = self.status.strip().lower() or "running"
@@ -416,6 +458,7 @@ class StreamingOutput(Vertical):
         id: str | None = None,
         classes: str | None = None,
         github_repo_slug: str | None = None,
+        show_reasoning: bool = False,
     ) -> None:
         super().__init__(id=id, classes=classes)
         self._github_repo_slug: str | None = github_repo_slug
@@ -429,6 +472,14 @@ class StreamingOutput(Vertical):
         self._last_chunk_line_key: str | None = None
         self._scroll_scheduled = False
         self.word_delay_seconds = _DEFAULT_WORD_DELAY_SECONDS
+        # Reasoning visibility: off by default (opt-in)
+        self._show_reasoning: bool = show_reasoning
+        # Thinking accumulator for collapsed one-liner widget
+        self._thought_chars: int = 0
+        self._thought_start: float = 0.0
+        self._thought_announced: bool = False
+        self._thinking_widget: Static | None = None
+        self._thinking_tick_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(
@@ -490,6 +541,7 @@ class StreamingOutput(Vertical):
         *,
         kind: ChunkKind = "assistant",
         merge: bool = False,
+        replay: bool = False,
     ) -> Widget:
         text = _sanitize_stream_text(text)
         if not text:
@@ -501,7 +553,13 @@ class StreamingOutput(Vertical):
                 if kind != "user"
                 else text
             )
-            self._last_chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
+            if replay:
+                self._last_chunk._accumulated_text = (
+                    f"{self._last_chunk._accumulated_text}{linked_text}"
+                )
+                self._last_chunk.update(self._last_chunk._accumulated_text)
+            else:
+                self._last_chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
             if self.is_mounted:
                 self._schedule_follow_scroll()
             if self._last_chunk_line_key is not None:
@@ -519,8 +577,12 @@ class StreamingOutput(Vertical):
         chunk = UserInputWidget(text) if kind == "user" else OutputChunk("", kind=kind)
         line_key = f"chunk:{self._counter + 1}"
         if isinstance(chunk, OutputChunk):
+            if replay:
+                chunk._accumulated_text = linked_text
+                chunk.update(linked_text)
             self._append_widget(chunk, line_key=line_key)
-            chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
+            if not replay:
+                chunk.stream_fragment(linked_text, delay=self.word_delay_seconds)
             self._push_line(chunk.rendered_text(), key=line_key)
         else:
             self._push_line(chunk.rendered_text(), key=line_key)
@@ -540,7 +602,102 @@ class StreamingOutput(Vertical):
         return self.append_chunk(text, kind="user")
 
     def post_thought(self, text: str) -> Widget:
-        return self.append_chunk(text, kind="thought")
+        """Append a thinking fragment, gated by show_reasoning setting.
+
+        When show_reasoning=False (default): accumulate char count and update
+        a collapsed one-liner widget showing ``thinking… {elapsed}s · {tok} tok``.
+        When show_reasoning=True: stream the reasoning text into a full OutputChunk.
+        """
+        self._thought_chars += len(text)
+        if not self._thought_announced:
+            self._thought_start = time.monotonic()
+            self._thought_announced = True
+
+        if self._show_reasoning:
+            return self.append_chunk(text, kind="thought", merge=True)
+
+        # Collapsed mode: show/update a single Static one-liner.
+        self._update_thinking_widget()
+        return self._thinking_widget or self  # type: ignore[return-value]
+
+    def finish_thought(self) -> None:
+        """Finalise the thinking phase: stop ticker, print final one-liner or full chunk."""
+        if self._thinking_tick_timer is not None:
+            self._thinking_tick_timer.stop()
+            self._thinking_tick_timer = None
+        if not self._thought_announced:
+            return
+        elapsed = time.monotonic() - self._thought_start
+        tok = max(1, self._thought_chars // 4)
+        label = f"thinking… {elapsed:.1f}s · {tok} tok"
+        # Final update of collapsed widget (if present)
+        if self._thinking_widget is not None:
+            with contextlib.suppress(Exception):
+                self._thinking_widget.update(f"[dim italic]{label}[/dim italic]")
+        # Reset accumulator for next turn
+        self._thought_chars = 0
+        self._thought_announced = False
+        self._thinking_widget = None
+
+    def _update_thinking_widget(self) -> None:
+        """Create or update the collapsed thinking one-liner."""
+        elapsed = time.monotonic() - self._thought_start
+        tok = max(1, self._thought_chars // 4)
+        label = f"thinking… {elapsed:.1f}s · {tok} tok"
+        if self._thinking_widget is None:
+            self._thinking_widget = Static(
+                f"[dim italic]{label}[/dim italic]",
+                classes="agent-chunk agent-thought-collapsed",
+            )
+            self._append_widget(self._thinking_widget)
+            # Start a 1Hz tick to update elapsed time while streaming
+            if self._thinking_tick_timer is None:
+                self._thinking_tick_timer = self.set_interval(1.0, self._tick_thinking)
+        else:
+            with contextlib.suppress(Exception):
+                self._thinking_widget.update(f"[dim italic]{label}[/dim italic]")
+
+    def _tick_thinking(self) -> None:
+        """1Hz timer callback to refresh elapsed time in collapsed thinking widget."""
+        if not self._thought_announced or self._thinking_widget is None:
+            self._thinking_tick_timer and self._thinking_tick_timer.stop()
+            self._thinking_tick_timer = None
+            return
+        elapsed = time.monotonic() - self._thought_start
+        tok = max(1, self._thought_chars // 4)
+        label = f"thinking… {elapsed:.1f}s · {tok} tok"
+        with contextlib.suppress(Exception):
+            self._thinking_widget.update(f"[dim italic]{label}[/dim italic]")
+
+    def set_show_reasoning(self, value: bool) -> None:
+        """Update reasoning visibility; called from ChatPanel or settings load."""
+        self._show_reasoning = value
+
+    def action_toggle_reasoning(self) -> None:
+        """Ctrl+T: toggle streaming reasoning preview on/off."""
+        self._show_reasoning = not self._show_reasoning
+        label = "on" if self._show_reasoning else "off"
+        self.post_note(f"Reasoning preview: {label}")
+        # Persist asynchronously — best-effort, no crash on failure
+        self._persist_reasoning_setting(self._show_reasoning)
+
+    def _persist_reasoning_setting(self, value: bool) -> None:
+        """Persist chat.show_reasoning to DB settings (best-effort)."""
+        from kagan.tui.app import KaganApp
+
+        app = self.app
+        if not isinstance(app, KaganApp):
+            return
+        core = getattr(app, "core", None)
+        if core is None:
+            return
+        import asyncio
+
+        async def _save() -> None:
+            with contextlib.suppress(Exception):
+                await core.settings.set({"chat.show_reasoning": "true" if value else "false"})
+
+        asyncio.create_task(_save())
 
     def upsert_tool_call(
         self,
@@ -567,13 +724,12 @@ class StreamingOutput(Vertical):
             self._append_widget(existing, line_key=f"tool:{tool_id}")
         else:
             existing.title = title
-            existing.status = status
             existing.args = args
             existing.result = result
             if kind is not None:
                 existing.kind = kind
             existing.has_content = bool((args or "").strip() or (result or "").strip())
-            existing._refresh()
+            existing.set_status(status)
 
         self._push_line(existing._header_line(), key=f"tool:{tool_id}")
         return existing
@@ -619,6 +775,7 @@ class StreamingOutput(Vertical):
         self._tool_calls.clear()
         self._counter = 0
         self._reset_chunk_tracking()
+        self._reset_thinking_state()
         self.live_follow = True
         self.unread_count = 0
         self.hide_load_more_bar()
@@ -832,3 +989,11 @@ class StreamingOutput(Vertical):
         self._last_chunk = None
         self._last_chunk_kind = None
         self._last_chunk_line_key = None
+
+    def _reset_thinking_state(self) -> None:
+        if self._thinking_tick_timer is not None:
+            self._thinking_tick_timer.stop()
+            self._thinking_tick_timer = None
+        self._thought_chars = 0
+        self._thought_announced = False
+        self._thinking_widget = None

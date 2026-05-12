@@ -2,9 +2,10 @@ import { useMemo, type RefObject } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { ChatMessage } from '@/components/chat/chat-message';
 import { ChatStreamEntries } from '@/components/chat/chat-stream-entries';
-import { ChatInputBar, type Attachment } from '@/components/chat/chat-input-bar';
+import { ChatInputBar } from '@/components/chat/chat-input-bar';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import type { ChatStreamEntry } from '@/lib/atoms/chat';
+import type { ChatStreamEntry, PendingMessage, PendingMessageInput } from '@/lib/atoms/chat';
+import type { Attachment } from '@/lib/chat-attachments';
 import type { WireChatMessage } from '@kagan/shared-api-client';
 
 // ---------------------------------------------------------------------------
@@ -14,6 +15,8 @@ import type { WireChatMessage } from '@kagan/shared-api-client';
 export interface ChatViewProps {
   /** Session id, used for stable message keys. */
   sessionId: string;
+  /** Project id used to scope input history persistence. */
+  projectId?: string | null;
   messages: WireChatMessage[];
   streamEntries: ChatStreamEntry[];
   isStreaming: boolean;
@@ -31,12 +34,24 @@ export interface ChatViewProps {
   headerSlot?: React.ReactNode;
   /** Empty-state override. Defaults to a generic empty state. */
   emptySlot?: React.ReactNode;
-  /** Footer hint line (keyboard shortcuts etc). */
-  footerHint?: string;
+  /**
+   * Footer hint segments. Each segment is a zero-arg function returning
+   * string | null. Null segments are dropped; the rest are joined with " · ".
+   * Replaces the old flat `footerHint?: string` prop.
+   */
+  footerSegments?: Array<() => string | null>;
   /** If true, disables the send button even when not streaming. */
   disableSend?: boolean;
   /** Placeholder text for the input bar. */
   placeholder?: string;
+  /** Pending message queue — forwarded to ChatInputBar for badge display. */
+  pendingQueue?: PendingMessage[];
+  /** Enqueue a message while streaming. Returns false if queue is full. */
+  onEnqueue?: (input: string | PendingMessageInput) => boolean;
+  /** Clear the entire pending queue. */
+  onClearQueue?: () => void;
+  /** When true, stream thinking tokens fully expanded. Default false (collapsed). */
+  showReasoning?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,7 +63,7 @@ const DEFAULT_EMPTY = (
     <EmptyHeader>
       <EmptyMedia variant="icon">
         <svg className="size-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
       </EmptyMedia>
       <EmptyTitle>Start a conversation</EmptyTitle>
@@ -59,6 +74,7 @@ const DEFAULT_EMPTY = (
 
 export function ChatView({
   sessionId,
+  projectId,
   messages,
   streamEntries,
   isStreaming,
@@ -73,9 +89,13 @@ export function ChatView({
   onLoadMore,
   headerSlot,
   emptySlot,
-  footerHint,
+  footerSegments,
   disableSend,
   placeholder,
+  pendingQueue,
+  onEnqueue,
+  onClearQueue,
+  showReasoning = false,
 }: ChatViewProps) {
   const { visibleMessages, hasEarlierMessages } = useMemo(() => {
     if (visibleCount === undefined) {
@@ -141,18 +161,21 @@ export function ChatView({
 
             {streamEntries.length > 0 ? (
               <div className="pt-0">
-                <ChatStreamEntries entries={streamEntries} />
+                <ChatStreamEntries entries={streamEntries} showReasoning={showReasoning} />
               </div>
             ) : null}
           </div>
         )}
       </div>
 
-      {footerHint ? (
-        <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-          {footerHint}
-        </div>
-      ) : null}
+      {footerSegments && footerSegments.length > 0 ? (() => {
+        const rendered = footerSegments.map((fn) => fn()).filter((v): v is string => v !== null).join(' · ');
+        return rendered ? (
+          <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
+            {rendered}
+          </div>
+        ) : null;
+      })() : null}
 
       <ChatInputBar
         onSend={onSend}
@@ -162,6 +185,11 @@ export function ChatView({
         onPrefillConsumed={onPrefillConsumed}
         disableSend={disableSend}
         placeholder={placeholder}
+        projectId={projectId ?? undefined}
+        isStreaming={isStreaming}
+        pendingQueue={pendingQueue}
+        onEnqueue={onEnqueue}
+        onClearQueue={onClearQueue}
       />
     </div>
   );

@@ -18,10 +18,16 @@ from typing import Any
 from sqlmodel import Session, select
 
 from kagan.core import (
+    AgentRole,
     KaganCore,
     NotFoundError,
     Priority,
+    SessionStatus,
     TaskStatus,
+    db_async,
+)
+from kagan.core import (
+    Session as AgentSession,
 )
 from kagan.core.models import Repository, Worktree
 
@@ -348,6 +354,32 @@ class CoreDriver:
         except Exception:
             return None
 
+    async def create_agent_session(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+        status: SessionStatus = SessionStatus.RUNNING,
+        agent_role: AgentRole | str | None = AgentRole.WORKER,
+        agent_backend: str = "test",
+    ) -> str:
+        """Create an agent session row for tests that need a session-bound event stream."""
+        row = AgentSession(
+            id=session_id,
+            task_id=task_id,
+            agent_backend=agent_backend,
+            status=status,
+            agent_role=agent_role.value if isinstance(agent_role, AgentRole) else agent_role,
+        )
+        created_id = row.id
+
+        def _create(s: Session) -> AgentSession:
+            s.add(row)
+            return row
+
+        await db_async(self._ctx.engine, _create, commit=True)
+        return created_id
+
     async def cancel_task(self, task_id: str) -> bool:
         try:
             await self._ctx.tasks.cancel(task_id)
@@ -452,6 +484,40 @@ class CoreDriver:
         """Get paginated execution logs for a task."""
         events = await self._ctx.tasks.events.list(task_id, offset=offset, limit=limit or 20)
         return {"items": [{"event_type": e.event_type, "payload": e.payload} for e in events]}
+
+    async def read_task_frames(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+    ) -> list[Any]:
+        """Read all EventLog frames (kind='task') for the given task.
+
+        If *session_id* is None the most recent session for the task is used.
+        Returns a list of FrameRow objects from the EventLog.
+        """
+        from sqlalchemy import desc
+
+        from kagan.core._event_log import EventLog
+        from kagan.core.models import Session as AgentSession
+
+        engine = self._ctx.engine
+
+        if session_id is None:
+            resolved_session: AgentSession | None = await db_async(
+                engine,
+                lambda s: s.exec(
+                    select(AgentSession)
+                    .where(AgentSession.task_id == task_id)
+                    .order_by(desc(AgentSession.started_at))
+                ).first(),
+            )
+            if resolved_session is None:
+                return []
+            session_id = resolved_session.id
+
+        event_log = EventLog(engine)
+        return await event_log.history(session_id, "task", from_seq=0)
 
     async def set_repo_default_branch(
         self, repo_id: str, branch: str, *, mark_configured: bool = False
@@ -617,7 +683,7 @@ class CoreDriver:
         else:
             await asyncio.wait_for(_consume(), timeout=10.0)
 
-        from kagan.core.chat.events import AssistantMessagePersisted
+        from kagan.core.events import AssistantMessagePersisted
 
         persisted = next(
             (e for e in reversed(events) if isinstance(e, AssistantMessagePersisted)), None
@@ -646,6 +712,13 @@ class CoreDriver:
     async def chat_switch_session(self, new_session_id: str) -> None:
         """Detach engine state for ``new_session_id`` (simulates session switch)."""
         await self._ctx.chat.detach(new_session_id)
+
+    async def read_frames(self, session_id: str, kind: str) -> list[Any]:
+        """Return all FrameRow objects from EventLog for ``(session_id, kind)``."""
+        from kagan.core._event_log import EventLog
+
+        event_log = EventLog(self._ctx.engine)
+        return await event_log.history(session_id, kind)
 
     # -- Audit --------------------------------------------------------------
 

@@ -147,4 +147,4 @@ def test_asyncio_subprocess_exception_filter_installs_without_running_loop(
 
     install_asyncio_subprocess_exception_filter()
 
-    assert getattr(sys, "_kagan_asyncio_unraisable_hook_patched") is True
+    assert sys._kagan_asyncio_unraisable_hook_patched is True

@@ -22,6 +22,61 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+/** Estimated session ceiling (ms). Progress saturates at 99% beyond this. */
+const SESSION_CEILING_MS = 30 * 60 * 1000; // 30 minutes
+
+function computeProgress(startedAt: string | null | undefined): number {
+    if (!startedAt) return 0;
+    const elapsed = Date.now() - parseUtc(startedAt).getTime();
+    return Math.min(99, Math.round((elapsed / SESSION_CEILING_MS) * 100));
+}
+
+interface SessionProgressBarProps {
+    startedAt: string | null | undefined;
+}
+
+/** 2-px progress bar at the bottom of a card for IN_PROGRESS tasks. */
+function SessionProgressBar({ startedAt }: SessionProgressBarProps) {
+    const reducedMotion = useReducedMotion();
+    const [pct, setPct] = useState(() => computeProgress(startedAt));
+
+    useEffect(() => {
+        if (reducedMotion || !startedAt) return;
+        const id = setInterval(() => {
+            setPct(computeProgress(startedAt));
+        }, 10_000);
+        return () => clearInterval(id);
+    }, [startedAt, reducedMotion]);
+
+    return (
+        <div
+            data-testid="session-progress-bar"
+            aria-hidden="true"
+            style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 2,
+                background: 'var(--border)',
+                borderRadius: 1,
+                overflow: 'hidden',
+            }}
+        >
+            <span
+                style={{
+                    display: 'block',
+                    height: '100%',
+                    width: `${pct}%`,
+                    background: 'var(--kagan-rail-warning)',
+                    boxShadow: '0 0 6px var(--kagan-rail-warning)',
+                    transition: reducedMotion ? undefined : 'width 600ms ease-out',
+                }}
+            />
+        </div>
+    );
+}
+
 interface TaskCardProps {
     task: WireTask;
     className?: string;
@@ -80,17 +135,27 @@ function DiffSummaryRow({
             type="button"
             data-testid="diff-summary"
             onClick={onNavigate}
-            className="mt-0.5 flex items-center gap-1.5 text-[10px] tabular-nums leading-none"
-            aria-label={`Diff: +${summary.additions} -${summary.deletions} across ${summary.files_changed} file${summary.files_changed === 1 ? "" : "s"}`}
+            aria-label={`Diff: ${summary.files_changed} file${summary.files_changed === 1 ? "" : "s"} +${summary.additions} -${summary.deletions}`}
+            className="mt-0.5 flex items-center gap-2"
+            style={{
+                fontFamily: 'var(--font-code)',
+                fontSize: 10.5,
+                color: 'var(--fg-dim)',
+                lineHeight: 1,
+                background: 'transparent',
+                border: 0,
+                padding: 0,
+                cursor: 'pointer',
+            }}
         >
-            <span className="text-[color:var(--kagan-rail-running)]">
+            <span style={{ color: 'var(--fg-dim)' }}>
+                {summary.files_changed} file{summary.files_changed === 1 ? "" : "s"}
+            </span>
+            <span style={{ color: 'var(--kagan-rail-running)' }}>
                 +{summary.additions}
             </span>
-            <span className="text-[color:var(--kagan-rail-error)]">
-                -{summary.deletions}
-            </span>
-            <span className="text-muted-foreground">
-                · {summary.files_changed} file{summary.files_changed === 1 ? "" : "s"}
+            <span style={{ color: '#e85535' }}>
+                −{summary.deletions}
             </span>
         </button>
     );
@@ -255,6 +320,9 @@ function TaskCardImpl({
         handleOpen();
     };
 
+    const showProgressBar =
+        task.status === 'IN_PROGRESS' && Boolean(task.active_session);
+
     const cardContent = (
         <div
             ref={setNodeRef}
@@ -296,6 +364,10 @@ function TaskCardImpl({
             />
 
             <TaskCardBody task={task} onDiffNavigate={handleDiffNavigate} />
+
+            {showProgressBar ? (
+                <SessionProgressBar startedAt={task.active_session?.started_at} />
+            ) : null}
         </div>
     );
 

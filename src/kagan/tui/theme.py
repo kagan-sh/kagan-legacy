@@ -1,11 +1,19 @@
 """Textual theme definitions for Kagan."""
 
+import os
+
 from textual.theme import Theme
 
 __all__ = [
     "KAGAN_THEME",
     "KAGAN_THEME_256",
+    "MOTION_REDUCED",
 ]
+
+# Respect the user's motion preference.  Set REDUCED_MOTION=1 in the
+# environment to disable spinner / pulse animations in the TUI — the
+# equivalent of the CSS `prefers-reduced-motion: reduce` media query.
+MOTION_REDUCED: bool = os.environ.get("REDUCED_MOTION", "0") == "1"
 
 KAGAN_THEME = Theme(
     name="kagan",
@@ -53,7 +61,7 @@ KAGAN_THEME = Theme(
         "scrollbar": "#2A251F",
         "scrollbar-hover": "#d4a84b",
         "scrollbar-active": "#C27C4E",
-        "link-color": "#6fa3d4",
+        "link-color": "#d4a84b",
         "link-hover-color": "#3fb58e",
         "footer-key-foreground": "#C2B9AD",
         "footer-key-background": "transparent",
@@ -107,7 +115,7 @@ KAGAN_THEME_256 = Theme(
         "scrollbar": "#353535",
         "scrollbar-hover": "#d7af5f",
         "scrollbar-active": "#d7875f",
-        "link-color": "#5fafd7",
+        "link-color": "#d7af5f",
         "link-hover-color": "#5faf87",
         "footer-key-foreground": "#d0d0d0",
         "footer-key-background": "transparent",

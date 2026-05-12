@@ -157,7 +157,7 @@ function QueueRow({
             aria-label="Interrupt agent and send this prompt"
             title="Interrupt & send"
           >
-            <Square className="size-3.5 text-amber-400" />
+            <Square className="size-3.5 text-[var(--kagan-thinking)]" />
           </Button>
         ) : (
           <Button

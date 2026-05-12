@@ -167,6 +167,7 @@ def test_slash_command_registry_is_canonical() -> None:
         "analytics",
         "approvals",
         "clear",
+        "close",
         "delete",
         "exit",
         "flow",
@@ -176,12 +177,16 @@ def test_slash_command_registry_is_canonical() -> None:
         "repo",
         "sessions",
         "status",
+        "stop",
+        "switch",
         "tool",
     ]
     assert SLASH_COMMAND_REGISTRY.get("help") is not None
     assert SLASH_COMMAND_REGISTRY.get("flow") is not None
     assert SLASH_COMMAND_REGISTRY.get("sessions") is not None
     assert SLASH_COMMAND_REGISTRY.get("tool") is not None
+    assert SLASH_COMMAND_REGISTRY.get("attach") is None
+    assert SLASH_COMMAND_REGISTRY.get("detach") is None
     assert SLASH_COMMAND_REGISTRY.get("ghost") is None
 
 
@@ -378,13 +383,18 @@ class _FakeClient:
         self.chat = _FakeChatEngine()
         self.chat_sessions = ChatSessions(self._engine, self.settings)
 
+    async def list_session_items(self, project_id: str | None = None) -> list[Any]:
+        from kagan.core._session_items import list_session_items
+
+        return await list_session_items(self._engine, project_id=project_id)
+
 
 @pytest.mark.asyncio
 async def test_open_sessions_reattach_attaches_session(monkeypatch) -> None:
     """Reopening a session attaches it and restores orchestrator_history.
 
     messages_rendered is no longer stored so no transcript is reprinted —
-    only the "Attached session" confirmation line is printed.
+    only the switch confirmation line is printed.
     """
     client = _FakeClient()
     await save_chat_session(
@@ -413,8 +423,7 @@ async def test_open_sessions_reattach_attaches_session(monkeypatch) -> None:
 
     assert should_restart is False
     assert controller._chat_session_id == "cfcee6c1"
-    # Session is confirmed as attached
-    assert any("Attached session" in line for line in lines)
+    assert any("Switched to session" in line for line in lines)
     # History is loaded — restored as rendered transcript lines
     assert len(controller._rendered_messages) == 1
 
@@ -438,8 +447,8 @@ async def test_open_sessions_without_query_uses_picker_selection(monkeypatch) ->
 
     async def _pick_session(title: str, options: list[Any]) -> str | None:
         assert title == "Select session"
-        assert any(option.value == "sess1111" for option in options)
-        return "sess1111"
+        assert any(option.value == "orch:sess1111" for option in options)
+        return "orch:sess1111"
 
     def _capture_print(*args, **kwargs) -> None:
         del kwargs
@@ -455,7 +464,7 @@ async def test_open_sessions_without_query_uses_picker_selection(monkeypatch) ->
 
     assert should_restart is False
     assert controller._chat_session_id == "sess1111"
-    assert any("Attached session" in line for line in lines)
+    assert any("Switched to session" in line for line in lines)
 
 
 @pytest.mark.asyncio
@@ -566,6 +575,65 @@ async def test_handle_slash_agents_without_arg_uses_picker_selection(monkeypatch
     assert selected == ["opencode"]
 
 
+@pytest.mark.asyncio
+async def test_handle_slash_agents_with_argument_switches_resolved_backend(monkeypatch) -> None:
+    client = _FakeClient()
+    selected: list[str] = []
+
+    async def _switch_agent(backend: str) -> bool:
+        selected.append(backend)
+        return True
+
+    monkeypatch.setattr(
+        "kagan.cli.chat.controller.list_registered_agent_backends",
+        lambda: ["claude-code", "opencode"],
+    )
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    monkeypatch.setattr(controller, "_switch_agent", _switch_agent)
+
+    should_exit = await controller._handle_slash("/agents 2")
+
+    assert should_exit is True
+    assert selected == ["opencode"]
+
+
+@pytest.mark.asyncio
+async def test_handle_slash_sessions_dispatches_query_to_session_picker(monkeypatch) -> None:
+    client = _FakeClient()
+    queries: list[str | None] = []
+
+    async def _open_sessions(query: str | None) -> bool:
+        queries.append(query)
+        return False
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    monkeypatch.setattr(controller, "_open_sessions", _open_sessions)
+
+    should_exit = await controller._handle_slash("/sessions recent bug")
+
+    assert should_exit is False
+    assert queries == ["recent bug"]
+
+
+@pytest.mark.asyncio
+async def test_handle_slash_tool_dispatches_query_to_tool_report(monkeypatch) -> None:
+    client = _FakeClient()
+    queries: list[str | None] = []
+
+    def _show_tool_report(renderer: Any, query: str | None) -> None:
+        assert renderer is controller._renderer
+        queries.append(query)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    monkeypatch.setattr("kagan.cli.chat.controller.show_tool_report", _show_tool_report)
+
+    should_exit = await controller._handle_slash("/tool t007")
+
+    assert should_exit is False
+    assert queries == ["t007"]
+
+
 def test_resolve_slash_input_new_requests_new_session() -> None:
     result = resolve_slash_input(
         "/new",
@@ -642,60 +710,13 @@ async def test_resolve_initial_session_returns_none_without_explicit_id() -> Non
 
 
 @pytest.mark.asyncio
-async def test_resolve_initial_session_uses_task_session_binding(monkeypatch) -> None:
-    from kagan.core.chat.sessions import TaskBinding
-
+async def test_resolve_initial_session_rejects_legacy_task_binding_id() -> None:
     client = _FakeClient()
-
-    async def _fake_resolve_task_binding(self, session_id: str) -> TaskBinding | None:
-        del self
-        assert session_id == "tasksess"
-        return TaskBinding(
-            id="tasksess",
-            label="Task tasksess - Investigate bug",
-            source="task-session",
-            agent_backend="claude-code",
-            task_id="tasksess",
-            status="open",
-        )
-
-    monkeypatch.setattr(
-        "kagan.core.chat.ChatSessions.resolve_task_binding",
-        _fake_resolve_task_binding,
-    )
-
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
+
     result = await controller._resolve_initial_session("tasksess")
 
-    assert result is not None
-    assert result.id == "tasksess"
-    assert result.source == "task-session"
-
-
-@pytest.mark.asyncio
-async def test_attach_task_scoped_session_does_not_persist_repl_state() -> None:
-    client = _FakeClient()
-    controller = ChatController(cast("Any", client), agent_backend="claude-code")
-
-    from kagan.core.chat.sessions import ChatSessionView
-
-    await controller._attach_session(
-        ChatSessionView(
-            id="tasksess",
-            label="Task tasksess - Investigate bug",
-            source="task-session",
-            agent_backend="claude-code",
-            project_id=None,
-            orchestrator_history=[],
-            messages_rendered=[],
-            updated_at="",
-        ),
-        switching=False,
-    )
-
-    settings = await client.settings.get()
-    assert "chat_sessions_v1" not in settings
-    assert "chat_last_session_repl" not in settings
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -823,7 +844,7 @@ def test_resolve_slash_input_flow_returns_guided_phases() -> None:
     )
 
     assert result.handled is True
-    assert any("Plan -> Execute -> Orchestrate" in line for line in result.info_lines)
+    assert any("Plan → Execute → Orchestrate" in line for line in result.info_lines)
     assert any(line.startswith("Goal: Build onboarding") for line in result.info_lines)
 
 

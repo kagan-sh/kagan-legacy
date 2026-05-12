@@ -104,7 +104,12 @@ class TuiOrchestratorSessionStore:
         )
         return self._normalize_history(session.orchestrator_history)
 
-    async def create_new(self, *, agent_backend: str | None = None) -> str:
+    async def create_new(
+        self,
+        *,
+        agent_backend: str | None = None,
+        session_type: str = "orchestrator",
+    ) -> str:
         await self.ensure_loaded()
         project_id = self._current_project_id()
         if project_id is None:
@@ -113,6 +118,7 @@ class TuiOrchestratorSessionStore:
             source=_TUI_ORCHESTRATOR_SOURCE,
             label="TUI session",
             agent_backend=agent_backend,
+            session_type=session_type,
             project_id=project_id,
         )
         created = chat_session_to_view(row, [])

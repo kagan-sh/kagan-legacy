@@ -1,4 +1,9 @@
-"""Smoke tests for DoctorModal and WARN-only startup routing."""
+"""Smoke tests for DoctorModal — unique-edge cases only.
+
+Startup-routing cases (WARN-only, all-pass, no-checks) are covered by
+Flow K (tests/e2e_tui/test_k_cold_start_tui.py).  Only the edges that
+cannot be exercised at the flow level are kept here.
+"""
 
 from __future__ import annotations
 
@@ -34,62 +39,7 @@ async def _wait_for_setup_flow(app) -> None:
     )
 
 
-# ── DoctorModal: FAIL state ────────────────────────────────────────────────
-
-
-async def test_doctor_modal_shown_on_fail_checks(tmp_path) -> None:
-    """DoctorModal is pushed when startup_checks contains a FAIL."""
-    from kagan.tui import KaganApp
-
-    checks = [
-        _make_check("git", "fail"),
-        _make_check("agent backend", "warn"),
-    ]
-
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-
-async def test_doctor_modal_escape_always_blocked(tmp_path) -> None:
-    """Escape NEVER dismisses DoctorModal — modal is non-dismissible via keyboard.
-
-    The user must explicitly use 'Skip anyway' button.
-    """
-    from kagan.tui import KaganApp
-
-    checks = [_make_check("git", "fail")]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-        # Press Escape multiple times — should always remain on doctor-modal
-        await pilot.press("escape")
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-        await pilot.press("escape")
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-
-async def test_doctor_modal_skip_button_enabled_after_mount_autofocus(tmp_path) -> None:
-    """Skip button becomes enabled when backend availability is not blocked."""
-    from textual.widgets import Button
-
-    from kagan.tui import KaganApp
-
-    checks = [_make_check("git", "fail")]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-        # Auto-focus fires on mount → _row_focused_once=True → skip enabled
-        skip_btn = app.screen.query_one("#dm-skip-btn", Button)
-        assert skip_btn.disabled is False
+# ── Unique edge: skip disabled when no backend is available ───────────────────
 
 
 async def test_doctor_modal_skip_button_disabled_when_no_backend_available(tmp_path) -> None:
@@ -117,62 +67,7 @@ async def test_doctor_modal_skip_button_disabled_when_no_backend_available(tmp_p
         assert skip_btn.disabled is True
 
 
-async def test_doctor_modal_skip_button_dismisses_modal(tmp_path) -> None:
-    """Clicking 'Skip anyway' button dismisses DoctorModal and resumes startup."""
-    from textual.widgets import Button
-
-    from kagan.tui import KaganApp
-
-    checks = [_make_check("git", "fail")]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-        skip_btn = app.screen.query_one("#dm-skip-btn", Button)
-        skip_btn.press()
-        await _wait_for_setup_flow(app)
-
-
-async def test_doctor_modal_check_rows_rendered_for_fail_and_warn(tmp_path) -> None:
-    """All FAIL and WARN check rows appear; PASS rows are excluded."""
-    from kagan.tui import KaganApp
-    from kagan.tui.screens.doctor_modal import _CheckRow
-
-    checks = [
-        _make_check("git", "fail"),
-        _make_check("tmux", "warn"),
-        _make_check("agent backend", "pass"),
-    ]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-        rows = app.screen.query(_CheckRow)
-        assert rows
-        assert len(rows) == 2  # git (fail) + tmux (warn), not agent backend (pass)
-
-        row_ids = {r.id for r in rows}
-        assert "check-row-git" in row_ids
-        assert "check-row-tmux" in row_ids
-        assert "check-row-agent-backend" not in row_ids
-
-
-async def test_doctor_modal_recheck_btn_present(tmp_path) -> None:
-    """Re-check all button is rendered in DoctorModal."""
-    from textual.widgets import Button
-
-    from kagan.tui import KaganApp
-
-    checks = [_make_check("git", "fail")]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-        recheck_btn = app.screen.query_one("#dm-recheck-btn", Button)
-        assert recheck_btn is not None
+# ── Unique edge: fix_hint content rendered ────────────────────────────────────
 
 
 async def test_doctor_modal_fix_hint_shown_for_fail_rows(tmp_path) -> None:
@@ -192,110 +87,35 @@ async def test_doctor_modal_fix_hint_shown_for_fail_rows(tmp_path) -> None:
         assert hints
         hint_widget = hints.first()
         assert isinstance(hint_widget, Static)
-        # The hint content is stored; checking class presence is sufficient for smoke
         assert "dm-fix-hint" in hint_widget.classes
 
 
-# ── Startup routing: WARN-only / all-pass / no checks ──────────────────────
+# ── Unique edge: recheck button present ───────────────────────────────────────
 
 
-async def test_warn_only_routes_to_project_picker(tmp_path) -> None:
-    """WARN-only checks continue to the non-blocking project picker."""
-    from kagan.tui import KaganApp
-
-    checks = [_make_check("ide", "warn", fix_hint="Install VS Code")]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
-        assert app.screen.id == "setup-flow"
-
-
-async def test_all_pass_routes_to_project_picker(tmp_path) -> None:
-    """All-pass checks route to the project picker by default."""
-    from kagan.tui import KaganApp
-
-    checks = [_make_check("git", "pass", fix_hint="")]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
-        assert app.screen.id == "setup-flow"
-
-
-async def test_no_checks_routes_to_project_picker(tmp_path) -> None:
-    """When startup_checks is None, startup still begins at the project picker."""
-    from kagan.tui import KaganApp
-
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=None)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "setup-flow"
-
-
-async def test_startup_project_picker_cannot_escape_to_blank_screen(tmp_path) -> None:
-    """The boot picker is mandatory so Escape must not reveal Textual's empty screen."""
-    from kagan.tui import KaganApp
-
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=[])
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "setup-flow"
-
-        await pilot.press("escape")
-        await pilot.pause()
-
-        assert app.screen.id == "setup-flow"
-
-
-# ── Command pane smoke ─────────────────────────────────────────────────────
-
-
-async def test_run_fix_button_present_for_failing_check_with_hint(tmp_path) -> None:
-    """'Run this now' button exists when fix_hint is present on a FAIL row."""
+async def test_doctor_modal_recheck_btn_present(tmp_path) -> None:
+    """Re-check all button is rendered in DoctorModal."""
+    from textual.widgets import Button
 
     from kagan.tui import KaganApp
 
-    checks = [_make_check("git", "fail", fix_hint="brew install git")]
+    checks = [_make_check("git", "fail")]
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.screen.id == "doctor-modal"
 
-        run_fix_btns = app.screen.query(".dm-run-fix-btn")
-        assert len(run_fix_btns) >= 1
+        recheck_btn = app.screen.query_one("#dm-recheck-btn", Button)
+        assert recheck_btn is not None
 
 
-async def test_no_run_fix_button_when_fix_hint_empty(tmp_path) -> None:
-    """'Run this now' button absent when fix_hint is empty."""
-    from kagan.tui import KaganApp
-
-    checks = [
-        DoctorCheck(
-            name="git",
-            status="fail",
-            message="git not found",
-            fix_hint="",
-            verify_hint="git --version",
-            category="core",
-        )
-    ]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert app.screen.id == "doctor-modal"
-
-        run_fix_btns = app.screen.query(".dm-run-fix-btn")
-        assert len(run_fix_btns) == 0
+# ── Unique edge: auto-promote on install success (Wave 3c) ────────────────────
 
 
-# ── Auto-promote on install success (Wave 3c) ──────────────────────────────
-
-
-async def test_install_rc_nonzero_no_state_change(tmp_path) -> None:
+async def test_install_rc_nonzero_no_state_change(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC2: rc != 0 → no Settings write, no auto-dismiss, row stays fail."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _check_row_id
 
@@ -314,37 +134,33 @@ async def test_install_rc_nonzero_no_state_change(tmp_path) -> None:
 
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
-        # Simulate CommandPane finishing with rc=1
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_checks",
-            return_value=[backend_check],
-        ):
-            from kagan.tui.screens.doctor_modal import _CommandPane
+            lambda: [backend_check],
+        )
+        from kagan.tui.screens.doctor_modal import _CommandPane
 
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=1, check_name=backend_check.name)
-            )
-            await pilot.pause()
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=1, check_name=backend_check.name)
+        )
+        await pilot.pause()
 
-        # Row should still be fail-class (not promoted)
         row_id = _check_row_id(backend_check.name)
         rows = modal.query(f"#{row_id}")
         assert rows, "Row should still be present"
         assert "dm-status-pass" not in rows.first().classes
 
-        # Settings must not have been written
         settings = await app.core.settings.get()
         promoted = settings.get("default_agent_backend")
         assert promoted != "test-backend", f"Settings must not be written on rc=1, got {promoted}"
 
-        # Modal must still be showing
         assert app.screen.id == "doctor-modal"
 
 
-async def test_install_rc_zero_promotes_settings_and_dismisses_modal(tmp_path) -> None:
+async def test_install_rc_zero_promotes_settings_and_dismisses_modal(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC3: rc=0 on a backend check → Settings written, modal auto-dismissed."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _CommandPane
 
@@ -356,7 +172,6 @@ async def test_install_rc_zero_promotes_settings_and_dismisses_modal(tmp_path) -
         verify_hint="which my-agent",
         category="backend",
     )
-    # After recheck, pretend the backend now passes
     passing_check = DoctorCheck(
         name="backend: my-agent (default)",
         status="pass",
@@ -373,31 +188,25 @@ async def test_install_rc_zero_promotes_settings_and_dismisses_modal(tmp_path) -
 
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
-        # Simulate successful install completion — targeted recheck sees PASS
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_check_for_backend",
-            return_value=passing_check,
-        ):
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
-            )
-            # Pump until modal auto-dismisses (all FAILs resolved → dismiss(True))
-            await _wait_for_setup_flow(app)
+            lambda _name: passing_check,
+        )
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
+        )
+        await _wait_for_setup_flow(app)
 
-        # Observable: settings must contain the promoted backend (written before dismiss)
         settings = await app.core.settings.get()
         assert settings.get("default_agent_backend") == "my-agent", (
             f"Expected 'my-agent' in settings, got: {settings}"
         )
 
-        # Observable: modal dismissed → app navigated to setup-flow (asserted by
-        # _wait_for_setup_flow above); if we reach here the modal is gone.
 
-
-async def test_install_rc_zero_non_backend_check_no_settings_write(tmp_path) -> None:
+async def test_install_rc_zero_non_backend_check_no_settings_write(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC3 edge: rc=0 on a non-backend check (e.g. git) must NOT write default_agent_backend."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _CommandPane
 
@@ -425,15 +234,14 @@ async def test_install_rc_zero_non_backend_check_no_settings_write(tmp_path) -> 
 
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_checks",
-            return_value=[passing_git],
-        ):
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=0, check_name=git_check.name)
-            )
-            await _wait_for_setup_flow(app)
+            lambda: [passing_git],
+        )
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=0, check_name=git_check.name)
+        )
+        await _wait_for_setup_flow(app)
 
-        # Settings must NOT have default_agent_backend written by the git fix
         settings = await app.core.settings.get()
         assert "default_agent_backend" not in settings

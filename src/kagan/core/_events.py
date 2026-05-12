@@ -1,6 +1,7 @@
 import asyncio
 import builtins
 import contextlib
+import json
 import re
 from collections import deque
 from collections.abc import AsyncIterator
@@ -9,6 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+from pydantic import BaseModel
 from sqlalchemy import Engine, and_, desc, or_
 from sqlmodel import select
 
@@ -17,7 +19,7 @@ from kagan.core.enums import TaskStatus
 from kagan.core.models import SessionEvent
 
 if TYPE_CHECKING:
-    from kagan.core.agent_events import AgentEvent
+    from kagan.core._event_log import EventLog
 
 LIVE_STREAM_QUEUE_MAX_SIZE = 512
 GLOBAL_STREAM_QUEUE_MAX_SIZE = 512
@@ -314,9 +316,12 @@ class Events:
         self,
         engine: Engine,
         signals: dict[str, asyncio.Event],
+        *,
+        event_log: "EventLog | None" = None,
     ) -> None:
         self._engine = engine
         self._signals = signals
+        self._event_log: EventLog | None = event_log
         self._live_queues: dict[str, list[_BoundedEventQueue[SessionEvent]]] = {}
         self._global_live_queues: list[_BoundedEventQueue[SessionEvent]] = []
         self._board_live_queues: list[_BoundedEventQueue[BoardEvent]] = []
@@ -325,6 +330,9 @@ class Events:
         # acknowledges the AgentEnd event (via ``notify_agent_end_handled``).
         self._agent_end_pending: dict[str, int] = {}
         self._agent_end_idle: dict[str, asyncio.Event] = {}
+        # Per-session tracking of the running assistant entry idx in the EventLog.
+        # Populated by notify_agent_spawn(); used by emit() to route append/finalize frames.
+        self._running_assistant_idx: dict[str, int] = {}
 
     def _signal_for(self, task_id: str) -> asyncio.Event:
         if task_id not in self._signals:
@@ -453,6 +461,141 @@ class Events:
         next_status = str(payload.get("to") or "").upper()
         return next_status != TaskStatus.IN_PROGRESS.value
 
+    # ── EventLog dual-write helpers ────────────────────────────────────────────
+
+    async def notify_agent_spawn(self, session_id: str) -> None:
+        """Create the initial assistant entry frame for a newly spawned agent session.
+
+        Must be called once per session after the session row is created and before
+        the ACP callback is registered.  Stores the assigned idx for subsequent
+        append/finalize frame routing.
+
+        Frame semantics: create op, role="assistant", text="", finalized=False.
+        The FrameRow.idx field stores the same logical index as the resolved
+        path; the path placeholder is rewritten after append once idx is known.
+        """
+        if self._event_log is None:
+            return
+        from datetime import UTC, datetime
+
+        ts = datetime.now(UTC).replace(tzinfo=None)
+        # Append a placeholder frame; the idx is returned by append_with_idx.
+        frame: dict[str, Any] = {
+            "type": "patch",
+            "op": "create",
+            "path": "/entries/{idx}",  # placeholder — idx unknown until after append
+            "value": {
+                "role": "assistant",
+                "text": "",
+                "finalized": False,
+                "ts": ts.isoformat(),
+            },
+        }
+        _seq, actual_idx = await self._event_log.append_with_idx(session_id, "task", frame)
+        # Record the assigned idx so subsequent append/finalize frames can target it.
+        self._running_assistant_idx[session_id] = actual_idx
+        logger.debug("EventLog: agent spawn create frame session={} idx={}", session_id, actual_idx)
+
+    async def _append_task_frame(self, session_id: str, frame: dict[str, Any]) -> None:
+        """Append a frame to the EventLog for a task session, suppressing errors."""
+        if self._event_log is None or not session_id:
+            return
+        try:
+            await self._event_log.append(session_id, "task", frame)
+        except Exception:
+            logger.exception(
+                "EventLog.append failed for session={} frame_op={}", session_id, frame.get("op")
+            )
+
+    async def _emit_task_frame_for_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        session_id: str | None,
+    ) -> None:
+        """Dual-write a task EventLog frame for a lifecycle SessionEvent.
+
+        Maps event_type → frame op per the W3 frame semantics:
+          - output_chunk         → append frame on the running assistant idx
+          - agent_completed      → finalize frame (no reason)
+          - agent_failed         → finalize frame (reason="agent_failed")
+          - task_status_changed  → system create frame (text=JSON payload)
+        Other event types are silently ignored (not framed).
+        """
+        if self._event_log is None or session_id is None:
+            return
+
+        from datetime import UTC, datetime
+
+        ts = datetime.now(UTC).replace(tzinfo=None)
+
+        if event_type == "output_chunk":
+            # Append agent stdout chunk to the running assistant entry.
+            running_idx = self._running_assistant_idx.get(session_id)
+            if running_idx is None:
+                logger.debug(
+                    "EventLog: output_chunk for session={} but no running assistant idx", session_id
+                )
+                return
+            chunk_text: str = ""
+            if isinstance(payload, dict):
+                chunk_text = str(payload.get("text") or payload.get("chunk") or "")
+            frame: dict[str, Any] = {
+                "type": "patch",
+                "op": "append",
+                "path": f"/entries/{running_idx}/text",
+                "value": chunk_text,
+            }
+            await self._append_task_frame(session_id, frame)
+
+        elif event_type == "agent_completed":
+            running_idx = self._running_assistant_idx.get(session_id)
+            if running_idx is not None:
+                frame = {
+                    "type": "patch",
+                    "op": "finalize",
+                    "path": f"/entries/{running_idx}",
+                    "value": None,
+                    "reason": None,
+                }
+                await self._append_task_frame(session_id, frame)
+                self._running_assistant_idx.pop(session_id, None)
+
+        elif event_type == "agent_failed":
+            running_idx = self._running_assistant_idx.get(session_id)
+            if running_idx is not None:
+                frame = {
+                    "type": "patch",
+                    "op": "finalize",
+                    "path": f"/entries/{running_idx}",
+                    "value": None,
+                    "reason": "agent_failed",
+                }
+                await self._append_task_frame(session_id, frame)
+                self._running_assistant_idx.pop(session_id, None)
+
+        elif event_type == "task_status_changed":
+            status_text = json.dumps(
+                {
+                    "event": "status",
+                    "from": payload.get("from"),
+                    "to": payload.get("to"),
+                    "ts": ts.isoformat(),
+                }
+            )
+            frame = {
+                "type": "patch",
+                "op": "create",
+                "path": "/entries/{idx}",
+                "value": {
+                    "role": "system",
+                    "text": status_text,
+                    "finalized": True,
+                    "ts": ts.isoformat(),
+                },
+            }
+            await self._append_task_frame(session_id, frame)
+
     async def emit(
         self,
         task_id: str,
@@ -489,17 +632,19 @@ class Events:
             )
         elif event_type == "auto_review_started":
             self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
+        # Write a frame to the EventLog for task lifecycle events.
+        await self._emit_task_frame_for_event(event_type, scrubbed_payload, session_id)
         return event
 
     async def emit_typed(
         self,
         task_id: str,
-        agent_event: "AgentEvent",
+        agent_event: BaseModel,
         *,
         session_id: str | None = None,
         persist: bool = True,
     ) -> SessionEvent:
-        """Emit a typed ``AgentEvent`` variant.
+        """Emit a typed Pydantic agent-event variant.
 
         The variant's ``kind`` field becomes ``event_type`` in the DB row.
         The full ``model_dump(mode="json")`` is stored in ``payload``
@@ -507,9 +652,6 @@ class Events:
 
         Payload secrets are scrubbed before persistence.
         """
-        # Import here to avoid circular imports at module load time.
-        from kagan.core.agent_events import AgentEvent as _AgentEventType  # noqa: F401
-
         raw_payload: dict[str, Any] = agent_event.model_dump(mode="json")
         kind: str = raw_payload.get("kind", "unknown")
         scrubbed_payload = _scrub_secrets(raw_payload)
@@ -539,6 +681,8 @@ class Events:
             )
         elif kind == "auto_review_started":
             self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
+        # Write a frame to the EventLog for task lifecycle events.
+        await self._emit_task_frame_for_event(kind, scrubbed_payload, session_id)
         return event
 
     def publish_board(self, event: BoardEvent) -> None:

@@ -1,12 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createStore } from 'jotai';
 import {
-  clearRightRailDismissalAtom,
-  dismissRightRailContextAtom,
-  rightRailDismissalKey,
-  rightRailDismissalsAtom,
-  rightRailModeAtom,
-  rightRailTaskIdAtom,
+  selectedSessionAtom,
+  sessionOverlayOpenAtom,
+  sessionOverlayLayoutAtom,
 } from '@/lib/atoms/ui';
 
 describe('ui atoms', () => {
@@ -16,57 +13,48 @@ describe('ui atoms', () => {
     store = createStore();
   });
 
-  describe('rightRailModeAtom', () => {
-    it('supports all chat layouts', () => {
-      store.set(rightRailModeAtom, 'chat-right');
-      expect(store.get(rightRailModeAtom)).toBe('chat-right');
+  describe('session overlay atoms', () => {
+    it('stores and retrieves selected session', () => {
+      const session = {
+        id: 'sess-1',
+        type: 'chat',
+        role: null,
+        status: 'active',
+        title: 'Test Session',
+        backend: 'claude',
+        project_id: null,
+        task_id: null,
+        session_id: null,
+        chat_session_id: null,
+        updated_at: '2026-05-08T12:00:00Z',
+        capabilities: {
+          can_chat: true,
+          can_stream: true,
+          can_replay: true,
+          can_stop: true,
+          can_close: true,
+          has_kagan_tools: true,
+        },
+      };
 
-      store.set(rightRailModeAtom, 'chat-bottom');
-      expect(store.get(rightRailModeAtom)).toBe('chat-bottom');
-
-      store.set(rightRailModeAtom, 'chat-fullscreen');
-      expect(store.get(rightRailModeAtom)).toBe('chat-fullscreen');
-    });
-  });
-
-  describe('right-rail state transitions', () => {
-    it('opens chat with task id', () => {
-      store.set(rightRailModeAtom, 'chat-right');
-      store.set(rightRailTaskIdAtom, 'task-123');
-
-      expect(store.get(rightRailModeAtom)).toBe('chat-right');
-      expect(store.get(rightRailTaskIdAtom)).toBe('task-123');
-    });
-
-    it('closes panel and clears ids', () => {
-      store.set(rightRailModeAtom, 'chat-bottom');
-      store.set(rightRailTaskIdAtom, 'task-123');
-
-      store.set(rightRailModeAtom, 'none');
-      store.set(rightRailTaskIdAtom, null);
-
-      expect(store.get(rightRailModeAtom)).toBe('none');
-      expect(store.get(rightRailTaskIdAtom)).toBeNull();
-    });
-  });
-
-  describe('right-rail dismissal state', () => {
-    it('records dismissal for the current task rail context', () => {
-      store.set(rightRailTaskIdAtom, 'task-123');
-
-      store.set(dismissRightRailContextAtom);
-
-      expect(store.get(rightRailDismissalsAtom)).toEqual({
-        [rightRailDismissalKey({ kind: 'task', id: 'task-123' })]: true,
-      });
+      store.set(selectedSessionAtom, session);
+      expect(store.get(selectedSessionAtom)).toEqual(session);
     });
 
-    it('clears dismissal for explicit task chat opens', () => {
-      store.set(dismissRightRailContextAtom, { kind: 'task', id: 'task-123' });
-
-      store.set(clearRightRailDismissalAtom, { kind: 'task', id: 'task-123' });
-
-      expect(store.get(rightRailDismissalsAtom)).toEqual({});
+    it('toggles overlay open state', () => {
+      expect(store.get(sessionOverlayOpenAtom)).toBe(false);
+      store.set(sessionOverlayOpenAtom, true);
+      expect(store.get(sessionOverlayOpenAtom)).toBe(true);
     });
+
+    it('defaults layout to docked', () => {
+      expect(store.get(sessionOverlayLayoutAtom)).toBe('docked');
+    });
+
+    it('can switch layout to fullscreen', () => {
+      store.set(sessionOverlayLayoutAtom, 'fullscreen');
+      expect(store.get(sessionOverlayLayoutAtom)).toBe('fullscreen');
+    });
+
   });
 });

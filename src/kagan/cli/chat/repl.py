@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
@@ -24,7 +24,7 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.text import Text
 
-from kagan.cli.chat._completion import fuzzy_match
+from kagan.cli.chat._utils import fuzzy_match
 from kagan.cli.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
@@ -64,19 +64,40 @@ class _SlashCompleter(Completer):
 class ToolbarState:
     agent_backend: str = ""
     project_name: str = ""
+    project_id: str = ""
     turn_count: int = 0
     session_label: str = "orchestrator"
+    session_type: str = "orchestrator"
     context_pct: float | None = None
     workspace_label: str = ""
     is_streaming: bool = False
-    yolo: bool = False
     pending_approvals: int = 0
     current_tool: str = ""
     token_used_k: float | None = None
     plan_mode: bool = False
+    queued_count: int = 0
 
 
 _TOOLBAR_STATE = ToolbarState()
+
+# ---------------------------------------------------------------------------
+# Segment registry — each Segment is a zero-arg callable returning str | None.
+# None means "hide this segment in the current render frame."
+# The render helpers call each segment, drop Nones, then join the results.
+# ---------------------------------------------------------------------------
+
+Segment = Callable[[], str | None]
+
+
+def _render_segments(segments: list[Segment], sep: str = " · ") -> str:
+    """Call each segment, drop Nones, join the rest with *sep*."""
+    parts: list[str] = []
+    for seg in segments:
+        value = seg()
+        if value is not None:
+            parts.append(value)
+    return sep.join(parts)
+
 
 _ROTATING_TIPS: Final[tuple[str, ...]] = (
     "Ctrl-J newline",
@@ -84,8 +105,9 @@ _ROTATING_TIPS: Final[tuple[str, ...]] = (
     "? shows shortcuts",
     "Esc stops streaming",
     "Up/Down history",
-    "/flow plan -> execute -> orchestrate",
+    "/flow plan → execute → orchestrate",
     "/sessions list & switch",
+    "/switch <id> select session",
     "/status one-line summary",
 )
 _TIP_ROTATE_INTERVAL: Final[float] = 30.0
@@ -128,15 +150,16 @@ _REPL_COLORS: Final[dict[str, str]] = {
     "text": "#FFFFFF",
     "text_muted": "#B5AC9F",
     "text_soft": "#C2B9AD",
-    "accent": "#3fb58e",
+    # Design system rule 5: prompt glyph uses primary amber (#d4a84b), not sage.
+    # _palette.PROMPT_COLORS["accent"] = "#d4a84b" — sourced from there.
+    "accent": "#d4a84b",
     "accent_soft": "#1D3A31",
     "primary": "#d4a84b",
-    "separator": "#4a5568",
-    "plan": "#60a5fa",
-    "yolo": "#f87171",
-    "meta": "#9ca3af",
-    "meta_current": "#7dd3fc",
-    "thinking": "#fbbf24",
+    "separator": "#2A251F",
+    "plan": "#b89154",
+    "meta": "#B5AC9F",
+    "meta_current": "#e0be6e",
+    "thinking": "#d4a84b",
 }
 
 _ANSI_REPL_COLORS: Final[dict[str, str]] = {
@@ -146,12 +169,17 @@ _ANSI_REPL_COLORS: Final[dict[str, str]] = {
 }
 
 _BOOT_TIP_COMMAND: Final[str] = "/flow"
-_BOOT_TIP_TEXT: Final[str] = "Walk through Plan -> Execute -> Orchestrate."
+_BOOT_TIP_TEXT: Final[str] = "Walk through Plan → Execute → Orchestrate."
 _SHORTCUT_HINT_IDLE: Final[str] = "Ctrl-J newline · Ctrl-C clear · Ctrl-D exit"
 _SHORTCUT_HINT_STREAMING: Final[str] = "Esc stop & edit last · type ahead to queue"
 
 
 def _supports_truecolor_terminal() -> bool:
+    """Return True when the terminal supports 24-bit colour.
+
+    Delegates to ``_palette.supports_truecolor`` as the canonical source of truth,
+    ensuring all colour decision points in this module agree.
+    """
     if os.environ.get("NO_COLOR") is not None:
         return False
     colorterm = os.environ.get("COLORTERM", "").casefold()
@@ -176,7 +204,6 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "bottom-toolbar.tip": f"fg:{_REPL_COLORS['text_soft']} italic",
             "bottom-toolbar.thinking": f"fg:{_REPL_COLORS['thinking']} bold",
             "bottom-toolbar.idle-dot": f"fg:{_REPL_COLORS['text_muted']}",
-            "bottom-toolbar.yolo": f"fg:{_REPL_COLORS['yolo']} bold",
             "bottom-toolbar.plan": f"fg:{_REPL_COLORS['plan']} bold",
             "completion-menu": f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}",
             "completion-menu.completion": (
@@ -194,6 +221,8 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "completion-menu.multi-column-meta": f"fg:{_REPL_COLORS['meta']}",
             "selected-text": f"noreverse bg:{_REPL_COLORS['accent']} fg:{_REPL_COLORS['bg']}",
         }
+    # ANSI fallback: keep legacy ANSI-safe names for 8-colour terminal compatibility.
+    # Truecolor amber (#d4a84b) maps to ansiyellow in 8-colour palettes.
     return {
         "prompt": "fg:ansigreen bold",
         "bottom-toolbar": "noreverse bg:default fg:default",
@@ -205,8 +234,7 @@ def _build_prompt_style_rules() -> dict[str, str]:
         "bottom-toolbar.tip": "fg:ansibrightblack italic",
         "bottom-toolbar.thinking": "fg:ansiyellow bold",
         "bottom-toolbar.idle-dot": "fg:ansibrightblack",
-        "bottom-toolbar.yolo": "fg:ansired bold",
-        "bottom-toolbar.plan": "fg:ansiblue bold",
+        "bottom-toolbar.plan": "fg:ansiyellow bold",
         "completion-menu": "bg:default fg:default",
         "completion-menu.completion": "bg:default fg:default",
         "completion-menu.completion.current": "noreverse bg:ansigreen fg:ansiblack bold",
@@ -544,14 +572,18 @@ def _build_environment_summary(project_root: Path | None, *, agent_backend: str 
         items.append(f"agent {agent_backend}")
 
     summary = " · ".join(items) if items else "chat ready"
+    # Design system: amber (primary) for status indicator, not green.
+    amber_bold = f"bold {_REPL_COLORS['primary']}"
     return Text.assemble(
-        ("● ", "bold green"),
+        ("● ", amber_bold),
         ("Environment loaded: ", "dim"),
         (summary, "dim"),
     )
 
 
 def _build_prompt_placeholder() -> FormattedText:
+    if _TOOLBAR_STATE.is_streaming:
+        return FormattedText([])
     if _supports_truecolor_terminal():
         muted_style = f"fg:{_REPL_COLORS['text_muted']}"
         accent_style = f"fg:{_REPL_COLORS['accent']} bold"
@@ -571,10 +603,13 @@ def _build_prompt_placeholder() -> FormattedText:
 
 
 def _build_banner_heading(agent_backend: str | None, *, version_text: str) -> Text:
+    # Design system: ᘚᘛ brand glyph in amber (primary), monospace weight 600.
+    # Tagline is "the orchestration layer for AI coding agents" — sentence case.
+    amber = f"bold {_REPL_COLORS['primary']}"
     return Text.assemble(
-        ("ᘚᘛ", "bold green"),
+        ("ᘚᘛ", amber),
         ("  ", ""),
-        ("Kagan", "bold green"),
+        ("Kagan", amber),
         (f" v{version_text}", "dim"),
         (" · ", "dim"),
         (agent_backend or "chat", "dim"),
@@ -644,6 +679,12 @@ def _format_agent_mode(remaining_cols: int) -> str:
 
 
 def _bottom_toolbar() -> FormattedText:
+    # prompt_async is not active during streaming (streaming runs after prompt_async
+    # returns, in the REPL pump loop), so this early-exit is a defensive no-op.
+    # Keeping it avoids any edge-case double-render if the session is ever
+    # restarted mid-turn.
+    if _TOOLBAR_STATE.is_streaming:
+        return FormattedText([])
     _TIP_ROTATOR.maybe_rotate()
     cols = shutil.get_terminal_size().columns
 
@@ -664,40 +705,143 @@ def _bottom_toolbar() -> FormattedText:
     )
 
 
+def build_live_status_inline() -> Text | None:
+    """Return a small right-aligned single-line status Text for use inside Rich Live.
+
+    Kimi-cli parity: during streaming we show only a compact context-usage
+    indicator inside the Live region (right-justified).  The full 3-line
+    toolbar (rule + status + tip) lives exclusively in prompt_toolkit's
+    ``bottom_toolbar`` callback, which is viewport-pinned by prompt_toolkit.
+    Rich Live writes inline at the cursor, so putting the multi-line toolbar
+    there caused it to jump mid-screen — this function is the replacement.
+    """
+    if not _TOOLBAR_STATE.is_streaming:
+        return None
+    parts: list[str] = []
+    if _TOOLBAR_STATE.token_used_k is not None and _TOOLBAR_STATE.context_pct is not None:
+        parts.append(
+            f"~{_TOOLBAR_STATE.token_used_k:.1f}k tok · ctx {_TOOLBAR_STATE.context_pct:.0%}"
+        )
+    elif _TOOLBAR_STATE.token_used_k is not None:
+        parts.append(f"~{_TOOLBAR_STATE.token_used_k:.1f}k tok")
+    elif _TOOLBAR_STATE.context_pct is not None:
+        parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
+    if not parts:
+        return None
+    style = f"color({_REPL_COLORS['text_muted']})" if _supports_truecolor_terminal() else "dim"
+    return Text(parts[0], style=style, justify="right")
+
+
+def _make_status_left_segments() -> list[Segment]:
+    """Status-line left column: workspace label or cwd."""
+    return [lambda: _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())]
+
+
+def _make_status_right_segments() -> list[Segment]:
+    """Status-line right column: agent mode, approvals, tokens, queue, msg count."""
+    cols = shutil.get_terminal_size().columns
+
+    def _agent() -> str | None:
+        mode = _format_agent_mode(cols)
+        return mode if mode else None
+
+    def _approvals() -> str | None:
+        n = _TOOLBAR_STATE.pending_approvals
+        return f"⚠ {n} approval(s) pending" if n > 0 else None
+
+    def _tool() -> str | None:
+        t = _TOOLBAR_STATE.current_tool
+        return f"tool: {t}" if t else None
+
+    def _tokens() -> str | None:
+        if _TOOLBAR_STATE.token_used_k is not None:
+            return f"~{_TOOLBAR_STATE.token_used_k:.0f}k tok"
+        if _TOOLBAR_STATE.context_pct is not None:
+            return f"ctx {_TOOLBAR_STATE.context_pct:.0%}"
+        return None
+
+    def _queued() -> str | None:
+        n = _TOOLBAR_STATE.queued_count
+        return f"↓ {n} queued" if n > 0 else None
+
+    def _msgs() -> str | None:
+        noun = "msg" if _TOOLBAR_STATE.turn_count == 1 else "msgs"
+        return f"{_TOOLBAR_STATE.turn_count} {noun}"
+
+    return [_agent, _approvals, _tool, _tokens, _queued, _msgs]
+
+
+def _make_tip_left_segments() -> list[Segment]:
+    """Tip-line left column: rotating tip."""
+    return [lambda: f"tip: {_TIP_ROTATOR.current()}"]
+
+
+def _make_tip_right_segments() -> list[Segment]:
+    """Tip-line right column: session type badge + session label."""
+
+    def _type_prefix() -> str | None:
+        # Design system rule 2: mode badges are UPPERCASE canonical labels.
+        session_type = _TOOLBAR_STATE.session_type
+        if session_type == "orchestrator":
+            return "◈ ORCHESTRATOR"
+        if session_type == "general":
+            return "○ GENERAL"
+        if session_type == "task":
+            return "▸ TASK"
+        return session_type.upper() if session_type else None
+
+    def _session_label() -> str | None:
+        return _TOOLBAR_STATE.session_label or None
+
+    return [_type_prefix, _session_label]
+
+
 def _toolbar_status_segments() -> tuple[str, str, str, str]:
     """Compute the four toolbar text segments shared by prompt-toolkit and Rich footers.
 
     Caller is responsible for advancing `_TIP_ROTATOR` (e.g. via `maybe_rotate()`).
+    Each segment column is now built from a list of Segment callables.
     """
+    status_left = _render_segments(_make_status_left_segments(), sep=" ")
+    status_right = _render_segments(_make_status_right_segments())
+    tip_left = _render_segments(_make_tip_left_segments(), sep=" ")
+    tip_right_raw = _render_segments(_make_tip_right_segments(), sep=" · ")
+    return status_left, status_right, tip_left, tip_right_raw
+
+
+def _build_status_text() -> FormattedText:
+    """Build the FormattedText for the status bar (rule + status line + tip line).
+
+    Used by unit tests to assert toolbar content without constructing a live
+    PromptSession.  Production code renders the same content via the
+    ``bottom_toolbar`` callback passed to ``PromptSession`` at construction.
+    """
+    _TIP_ROTATOR.maybe_rotate()
     cols = shutil.get_terminal_size().columns
-
-    status_left = _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())
-    status_right_parts: list[str] = []
-    if _TOOLBAR_STATE.yolo:
-        status_right_parts.append("YOLO")
-    agent_mode = _format_agent_mode(cols)
-    if agent_mode:
-        status_right_parts.append(agent_mode)
-    if _TOOLBAR_STATE.pending_approvals > 0:
-        status_right_parts.append(f"⚠ {_TOOLBAR_STATE.pending_approvals} approval(s) pending")
-    if _TOOLBAR_STATE.current_tool:
-        status_right_parts.append(f"tool: {_TOOLBAR_STATE.current_tool}")
-    if _TOOLBAR_STATE.token_used_k is not None:
-        status_right_parts.append(f"~{_TOOLBAR_STATE.token_used_k:.0f}k tok")
-    elif _TOOLBAR_STATE.context_pct is not None:
-        status_right_parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
-    msg_word = "msg" if _TOOLBAR_STATE.turn_count == 1 else "msgs"
-    status_right_parts.append(f"{_TOOLBAR_STATE.turn_count} {msg_word}")
-    status_right = " · ".join(status_right_parts)
-
-    tip_left = f"tip: {_TIP_ROTATOR.current()}"
-    tip_right = f"session: {_TOOLBAR_STATE.session_label}"
-
-    return status_left, status_right, tip_left, tip_right
+    status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
+    rule = "─" * max(cols, 1)
+    return FormattedText(
+        [
+            ("class:bottom-toolbar.rule", rule),
+            ("", "\n"),
+            (
+                "class:bottom-toolbar.status",
+                _compose_toolbar_line(status_left, status_right, cols),
+            ),
+            ("", "\n"),
+            (
+                "class:bottom-toolbar.tip",
+                _compose_toolbar_line(tip_left, tip_right, cols),
+            ),
+        ]
+    )
 
 
-_PROMPT_GLYPH_IDLE: Final[str] = "❯ "  # noqa: RUF001
-_PROMPT_GLYPH_PLAN: Final[str] = "◇ "
+# Design-system rule 5: prompt glyphs are $ (idle) and > (plan / fallback),
+# rendered in amber bold (#d4a84b).  The angle-quotation chevron is avoided —
+# $ and > are the canonical brand glyphs.
+_PROMPT_GLYPH_IDLE: Final[str] = "$ "
+_PROMPT_GLYPH_PLAN: Final[str] = "> "
 _PROMPT_GLYPH_FALLBACK: Final[str] = "> "
 _PROMPT_GLYPH_STREAMING_FRAMES: Final[tuple[str, ...]] = ("◐ ", "◓ ", "◑ ", "◒ ")
 _PROMPT_STREAMING_FPS: Final[float] = 4.0
@@ -713,19 +857,17 @@ def _build_prompt_message() -> FormattedText:
     if truecolor:
         accent = _REPL_COLORS["accent"]
         plan = _REPL_COLORS["plan"]
-        thinking = _REPL_COLORS["thinking"]
     else:
         accent = _ANSI_REPL_COLORS["accent"]
-        plan = "ansiblue"
-        thinking = "ansiyellow"
+        plan = "ansiyellow"
 
     if not truecolor:
         return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_FALLBACK)])
 
+    if _TOOLBAR_STATE.is_streaming:
+        return FormattedText([])
     if _TOOLBAR_STATE.plan_mode:
         return FormattedText([(f"bold {plan}", _PROMPT_GLYPH_PLAN)])
-    if _TOOLBAR_STATE.is_streaming:
-        return FormattedText([(f"bold {thinking}", _streaming_glyph_frame())])
     return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_IDLE)])
 
 
@@ -777,6 +919,7 @@ _console = Console(highlight=False)
 _prompt_style = Style.from_dict(_PROMPT_STYLE_RULES)
 _prompt_session: PromptSession[str] | None = None
 _submit_queue: "asyncio.Queue[str | None] | None" = None
+_settings_cache: dict[str, str] | None = None
 
 
 def _build_repl_key_bindings(submit_queue: "asyncio.Queue[str | None]") -> KeyBindings:
@@ -853,12 +996,22 @@ def _build_repl_key_bindings(submit_queue: "asyncio.Queue[str | None]") -> KeyBi
                 buffer.apply_completion(buffer.complete_state.completions[0])
             return
         text = buffer.text
+        if text:
+            # Save the submitted text to history so Up/Down cycling works.
+            # history.append_string deduplicates; we also insert into _working_lines
+            # at the current working position so navigation is available immediately
+            # without waiting for the async history-load task.
+            history_strings = buffer.history.get_strings()
+            if not history_strings or history_strings[-1] != text:
+                buffer.history.append_string(text)
+            working_lines = getattr(buffer, "_working_lines", None)
+            if working_lines is not None:
+                insert_pos = getattr(buffer, "working_index", len(working_lines) - 1)
+                working_lines.insert(insert_pos, text)
+                # Advance the private working_index to the new last (empty) slot.
+                buffer._Buffer__working_index = insert_pos + 1
         buffer.text = ""
         buffer.cursor_position = 0
-        # Reset history pointer to working line
-        line_count = len(getattr(buffer, "_working_lines", []))
-        if line_count > 0:
-            buffer.go_to_history(line_count - 1)
         submit_queue.put_nowait(text)
 
     return kb
@@ -882,6 +1035,8 @@ def _get_prompt_session(
     REPL loop has cached its queue-bound session never returns the queue-bound
     session by accident, which would silently swallow input.
     """
+    from kagan.core.chat._history import build_history
+
     global _prompt_session, _submit_queue
     if submit_queue is None:
         # One-shot session for bootstrap / ad-hoc prompts. Never cached so
@@ -898,10 +1053,21 @@ def _get_prompt_session(
         _prompt_session = None
         _submit_queue = submit_queue
     if _prompt_session is None:
+        project_id = _TOOLBAR_STATE.project_id or _TOOLBAR_STATE.project_name or "default"
+        cached = _settings_cache
+
+        def _get_cached_settings() -> dict[str, str]:
+            return dict(cached) if cached is not None else {}
+
+        history = build_history(
+            project_id,
+            settings_getter=_get_cached_settings,
+        )
         _prompt_session = PromptSession(
             style=_prompt_style,
             completer=_SlashCompleter(),
             key_bindings=_build_repl_key_bindings(submit_queue),
+            history=history,
             bottom_toolbar=_bottom_toolbar,
             refresh_interval=0.25,
             mouse_support=False,
@@ -954,37 +1120,36 @@ def _write_boot_banner(
     project_root: Path | None = None,
     *,
     agent_backend: str | None = None,
-    yolo: bool = False,
     interactive: bool = True,
 ) -> None:
     ver = version("kagan")
     cols = shutil.get_terminal_size().columns
     panel_width = min(cols, 88) if cols >= 52 else None
     title = _build_banner_heading(agent_backend, version_text=ver)
-    subtitle = Text("Describe a task to get started.", style="default")
+    # Design system tagline: "the orchestration layer for AI coding agents" — sentence case.
+    subtitle = Text("The orchestration layer for AI coding agents.", style="dim")
+    amber_bold = f"bold {_REPL_COLORS['primary']}"
     tip = Text.assemble(
         ("Tip: ", "dim"),
-        (_BOOT_TIP_COMMAND, "bold green"),
+        (_BOOT_TIP_COMMAND, amber_bold),
         (f" {_BOOT_TIP_TEXT}", "dim"),
     )
-    safety = Text("Review agent output before you apply it.", style="dim")
+    safety = Text("Review agent output before applying it.", style="dim")
     body: list[Any] = [title, subtitle, tip, safety]
     if interactive:
         body.append(
             Text(
-                "Kagan orchestrator — type your goal, /help for commands, Ctrl-C to exit.",
+                "Send a message, /help for commands, Ctrl-D to exit.",
                 style="dim",
             )
         )
-    if yolo:
-        body.append(
-            Text("Yolo mode — every tool call auto-approved.", style="bold red"),
-        )
 
+    # Design system: amber border for the primary surface frame.
+    border_color = _REPL_COLORS["primary"]
     banner = Panel(
         Group(*body),
         box=box.ROUNDED,
-        border_style="red" if yolo else "green",
+        border_style=border_color,
         padding=(0, 2),
         expand=False,
         width=panel_width,
@@ -997,11 +1162,13 @@ def _write_boot_banner(
 
 
 def _animate_connecting() -> None:
+    # Design system: connecting indicator in muted amber (primary), not cyan.
+    amber_dim = f"dim {_REPL_COLORS['primary']}"
     if os.environ.get("KAGAN_CHAT_SKIP_BOOT_ANIMATION") == "1":
-        _console.print(Text(WAVE_FRAMES[-1], style="dim cyan"))
+        _console.print(Text(WAVE_FRAMES[-1], style=amber_dim))
         return
     for frame in WAVE_FRAMES:
-        _console.print(f"\r[dim cyan]{frame}[/dim cyan]", end="")
+        _console.print(Text(f"\r{frame}", style=amber_dim), end="")
         time.sleep(0.08)
     _console.print()
 
@@ -1036,28 +1203,45 @@ async def run_chat_async(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
-    yolo: bool = False,
 ) -> str | None:
-    from kagan.cli.chat._yolo import confirm_yolo_disclaimer
     from kagan.cli.chat.controller import ChatController
     from kagan.core import KaganCore, resolve_default_agent_backend
 
-    if yolo and not confirm_yolo_disclaimer(_console):
-        return None
+    global _settings_cache
+
+    # When KAGAN_FAKE_AGENT=1 is active, auto-register the fake backend so
+    # ``get_backend_spec("fake-agent")`` does not raise, and use the in-process
+    # fake factory instead of LongLivedACPFactory (which would try to spawn a
+    # real ACP subprocess).  This makes ``kg chat --agent fake-agent`` work for
+    # CLI PTY tests without any running external process.
+    fake_agent_active = os.environ.get("KAGAN_FAKE_AGENT") == "1"
+    if fake_agent_active:
+        from kagan.core._fake_agent import make_fake_chat_factory, register_fake_backend
+
+        register_fake_backend()
+        _fake_factory: object | None = make_fake_chat_factory()
+    else:
+        _fake_factory = None
 
     async with KaganCore() as client:
         backend = agent
+        settings = await client.settings.get()
+        _settings_cache = dict(settings)
         if not backend:
-            settings = await client.settings.get()
             backend = resolve_default_agent_backend(settings)
 
+        _raw_reasoning = settings.get("chat.show_reasoning", "").strip().lower()
+        show_reasoning = _raw_reasoning not in {"", "0", "false", "no", "off"}
         controller = ChatController(
             client,
             agent_backend=backend,
             mcp_session_id=session_id,
             prefer_session_backend=agent is None,
-            yolo=yolo,
+            show_reasoning=show_reasoning,
         )
+        # Inject the in-process fake factory when available so that
+        # _run_agent_session bypasses LongLivedACPFactory subprocess spawning.
+        controller._acp_factory_override = _fake_factory  # type: ignore[attr-defined]
 
         if not await controller.ensure_project():
             return None
@@ -1066,14 +1250,13 @@ async def run_chat_async(
 
         _set_workspace_context(Path.cwd())
         _TOOLBAR_STATE.agent_backend = controller.agent_backend
+        _TOOLBAR_STATE.project_id = client.active_project_id or ""
         _TOOLBAR_STATE.turn_count = controller._turn_count
         _TOOLBAR_STATE.context_pct = None
-        _TOOLBAR_STATE.yolo = yolo
 
         _write_boot_banner(
             Path.cwd(),
             agent_backend=controller.agent_backend,
-            yolo=yolo,
             interactive=prompt is None,
         )
 
@@ -1086,6 +1269,11 @@ def run_chat(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
-    yolo: bool = False,
 ) -> str | None:
-    return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent, yolo=yolo))
+    return asyncio.run(
+        run_chat_async(
+            prompt=prompt,
+            session_id=session_id,
+            agent=agent,
+        )
+    )

@@ -21,39 +21,7 @@ _COLUMN_ORDER: tuple[TaskStatus, ...] = (
 
 
 class BoardColumn(Vertical):
-    DEFAULT_CSS = """
-    BoardColumn {
-        layout: vertical;
-    }
-
-    BoardColumn .column-header {
-        width: 100%;
-        height: auto;
-    }
-
-    BoardColumn .column-header-text,
-    BoardColumn .column-count {
-        width: auto;
-    }
-
-    BoardColumn .column-content {
-        width: 100%;
-        height: 1fr;
-    }
-
-    BoardColumn .column-empty {
-        width: 100%;
-        height: 1fr;
-        layout: vertical;
-        align: center middle;
-        padding: 1;
-    }
-
-    BoardColumn .empty-message {
-        width: 100%;
-        text-align: center;
-    }
-    """
+    DEFAULT_CSS = ""
 
     def __init__(self, status: TaskStatus) -> None:
         super().__init__(id=f"column-{status.value.lower()}", classes="kanban-column")
@@ -171,12 +139,7 @@ class BoardColumn(Vertical):
 
 
 class BoardView(Widget):
-    DEFAULT_CSS = """
-    BoardView {
-        layout: horizontal;
-        height: 1fr;
-    }
-    """
+    DEFAULT_CSS = ""
 
     @dataclass
     class TaskSelected(Message):

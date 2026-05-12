@@ -15,8 +15,6 @@ class TaskActionBar(Widget):
     task_data: reactive[Task | None] = reactive(None)
     task_running: reactive[bool] = reactive(False)
     has_criteria: reactive[bool] = reactive(False)
-    chat_visible: reactive[bool] = reactive(False)
-    chat_fullscreen: reactive[bool] = reactive(False)
     review_approved: reactive[bool] = reactive(False)
 
     DEFAULT_CSS = """
@@ -45,12 +43,6 @@ class TaskActionBar(Widget):
     def watch_has_criteria(self, _value: bool) -> None:
         self._sync_hints()
 
-    def watch_chat_visible(self, _value: bool) -> None:
-        self._sync_hints()
-
-    def watch_chat_fullscreen(self, _value: bool) -> None:
-        self._sync_hints()
-
     def watch_review_approved(self, _value: bool) -> None:
         self._sync_hints()
 
@@ -60,23 +52,10 @@ class TaskActionBar(Widget):
         task = self.task_data
         b = TASK_SCREEN_BINDINGS
         tabs_hint: tuple[str, str] = ("1-3", "tabs")
-        shared_specs: list[tuple[str | tuple[str, ...], str]] = [
-            ("switch_session", "sessions"),
-        ]
-        if self.chat_visible:
-            shared_specs = [
-                ("toggle_chat", "split"),
-                ("expand_chat_overlay", "fullscreen"),
-                ("back", "close"),
-                *shared_specs,
-            ]
-            esc = []
-        else:
-            shared_specs = [("toggle_chat", "split"), *shared_specs]
-            esc = action_hints_from_bindings(b, [("back", "back")])
+        back_hint = action_hints_from_bindings(b, [("back", "back")])
 
         if active == "overview":
-            self._sync_detail_hints(hint, task, b, tabs_hint, shared_specs, esc)
+            self._sync_detail_hints(hint, task, b, tabs_hint, back_hint)
             return
 
         if active == "changes":
@@ -90,15 +69,14 @@ class TaskActionBar(Widget):
                 format_hint(
                     [
                         *nav_hints,
-                        *action_hints_from_bindings(b, shared_specs),
-                        *esc,
+                        *back_hint,
                     ]
                 ),
             )
             return
 
         if active == "review":
-            self._sync_detail_hints(hint, task, b, tabs_hint, shared_specs, esc)
+            self._sync_detail_hints(hint, task, b, tabs_hint, back_hint)
             return
 
         self._update_hint_text(
@@ -106,8 +84,7 @@ class TaskActionBar(Widget):
             format_hint(
                 [
                     tabs_hint,
-                    *action_hints_from_bindings(b, shared_specs),
-                    *esc,
+                    *back_hint,
                 ]
             ),
         )
@@ -118,8 +95,7 @@ class TaskActionBar(Widget):
         task: Task | None,
         b: list,
         tabs_hint: tuple[str, str],
-        shared_specs: list[tuple[str | tuple[str, ...], str]],
-        esc: list[tuple[str, str]],
+        back_hint: list[tuple[str, str]],
     ) -> None:
         specs: list[tuple[str | tuple[str, ...], str]]
         hints: list[tuple[str, str]]
@@ -140,8 +116,7 @@ class TaskActionBar(Widget):
                 hints = [
                     tabs_hint,
                     *hints,
-                    *action_hints_from_bindings(b, shared_specs),
-                    *esc,
+                    *back_hint,
                 ]
                 self._update_hint_text(hint, format_hint(hints))
                 return
@@ -173,8 +148,7 @@ class TaskActionBar(Widget):
         hints = [
             tabs_hint,
             *hints,
-            *action_hints_from_bindings(b, shared_specs),
-            *esc,
+            *back_hint,
         ]
         self._update_hint_text(hint, format_hint(hints))
 

@@ -1,10 +1,11 @@
 """Tests: GitHub integration — label mapping, idempotent sync, verbatim body, preflight."""
 
 import json
-from unittest.mock import AsyncMock, patch
+import sys
 
 import pytest
 
+import kagan.core.integrations.github  # noqa: F401  (side-effect: registers module in sys.modules)
 from kagan.core import KaganCore, Priority
 from kagan.core.integrations.github import (
     GitHubConfig,
@@ -15,7 +16,10 @@ from kagan.core.integrations.github import (
     normalize_github_state,
     parse_github_repo_slug_from_remote_url,
 )
+from tests.helpers.github_cli_fake import make_fake_gh_bin
 from tests.helpers.helpers import make_git_repo
+
+_gh_module = sys.modules["kagan.core.integrations.github"]
 
 pytestmark = [pytest.mark.integrations]
 
@@ -107,24 +111,19 @@ def test_parse_github_repo_slug_from_remote_url_returns_none_for_unsupported(
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_path", return_value=None)
-def test_preflight_warns_gh_missing(_mock_path, integration: GitHubIntegration) -> None:
+def test_preflight_warns_gh_missing(monkeypatch, integration: GitHubIntegration) -> None:
     """Preflight warns when gh CLI is not installed."""
+    monkeypatch.setattr(_gh_module, "_gh_path", lambda: None)
     checks = integration.preflight()
     assert any(c.name == "gh_cli" and c.status.value == "warn" for c in checks)
     assert any("https://cli.github.com" in c.fix_hint for c in checks)
 
 
-@patch("kagan.core.integrations.github.subprocess")
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 def test_preflight_passes_when_gh_authed(
-    _mock_path, mock_subprocess, integration: GitHubIntegration
+    tmp_path, monkeypatch, integration: GitHubIntegration
 ) -> None:
-    """Preflight passes when gh is installed and authenticated."""
-    mock_subprocess.run.return_value.returncode = 0
-    mock_subprocess.run.return_value.stdout = "gho_fake_token"
-    mock_subprocess.TimeoutExpired = TimeoutError
-
+    """Preflight passes when gh is installed and authenticated (real subprocess)."""
+    make_fake_gh_bin(tmp_path, monkeypatch)
     checks = integration.preflight()
     gh_cli = next(c for c in checks if c.name == "gh_cli")
     assert gh_cli.status.value == "pass"
@@ -194,26 +193,25 @@ def _make_gh_issues(*issues):
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_import_stores_body_verbatim(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """Imported task description equals the GitHub issue body exactly."""
     body_text = "Fix the login bug\n\nSteps to reproduce:\n1. Go to /login\n2. Click Submit"
-    mock_fetch.return_value = [
-        {
-            "number": 1,
-            "title": "Login bug",
-            "body": body_text,
-            "labels": [],
-            "state": "OPEN",
-            "url": "https://github.com/octocat/hello-world/issues/1",
-        }
-    ]
+
+    async def _fake_fetch(_config):
+        return [
+            {
+                "number": 1,
+                "title": "Login bug",
+                "body": body_text,
+                "labels": [],
+                "state": "OPEN",
+                "url": "https://github.com/octocat/hello-world/issues/1",
+            }
+        ]
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     await integration.sync(client, config, client.active_project_id)
 
@@ -222,25 +220,24 @@ async def test_import_stores_body_verbatim(
     assert tasks[0].description == body_text
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_first_import_seeds_criteria_from_body_checkboxes(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """First import seeds acceptance criteria from - [ ] / - [x] lines in body."""
-    mock_fetch.return_value = [
-        {
-            "number": 1,
-            "title": "Feature with checkboxes",
-            "body": "Acceptance criteria:\n- [ ] foo\n- [x] bar\n- [ ] baz",
-            "labels": [],
-            "state": "OPEN",
-            "url": "https://github.com/octocat/hello-world/issues/1",
-        }
-    ]
+
+    async def _fake_fetch(_config):
+        return [
+            {
+                "number": 1,
+                "title": "Feature with checkboxes",
+                "body": "Acceptance criteria:\n- [ ] foo\n- [x] bar\n- [ ] baz",
+                "labels": [],
+                "state": "OPEN",
+                "url": "https://github.com/octocat/hello-world/issues/1",
+            }
+        ]
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     await integration.sync(client, config, client.active_project_id)
 
@@ -250,16 +247,15 @@ async def test_first_import_seeds_criteria_from_body_checkboxes(
     assert set(criteria_texts) == {"foo", "bar", "baz"}
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_import_sets_github_issue_field_to_canonical_form(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """Imported task has github_issue set to '<owner>/<repo>#<number>'."""
-    mock_fetch.return_value = _make_gh_issues((42, "Some issue", []))
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues((42, "Some issue", []))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     await integration.sync(client, config, client.active_project_id)
 
@@ -269,23 +265,22 @@ async def test_import_sets_github_issue_field_to_canonical_form(
 
 
 # ---------------------------------------------------------------------------
-# Idempotent sync (with mocked gh CLI)
+# Idempotent sync
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_creates_tasks_from_issues(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """First sync creates tasks for each GitHub issue."""
-    mock_fetch.return_value = _make_gh_issues(
-        (1, "Bug report", ["bug", "priority:high"]),
-        (2, "Feature request", ["enhancement"]),
-    )
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues(
+            (1, "Bug report", ["bug", "priority:high"]),
+            (2, "Feature request", ["enhancement"]),
+        )
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     result = await integration.sync(client, config, client.active_project_id)
     assert result.created == 2
@@ -300,13 +295,8 @@ async def test_sync_creates_tasks_from_issues(
     assert bug_task.priority == Priority.HIGH
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_assigns_imported_tasks_to_selected_repo(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client, tmp_path
+    authed_gh, monkeypatch, integration, config, client, tmp_path
 ) -> None:
     """Imported issues stay visible when the board is filtered to the selected repo."""
     repo_path = tmp_path / "selected-repo"
@@ -315,7 +305,11 @@ async def test_sync_assigns_imported_tasks_to_selected_repo(
     assert project_id is not None
     repo = await client.projects.add_repo(project_id, str(repo_path))
     await client.settings.set({f"ui.selected_repo.{project_id}": repo.id})
-    mock_fetch.return_value = _make_gh_issues((1, "Repo-scoped bug", ["bug"]))
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues((1, "Repo-scoped bug", ["bug"]))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     result = await integration.sync(client, config, project_id)
 
@@ -325,30 +319,29 @@ async def test_sync_assigns_imported_tasks_to_selected_repo(
     assert tasks[0].title == "Repo-scoped bug"
 
 
-@patch(
-    "kagan.core.integrations.github._pull_criteria_from_comment",
-    new_callable=AsyncMock,
-    return_value=None,
-)
-@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
-async def test_sync_is_idempotent(
-    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
-) -> None:
+async def test_sync_is_idempotent(authed_gh, monkeypatch, integration, config, client) -> None:
     """Running sync twice with same issues creates tasks only once."""
     issues = _make_gh_issues((1, "Bug report", ["bug"]))
-    mock_fetch.return_value = issues
-    mock_view.return_value = {
+    view_data = {
         "number": 1,
         "title": "Bug report",
         "body": "Body for #1",
         "labels": [{"name": "bug"}],
         "state": "OPEN",
     }
+
+    async def _fake_fetch(_config):
+        return issues
+
+    async def _fake_view(repo_slug, number):
+        return view_data
+
+    async def _no_criteria(repo_slug, number):
+        return None
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
+    monkeypatch.setattr(_gh_module, "_gh_view_issue", _fake_view)
+    monkeypatch.setattr(_gh_module, "_pull_criteria_from_comment", _no_criteria)
 
     result1 = await integration.sync(client, config, client.active_project_id)
     assert result1.created == 1
@@ -361,17 +354,15 @@ async def test_sync_is_idempotent(
     assert len(tasks) == 1
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_reimports_deleted_tasks(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """If a synced task is deleted, re-sync re-creates it."""
-    issues = _make_gh_issues((1, "Bug report", ["bug"]))
-    mock_fetch.return_value = issues
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues((1, "Bug report", ["bug"]))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     result1 = await integration.sync(client, config, client.active_project_id)
     assert result1.created == 1
@@ -384,33 +375,39 @@ async def test_sync_reimports_deleted_tasks(
     assert result2.skipped == 0
 
 
-@patch(
-    "kagan.core.integrations.github._pull_criteria_from_comment",
-    new_callable=AsyncMock,
-    return_value=None,
-)
-@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_incremental_new_issues(
-    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """Sync picks up new issues while skipping already-imported ones."""
-    mock_fetch.return_value = _make_gh_issues((1, "First", []))
-    mock_view.return_value = {
+    view_data = {
         "number": 1,
         "title": "First",
         "body": "Body for #1",
         "labels": [],
         "state": "OPEN",
     }
+
+    async def _fake_fetch_first(_config):
+        return _make_gh_issues((1, "First", []))
+
+    async def _fake_view(repo_slug, number):
+        return view_data
+
+    async def _no_criteria(repo_slug, number):
+        return None
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch_first)
+    monkeypatch.setattr(_gh_module, "_gh_view_issue", _fake_view)
+    monkeypatch.setattr(_gh_module, "_pull_criteria_from_comment", _no_criteria)
+
     result1 = await integration.sync(client, config, client.active_project_id)
     assert result1.created == 1
 
-    mock_fetch.return_value = _make_gh_issues((1, "First", []), (2, "Second", []))
+    async def _fake_fetch_second(_config):
+        return _make_gh_issues((1, "First", []), (2, "Second", []))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch_second)
+
     result2 = await integration.sync(client, config, client.active_project_id)
     assert result2.created == 1
     assert result2.skipped == 1
@@ -419,16 +416,16 @@ async def test_sync_incremental_new_issues(
     assert len(tasks) == 2
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_persists_map_in_settings(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """Sync map is persisted in settings and survives reinstantiation."""
-    mock_fetch.return_value = _make_gh_issues((42, "Important fix", []))
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues((42, "Important fix", []))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
+
     await integration.sync(client, config, client.active_project_id)
 
     settings = await client.settings.get()
@@ -438,20 +435,20 @@ async def test_sync_persists_map_in_settings(
     assert "42" in sync_map
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_with_issue_numbers_imports_only_selected(
-    _mock_path, _mock_auth, mock_fetch, integration, client
+    authed_gh, monkeypatch, integration, client
 ) -> None:
     """Sync with issue_numbers only imports matching issues."""
-    mock_fetch.return_value = _make_gh_issues(
-        (1, "Bug", []),
-        (2, "Feature", []),
-        (3, "Docs", []),
-    )
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues(
+            (1, "Bug", []),
+            (2, "Feature", []),
+            (3, "Docs", []),
+        )
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
+
     config = GitHubConfig(owner="octocat", repo="hello-world", issue_numbers=(1, 3))
     result = await integration.sync(client, config, client.active_project_id)
     assert result.created == 2
@@ -464,19 +461,19 @@ async def test_sync_with_issue_numbers_imports_only_selected(
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_preview_returns_items_without_importing(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """Preview returns ExternalItem list without creating tasks."""
-    mock_fetch.return_value = _make_gh_issues(
-        (1, "Bug report", ["bug"]),
-        (2, "Feature", ["enhancement"]),
-    )
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues(
+            (1, "Bug report", ["bug"]),
+            (2, "Feature", ["enhancement"]),
+        )
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
+
     items = await integration.preview(client, config, client.active_project_id)
     assert len(items) == 2
     assert items[0].extra["number"] == 1
@@ -485,20 +482,21 @@ async def test_preview_returns_items_without_importing(
     assert len(tasks) == 0
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_preview_marks_synced_items(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    authed_gh, monkeypatch, integration, config, client
 ) -> None:
     """Preview marks previously synced issues."""
-    issues = _make_gh_issues((1, "Bug", []))
-    mock_fetch.return_value = issues
+
+    async def _fake_fetch_first(_config):
+        return _make_gh_issues((1, "Bug", []))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch_first)
     await integration.sync(client, config, client.active_project_id)
 
-    mock_fetch.return_value = _make_gh_issues((1, "Bug", []), (2, "New", []))
+    async def _fake_fetch_second(_config):
+        return _make_gh_issues((1, "Bug", []), (2, "New", []))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch_second)
     items = await integration.preview(client, config, client.active_project_id)
     assert items[0].already_synced is True
     assert items[1].already_synced is False
@@ -509,40 +507,40 @@ async def test_preview_marks_synced_items(
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._gh_path", return_value=None)
-async def test_sync_raises_when_gh_missing(_mock_path, integration, config, client) -> None:
+async def test_sync_raises_when_gh_missing(monkeypatch, integration, config, client) -> None:
     """sync() raises KaganError when gh CLI is not installed."""
     from kagan.core.errors import KaganError
+
+    monkeypatch.setattr(_gh_module, "_gh_path", lambda: None)
 
     with pytest.raises(KaganError, match=r"gh.*not found"):
         await integration.sync(client, config, client.active_project_id)
 
 
-@patch("kagan.core.integrations.github._gh_path", return_value=None)
-async def test_preview_raises_when_gh_missing(_mock_path, integration, config, client) -> None:
+async def test_preview_raises_when_gh_missing(monkeypatch, integration, config, client) -> None:
     """preview() raises KaganError when gh CLI is not installed."""
     from kagan.core.errors import KaganError
+
+    monkeypatch.setattr(_gh_module, "_gh_path", lambda: None)
 
     with pytest.raises(KaganError, match=r"gh.*not found"):
         await integration.preview(client, config, client.active_project_id)
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_raises_when_no_repo_attached(
-    _mock_path, _mock_auth, mock_fetch, integration, config, tmp_path
+    authed_gh, monkeypatch, integration, config, tmp_path
 ) -> None:
     """sync() raises KaganError when project has no repositories attached."""
     from kagan.core.errors import KaganError
 
+    async def _fake_fetch(_config):
+        return _make_gh_issues((1, "Bug report", ["bug"]))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
+
     client = KaganCore(db_path=tmp_path / "no_repo_test.db")
     project = await client.projects.create("No Repo Project")
     await client.projects.set_active(project.id)
-
-    mock_fetch.return_value = _make_gh_issues((1, "Bug report", ["bug"]))
 
     try:
         with pytest.raises(KaganError, match=r"No repositories attached"):
@@ -551,16 +549,16 @@ async def test_sync_raises_when_no_repo_attached(
         client.close()
 
 
-@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
-@patch(
-    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
-)
-@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_raises_when_multiple_repos_and_none_selected(
-    _mock_path, _mock_auth, mock_fetch, integration, config, tmp_path
+    authed_gh, monkeypatch, integration, config, tmp_path
 ) -> None:
     """sync() raises KaganError when project has multiple repos but none is selected."""
     from kagan.core.errors import KaganError
+
+    async def _fake_fetch(_config):
+        return _make_gh_issues((1, "Bug report", ["bug"]))
+
+    monkeypatch.setattr(_gh_module, "_gh_fetch_issues", _fake_fetch)
 
     client = KaganCore(db_path=tmp_path / "multi_repo_test.db")
     project = await client.projects.create("Multi Repo Project")
@@ -572,8 +570,6 @@ async def test_sync_raises_when_multiple_repos_and_none_selected(
     await make_git_repo(repo2_path)
     await client.projects.add_repo(project.id, str(repo1_path))
     await client.projects.add_repo(project.id, str(repo2_path))
-
-    mock_fetch.return_value = _make_gh_issues((1, "Bug report", ["bug"]))
 
     try:
         with pytest.raises(KaganError, match=r"Multiple repositories attached"):

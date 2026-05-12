@@ -22,7 +22,7 @@ async def test_chat_stream_emits_chunks_before_final_message(board: KaganDriver)
         agent_chunks=["one ", "two ", "three"],
     )
 
-    kinds = [event.kind for event in outcome.events]
+    kinds = [event.type for event in outcome.events]
     chunk_indexes = [i for i, kind in enumerate(kinds) if kind == "assistant_chunk"]
     final_index = kinds.index("assistant_message")
 
@@ -45,7 +45,7 @@ async def test_cancelled_chat_stream_persists_observable_partial(
         cancel_after_chars=1,
     )
 
-    kinds = [event.kind for event in outcome.events]
+    kinds = [event.type for event in outcome.events]
 
     assert "assistant_chunk" in kinds
     assert kinds.index("assistant_chunk") < kinds.index("assistant_message")

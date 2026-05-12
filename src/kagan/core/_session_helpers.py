@@ -91,12 +91,10 @@ def build_attached_startup_prompt(task: Task, criteria_texts: list[str] | None =
     criteria = [item.strip() for item in (criteria_texts or []) if item and item.strip()]
 
     lines = [
-        f"# Interactive Task: {task.id} — {task.title}",
+        f"# Interactive Task {task.id} — {task.title}",
         "",
-        "Act as a Senior Developer collaborating on this implementation.",
-        "",
-        "## Task Overview",
-        f"**Title:** {task.title}",
+        "You are a senior dev co-piloting this work. WORKER role on the kagan MCP.",
+        "You are in a git worktree, not the main repo — only modify files here.",
         "",
     ]
     if description:
@@ -107,25 +105,12 @@ def build_attached_startup_prompt(task: Task, criteria_texts: list[str] | None =
         lines.append("")
     lines.extend(
         [
-            "## Important Rules",
-            "- You are in a git worktree, NOT the main repository",
-            "- Only modify files within this worktree",
-            "- COMMIT all changes before finishing (semantic commits: feat:, fix:, docs:, etc.)",
-            "- When complete: commit your work, then call `run_detach`",
-            "- Your tools are available via the connected MCP server (WORKER role)",
-            "",
-            "## Coordination Workflow",
-            "",
-            "Before implementing:",
-            "1. Call `task_list` to check for parallel IN_PROGRESS tasks",
-            "2. Review concurrent tasks to avoid overlapping file modifications",
-            "3. Call `task_events` on related completed tasks to learn from prior work",
-            "",
-            "## Completion",
-            "",
-            "1. Implement and verify against acceptance criteria",
-            "2. Commit with clear WHY-focused message",
-            "3. Call `run_detach` to signal completion",
+            "## Workflow",
+            "1. `task_list` for parallel IN_PROGRESS tasks; avoid file overlap.",
+            "   `task_events` on related completed tasks for prior learnings.",
+            "2. Implement and verify against acceptance criteria.",
+            "3. Commit (semantic: feat:/fix:/docs:/...) with a WHY-focused message.",
+            "4. `run_detach` to signal completion.",
         ]
     )
     return "\n".join(lines).strip() + "\n"

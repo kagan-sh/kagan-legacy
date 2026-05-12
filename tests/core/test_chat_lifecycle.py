@@ -15,10 +15,9 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from kagan.core.chat import (
-    TurnDone,
     TurnInProgressError,
-    TurnStarted,
 )
+from kagan.core.events import TurnEnd, TurnStart
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -180,9 +179,9 @@ async def test_chat_event_sequence_matches_documented_order(board: KaganDriver) 
     outcome = await board.chat_send(sid, "ping", agent_chunks=["pong"])
     events = outcome.events
 
-    assert isinstance(events[0], TurnStarted)
-    assert isinstance(events[-1], TurnDone)
-    kinds = [e.kind for e in events]
+    assert isinstance(events[0], TurnStart)
+    assert isinstance(events[-1], TurnEnd)
+    kinds = [e.type for e in events]
     assert "assistant_message" in kinds
 
 

@@ -12,6 +12,10 @@ Owns the per-turn lifecycle:
    /watch subscribers and reconnect endpoints see consistent history.
 4. If a ``title_generator`` is configured and this was the session's first
    turn, kick off an out-of-band title rename without blocking the stream.
+5. When ``event_log`` and ``entry_idx`` are provided, every token chunk is
+   persisted as a JSON-Patch-style frame (W2). Frames are the durable source
+   of truth; the in-memory ``partial`` buffer is retained only for backward-
+   compatible ``turn_status()`` / ``cancel()`` reporting.
 
 Per-session in-flight state is held on the engine instance (NOT module-level
 dicts) so multiple ``ChatEngine`` instances — e.g. one per server worker —
@@ -37,22 +41,22 @@ from kagan.core.chat.acp import (
     PermissionRequestPayload,
     acp_update_to_chat_event,
 )
-from kagan.core.chat.events import (
+from kagan.core.errors import KaganError, ValidationError
+from kagan.core.events import (
     AssistantChunk,
     AssistantMessagePersisted,
-    ChatEvent,
-    PermissionRequest,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnStarted,
+    Error,
+    Event,
+    TurnEnd,
+    TurnStart,
 )
-from kagan.core.errors import KaganError, ValidationError
+from kagan.core.permission import PermissionRequest
 
 if TYPE_CHECKING:
     import builtins
     from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 
+    from kagan.core._event_log import EntryIndexProvider, EventLog
     from kagan.core.chat.sessions import ChatSessions
     from kagan.core.models import ChatMessage
 
@@ -87,6 +91,11 @@ class _TurnState:
       * a sentinel ``Future`` — claimed but not yet started (mirrors server's
         409-guard pattern in ``server/_chat_routes._claim_turn_slot``),
       * an ``asyncio.Task`` — the running turn coroutine.
+
+    ``assistant_idx`` is set to the entry index allocated for the current
+    assistant turn when an :class:`EventLog` is wired in (W2).  It is used
+    by :meth:`ChatEngine.cancel` to emit the finalize-with-reason frame
+    without needing to reach into the generator.
     """
 
     task: asyncio.Future[Any] | None = None
@@ -94,12 +103,17 @@ class _TurnState:
     partial: list[str] = field(default_factory=list)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     pending_permissions: dict[str, asyncio.Future[PermissionDecision]] = field(default_factory=dict)
+    assistant_idx: int | None = None
 
 
 class ChatEngine:
     """The single chat conversation loop. Wired into :class:`KaganCore`.
 
     See module docstring for the lifecycle contract.
+
+    When ``event_log`` and ``entry_idx`` are supplied (W2), every turn emits
+    JSON-Patch-style frames to the event log so partial text survives crashes
+    and multiple subscribers see identical seq streams.
     """
 
     def __init__(
@@ -108,10 +122,14 @@ class ChatEngine:
         sessions: ChatSessions,
         acp_factory: ACPSessionFactory,
         title_generator: Callable[[str, str], Awaitable[str | None]] | None = None,
+        event_log: EventLog | None = None,
+        entry_idx: EntryIndexProvider | None = None,
     ) -> None:
         self._sessions = sessions
         self._acp = acp_factory
         self._title_generator = title_generator
+        self._event_log = event_log
+        self._entry_idx = entry_idx
         self._states: dict[str, _TurnState] = {}
 
     # ------------------------------------------------------------------ history
@@ -125,8 +143,8 @@ class ChatEngine:
     ) -> builtins.list[ChatMessage]:
         """Return messages for a session.
 
-        ``after_id`` switches to the cursor-tail query used by /watch
-        reconnect; ``limit`` is honoured only when ``after_id`` is set.
+        ``after_id`` switches to the cursor-tail query; ``limit`` is
+        honoured only when ``after_id`` is set.
         """
         if after_id is not None:
             return await self._sessions.messages_after(
@@ -151,11 +169,16 @@ class ChatEngine:
         messages are plain text rows). The parameter exists so the engine API
         can carry attachments through to ``stream_assistant`` without callers
         needing two parallel paths. Phase 3+ will route them properly.
+
+        When an :class:`EventLog` is wired in, also emits a
+        ``patch / create`` frame for the user entry so the event stream
+        carries the full conversation history independently of the
+        ``ChatMessage`` table (W2).
         """
         del attachments  # threaded into stream_assistant by callers
         cleaned = text.strip()
         if not cleaned:
-            raise ValueError("user message text is required")
+            raise ValidationError("text", "Message cannot be empty")
 
         scan = scan_text_for_injection(cleaned)
         risk = scan.get("risk_level", "SAFE")
@@ -168,7 +191,28 @@ class ChatEngine:
                 scan.get("findings", []),
             )
 
-        return await self._sessions.append_message(session_id, "user", cleaned)
+        msg = await self._sessions.append_message(session_id, "user", cleaned)
+
+        if self._event_log is not None and self._entry_idx is not None:
+            user_idx = await self._entry_idx.next(session_id, "chat")
+            await self._event_log.append(
+                session_id,
+                "chat",
+                {
+                    "type": "patch",
+                    "op": "create",
+                    "path": f"/entries/{user_idx}",
+                    "value": {
+                        "idx": user_idx,
+                        "role": "user",
+                        "text": cleaned,
+                        "finalized": True,
+                        "ts": datetime.now(UTC).isoformat(),
+                    },
+                },
+            )
+
+        return msg
 
     # ------------------------------------------------------------------ claim
 
@@ -198,8 +242,13 @@ class ChatEngine:
         prompt_blocks: list[Any],
         agent_backend: str | None = None,
         acp_factory: ACPSessionFactory | None = None,
-    ) -> AsyncIterator[ChatEvent]:
-        """Run a single assistant turn and yield :class:`ChatEvent` items.
+    ) -> AsyncIterator[Event | PermissionRequest]:
+        """Run a single assistant turn and yield :class:`Event` items.
+
+        Also yields :class:`~kagan.core.permission.PermissionRequest` objects
+        on the same iterator when the agent requests user permission. These are
+        NOT part of the ``Event`` union; consumers should check
+        ``isinstance(item, PermissionRequest)`` to handle them separately.
 
         Raises :class:`TurnInProgressError` if a turn is already in flight for
         ``session_id``. ``acp_factory`` overrides the engine's default factory
@@ -349,7 +398,7 @@ class ChatEngine:
     @staticmethod
     async def _resolve_via_queue(
         state: _TurnState,
-        queue: asyncio.Queue[ChatEvent | None],
+        queue: asyncio.Queue[Any],
         payload: PermissionRequestPayload,
     ) -> PermissionDecision:
         """Register a pending permission, emit the request, await the answer."""
@@ -377,15 +426,53 @@ class ChatEngine:
         is_first_turn: bool,
         agent_backend: str | None,
         factory: ACPSessionFactory,
-    ) -> AsyncGenerator[ChatEvent, None]:
-        queue: asyncio.Queue[ChatEvent | None] = asyncio.Queue()
+    ) -> AsyncGenerator[Event | PermissionRequest, None]:
+        # Queue holds Event variants and PermissionRequest (sidechannel).
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        # Stable IDs for TurnStart / chunk messages within this run.
+        turn_id = uuid.uuid4().hex
+
+        # W2: allocate the assistant entry index before starting the run task,
+        # so the index is stable even if the agent is cancelled immediately.
+        assistant_idx: int | None = None
+        if self._event_log is not None and self._entry_idx is not None:
+            assistant_idx = await self._entry_idx.next(session_id, "chat")
+            state.assistant_idx = assistant_idx
+            await self._event_log.append(
+                session_id,
+                "chat",
+                {
+                    "type": "patch",
+                    "op": "create",
+                    "path": f"/entries/{assistant_idx}",
+                    "value": {
+                        "idx": assistant_idx,
+                        "role": "assistant",
+                        "text": "",
+                        "finalized": False,
+                        "ts": datetime.now(UTC).isoformat(),
+                    },
+                },
+            )
 
         async def _on_update(update: Any) -> None:
-            event = acp_update_to_chat_event(update)
+            event = acp_update_to_chat_event(update, turn_id=turn_id, session_id=session_id)
             if event is None:
                 return
-            if isinstance(event, AssistantChunk) and not event.thought:
-                state.partial.append(event.text)
+            if isinstance(event, AssistantChunk):
+                state.partial.append(event.delta)
+                # W2: persist an append frame for every token chunk.
+                if self._event_log is not None and assistant_idx is not None:
+                    await self._event_log.append(
+                        session_id,
+                        "chat",
+                        {
+                            "type": "patch",
+                            "op": "append",
+                            "path": f"/entries/{assistant_idx}/text",
+                            "value": event.delta,
+                        },
+                    )
             await queue.put(event)
 
         async def _permission_resolver(
@@ -410,7 +497,7 @@ class ChatEngine:
             # The drain task's only job is to wait for the run to finish (or
             # be cancelled) and then close the queue. Lifecycle / error
             # reporting is owned by the outer engine coroutine — emitting a
-            # ``TurnError`` from here would race with the outer ``except`` and
+            # ``Error`` from here would race with the outer ``except`` and
             # produce duplicate events.
             try:
                 await run_task
@@ -430,7 +517,11 @@ class ChatEngine:
             # cancel-and-cleanup branch. Otherwise ``GeneratorExit`` escapes
             # without setting ``cancel_event`` and ``run_task`` / ``drain_task``
             # leak. (Greptile P2 fix.)
-            yield TurnStarted(at=state.started_at or datetime.now(UTC))
+            yield TurnStart(
+                turn_id=turn_id,
+                session_id=session_id,
+                agent_id=agent_backend or "",
+            )
 
             while True:
                 item = await queue.get()
@@ -462,10 +553,24 @@ class ChatEngine:
                     content=partial_text,
                     terminated=True,
                 )
-            yield TurnCancelled(reason="user")
+            # W2: emit cancel finalize frame.
+            if self._event_log is not None and assistant_idx is not None:
+                await self._event_log.append(
+                    session_id,
+                    "chat",
+                    {
+                        "type": "patch",
+                        "op": "finalize",
+                        "path": f"/entries/{assistant_idx}",
+                        "value": None,
+                        "reason": "terminated_at_user_request",
+                    },
+                )
+            yield TurnEnd(turn_id=turn_id, reason="cancelled")
             return
         except Exception as exc:
-            yield TurnError(message=str(exc))
+            yield Error(turn_id=turn_id, code="turn_failed", message=str(exc), fatal=True)
+            yield TurnEnd(turn_id=turn_id, reason="error")
             return
 
         if result.cancelled:
@@ -479,7 +584,20 @@ class ChatEngine:
                     content=partial_text,
                     terminated=True,
                 )
-            yield TurnCancelled(reason="user")
+            # W2: emit cancel finalize frame (agent-side cancel signal).
+            if self._event_log is not None and assistant_idx is not None:
+                await self._event_log.append(
+                    session_id,
+                    "chat",
+                    {
+                        "type": "patch",
+                        "op": "finalize",
+                        "path": f"/entries/{assistant_idx}",
+                        "value": None,
+                        "reason": "terminated_at_user_request",
+                    },
+                )
+            yield TurnEnd(turn_id=turn_id, reason="cancelled")
             return
 
         full_response = result.full_response or "".join(state.partial)
@@ -493,13 +611,27 @@ class ChatEngine:
                 terminated=False,
             )
 
+        # W2: emit normal completion finalize frame.
+        if self._event_log is not None and assistant_idx is not None:
+            await self._event_log.append(
+                session_id,
+                "chat",
+                {
+                    "type": "patch",
+                    "op": "finalize",
+                    "path": f"/entries/{assistant_idx}",
+                    "value": None,
+                    "reason": None,
+                },
+            )
+
         if is_first_turn and full_response and self._title_generator is not None:
             first_user_text = _last_user_text(prompt_blocks)
             if first_user_text is not None:
                 # Fire-and-forget — title generation must not block the stream.
                 asyncio.create_task(self._maybe_rename(session_id, first_user_text, full_response))
 
-        yield TurnDone(full_response=full_response)
+        yield TurnEnd(turn_id=turn_id, reason="done")
 
     async def _maybe_rename(self, session_id: str, user_text: str, reply: str) -> None:
         if self._title_generator is None:

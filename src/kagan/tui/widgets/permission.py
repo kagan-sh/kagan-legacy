@@ -16,7 +16,7 @@ from kagan.tui.keybindings import CHAT_PERMISSION_BINDINGS
 class PermissionPrompt(Vertical):
     @dataclass
     class DecisionMade(Message):
-        decision: Literal["allow", "deny", "timeout"]
+        decision: Literal["allow", "allow_session", "allow_all", "deny", "timeout"]
 
     remaining_seconds: var[int] = var(0)
 
@@ -40,13 +40,16 @@ class PermissionPrompt(Vertical):
         self._resolved = False
 
     def compose(self) -> ComposeResult:
-        header = Static("⚠ Permission required", classes="permission-header")
+        header = Static("! Permission required", classes="permission-header")
         header.tooltip = "Permission request alert"
         yield header
         text = Static(self._text, id="permission-text", classes="permission-tool")
         text.tooltip = "Details of the permission being requested"
         yield text
-        controls = Static("[a] allow once  ·  [d] deny", classes="permission-controls")
+        controls = Static(
+            "[a] once  ·  [s] session  ·  [A] all  ·  [d] deny",
+            classes="permission-controls",
+        )
         controls.tooltip = "Press 'a' to allow or 'd' to deny (keyboard shortcuts)"
         yield controls
         countdown = Static("", id="permission-countdown", classes="permission-timer")
@@ -70,6 +73,12 @@ class PermissionPrompt(Vertical):
     def action_allow(self) -> None:
         self._resolve("allow")
 
+    def action_allow_session(self) -> None:
+        self._resolve("allow_session")
+
+    def action_allow_all(self) -> None:
+        self._resolve("allow_all")
+
     def action_deny(self) -> None:
         self._resolve("deny")
 
@@ -90,7 +99,9 @@ class PermissionPrompt(Vertical):
         else:
             countdown.update("Awaiting decision")
 
-    def _resolve(self, decision: Literal["allow", "deny", "timeout"]) -> None:
+    def _resolve(
+        self, decision: Literal["allow", "allow_session", "allow_all", "deny", "timeout"]
+    ) -> None:
         if self._resolved:
             return
         self._resolved = True

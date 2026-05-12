@@ -25,6 +25,7 @@ from kagan.tui.widgets.chat import ChatPanel
 
 class _TaskChatMixin:
     _task_id: str | None
+
     async def action_open_orchestrator_chat(self) -> None:
         panel = self._overlay_panel()
         was_visible = panel.has_class("visible")
@@ -212,9 +213,7 @@ class _TaskChatMixin:
         self._ensure_stream_worker()
         self._sync_overlay_layout_class()
 
-    def on_chat_panel_new_session_requested(
-        self, message: ChatPanel.NewSessionRequested
-    ) -> None:
+    def on_chat_panel_new_session_requested(self, message: ChatPanel.NewSessionRequested) -> None:
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":
             return
@@ -231,9 +230,7 @@ class _TaskChatMixin:
         panel = self._overlay_panel()
         self._open_overlay_session_picker(panel, initial_query=message.initial_query)
 
-    def on_chat_panel_file_picker_requested(
-        self, message: ChatPanel.FilePickerRequested
-    ) -> None:
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":
             return
@@ -242,9 +239,7 @@ class _TaskChatMixin:
         modal = panel.create_file_picker_modal(initial_query=message.initial_query)
         self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
 
-    def on_chat_panel_agent_picker_requested(
-        self, message: ChatPanel.AgentPickerRequested
-    ) -> None:
+    def on_chat_panel_agent_picker_requested(self, message: ChatPanel.AgentPickerRequested) -> None:
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":
             return
@@ -268,9 +263,7 @@ class _TaskChatMixin:
             self._sync_overlay_layout_class()
             return
 
-    def on_chat_panel_interrupt_requested(
-        self, message: ChatPanel.InterruptRequested
-    ) -> None:
+    def on_chat_panel_interrupt_requested(self, message: ChatPanel.InterruptRequested) -> None:
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":
             return

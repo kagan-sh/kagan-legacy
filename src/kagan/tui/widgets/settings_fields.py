@@ -174,6 +174,7 @@ CATEGORY_FIELDS: dict[str, tuple[SettingFieldSpec, ...]] = {
         SettingFieldSpec(
             "switch", "Auto-confirm plans for single tasks", "settings-auto-confirm-single"
         ),
+        SettingFieldSpec("switch", "Show reasoning preview", "settings-show-reasoning"),
     ),
     "git": (
         SettingFieldSpec(

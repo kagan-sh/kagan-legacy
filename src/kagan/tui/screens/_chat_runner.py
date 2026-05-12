@@ -12,23 +12,20 @@ This module owns that shared path. It also keeps the legacy
 ``stream_chunk_*``) used by the task event handler — they used to live in
 ``kanban_chat.py`` which is gone after R1 phase 4c.
 
-Permission events (``PermissionRequest`` / ``PermissionResolved``) emitted
-by the engine are intentionally still no-ops here — the bidirectional
-permission flow remains on the legacy ACP path inside the spawn-per-turn ACP
-helper. Wiring permissions through the engine is tracked for a follow-up; see
-the module docstring of ``kagan.core.chat.acp``.
+Permission requests are surfaced in :func:`send_chat_message`: ``PermissionRequest``
+events wait on :meth:`~kagan.tui.widgets.chat.ChatPanel.await_permission_resolution`
+(auto-approving ``mcp__kagan*`` tools like the CLI). ``apply_chat_event_to_panel``
+does not render permission prompts — only stream/tool/turn events.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any
 
 import acp
 from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
-from loguru import logger
 
 from kagan.cli.chat import (
     build_orchestrator_prompt,
@@ -36,232 +33,141 @@ from kagan.cli.chat import (
     run_orchestrator_turn,
     warm_orchestrator_backend,
 )
-from kagan.core.chat import (
+from kagan.core.chat import TurnInProgressError
+from kagan.core.chat._turn_display import TurnPhaseTracker
+from kagan.core.errors import KaganError
+from kagan.core.events import (
+    AgentLifecycle,
     AssistantChunk,
     AssistantMessagePersisted,
-    ChatEvent,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
-    TurnInProgressError,
-    TurnStarted,
+    Error,
+    Event,
+    ThinkingChunk,
+    ToolCall,
+    ToolCallResult,
+    ToolCallUpdate,
+    TurnEnd,
+    TurnStart,
     UsageUpdate,
 )
-from kagan.core.chat import (
-    ToolCallProgress as ChatToolCallProgress,
+from kagan.core.permission import PermissionRequest
+from kagan.tui.screens._agent_event_presenter import (
+    acp_payload,
+    present_agent_event,
+    render_agent_event_to_chat,
+    render_agent_event_to_output,
+    stream_chunk_kind,
+    stream_chunk_text,
+    tool_call_args,
+    tool_call_id,
+    tool_call_kind,
+    tool_call_result,
+    tool_call_status,
+    tool_call_title,
 )
-from kagan.core.chat import (
-    ToolCallStart as ChatToolCallStart,
-)
-from kagan.core.errors import KaganError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    import httpx
-
     from kagan.core import KaganCore
+    from kagan.tui._event_source import HttpEventSource, InProcEventSource
     from kagan.tui.widgets.chat import ChatPanel
-
-
-_WATCH_RETRY_DELAY = 5.0
-_WATCH_EVENT_TAKEOVER = "CHAT_TURN_TERMINATED"
 
 # Session key constants shared across kanban, task_screen, and session_dashboard.
 TASK_WORKER_SESSION_KEY = "task-worker"
 TASK_REVIEWER_SESSION_KEY = "task-reviewer"
-
-StreamChunkKind = Literal["assistant", "thought", "note", "user"]
-
-
-# ---------------------------------------------------------------------------
-# Tiny payload helpers (lifted from the deleted kanban_chat.py)
-# ---------------------------------------------------------------------------
-
-
-def acp_payload(payload: object) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        return {}
-    nested = payload.get("acp")
-    return nested if isinstance(nested, dict) else {}
-
-
-def _content_text(content: object) -> str:
-    if isinstance(content, dict):
-        if str(content.get("type") or "") != "text":
-            return ""
-        return str(content.get("text") or "")
-    if content is None or getattr(content, "type", None) != "text":
-        return ""
-    return str(getattr(content, "text", "") or "")
-
-
-def _serialize_value(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    try:
-        return json.dumps(value, indent=2, ensure_ascii=True, sort_keys=True)
-    except TypeError:
-        return str(value)
-
-
-def stream_chunk_kind(payload: dict[str, Any]) -> StreamChunkKind:
-    kind = str(payload.get("kind") or "").strip().lower()
-    if kind in {"assistant", "thought", "note", "user"}:
-        return cast("StreamChunkKind", kind)
-    if payload.get("thought"):
-        return "thought"
-    session_update = str(acp_payload(payload).get("sessionUpdate") or "").strip().lower()
-    if session_update == "agent_thought_chunk":
-        return "thought"
-    return "assistant"
-
-
-def stream_chunk_text(payload: object) -> str:
-    if payload is None:
-        return ""
-    if isinstance(payload, str):
-        return payload
-    if isinstance(payload, dict):
-        for key in ("text", "chunk", "content"):
-            text = payload.get(key)
-            if isinstance(text, str) and text:
-                return text
-            if text is not None:
-                nested_text = _content_text(text)
-                if nested_text:
-                    return nested_text
-        text = _content_text(acp_payload(payload).get("content"))
-        if text:
-            return text
-        for key in ("error", "details", "reason"):
-            if key in payload:
-                return str(payload[key])
-        if "message" in payload:
-            return str(payload["message"])
-    return ""
-
-
-def tool_call_id(payload: dict[str, Any]) -> str:
-    nested = acp_payload(payload)
-    return str(
-        payload.get("id")
-        or payload.get("tool_id")
-        or nested.get("toolCallId")
-        or nested.get("tool_call_id")
-        or payload.get("name")
-        or "tool"
-    )
-
-
-def _format_tool_name(raw: str) -> str:
-    if raw.startswith("toolu_") or raw.startswith("call_"):
-        return "tool call"
-    if "__" in raw:
-        parts = raw.split("__")
-        if parts[0] in {"mcp", "functions"} and len(parts) >= 3:
-            return " / ".join(parts[1:])
-        return " / ".join(parts)
-    return raw.replace("_", " ")
-
-
-def tool_call_title(payload: dict[str, Any]) -> str:
-    nested = acp_payload(payload)
-    raw = str(
-        nested.get("title") or payload.get("name") or payload.get("tool") or tool_call_id(payload)
-    )
-    return _format_tool_name(raw)
-
-
-def tool_call_status(payload: dict[str, Any], *, default: str) -> str:
-    nested = acp_payload(payload)
-    return str(payload.get("status") or nested.get("status") or default)
-
-
-def tool_call_kind(payload: dict[str, Any]) -> str | None:
-    nested = acp_payload(payload)
-    return str(nested.get("kind") or payload.get("kind") or "") or None
-
-
-def tool_call_args(payload: dict[str, Any]) -> str | None:
-    nested = acp_payload(payload)
-    raw = payload.get("args") or payload.get("rawInput") or nested.get("rawInput")
-    return _serialize_value(raw)
-
-
-def tool_call_result(payload: dict[str, Any]) -> str | None:
-    nested = acp_payload(payload)
-    return _serialize_value(
-        payload.get("result") or payload.get("rawOutput") or nested.get("rawOutput")
-    )
-
 
 # ---------------------------------------------------------------------------
 # ChatEvent → ChatPanel translator (engine path)
 # ---------------------------------------------------------------------------
 
 
-def apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
-    """Translate one :class:`ChatEvent` from the engine into ChatPanel calls.
+def apply_chat_event_to_panel(panel: ChatPanel, event: Event | PermissionRequest) -> None:
+    """Translate one :class:`Event` from the engine into ChatPanel calls.
 
     Mirrors the user-visible status indicators that the legacy ACP-on_update
     path emitted (``set_runtime_status`` / ``set_stream_action``) so screens
     behave identically to phases 1-3.
 
     ``UsageUpdate`` is rendered as a runtime-status nudge — full token / cost
-    UI lands later. ``PermissionRequest`` / ``PermissionResolved`` are
-    intentionally no-ops; permissions still flow through the legacy ACP path
-    inside the spawn-per-turn ACP helper (see TODO in ``core/chat/acp.py``).
+    UI lands later. ``PermissionRequest`` is consumed in
+    :func:`send_chat_message` before this translator runs.
     """
-    if isinstance(event, TurnStarted):
-        panel.set_runtime_status("thinking")
-        panel.set_stream_action("Initializing...", confidence="assumption")
-        return
-    if isinstance(event, AssistantChunk):
-        panel.set_runtime_status("thinking")
-        if event.thought:
-            panel.set_stream_action("Reasoning through approach", confidence="assumption")
-            panel.append_thought_fragment(event.text)
-            return
-        panel.set_stream_action("Streaming response", confidence="certain")
-        panel.append_assistant_fragment(event.text)
-        return
-    if isinstance(event, ChatToolCallStart):
-        panel.set_runtime_status("thinking")
-        panel.upsert_tool_call(
-            event.tool_id,
-            event.title,
-            status="running",
-            args=event.args,
-            kind=event.kind_hint,
-        )
-        panel.set_stream_action(f"Running tool: {event.title}", confidence="certain")
-        return
-    if isinstance(event, ChatToolCallProgress):
-        panel.set_runtime_status("thinking")
-        panel.update_tool_call(event.tool_id, event.status, result=event.result)
-        return
-    if isinstance(event, UsageUpdate):
-        panel.set_runtime_status("thinking")
-        return
-    if isinstance(event, AssistantMessagePersisted):
-        return
-    if isinstance(event, TurnDone):
-        panel.set_runtime_status("ready")
-        panel.set_stream_action("Waiting for prompt", confidence="certain")
-        panel.increment_turn_count()
-        return
-    if isinstance(event, TurnCancelled):
-        panel.set_runtime_status("ready")
-        panel.set_stream_action("Waiting for prompt", confidence="certain")
-        return
-    if isinstance(event, TurnError):
-        panel.set_runtime_status("error")
-        panel.set_stream_action("Orchestrator error", confidence="needs-validation")
-        panel.add_system_message(f"Orchestrator error: {event.message}")
-        return
+    match event:
+        case TurnStart():
+            panel._turn_tracker = TurnPhaseTracker()
+            panel.set_runtime_status("thinking")
+            panel.set_stream_action("Initializing...", confidence="assumption")
+        case AssistantChunk():
+            panel.set_runtime_status("thinking")
+            if panel._turn_tracker is None:
+                panel._turn_tracker = TurnPhaseTracker()
+            panel._turn_tracker.set_phase("composing")
+            panel._turn_tracker.add_text(event.delta)
+            panel.set_stream_action(panel._turn_tracker.composing_label(), confidence="certain")
+            panel.append_assistant_fragment(event.delta)
+        case ThinkingChunk():
+            panel.set_runtime_status("thinking")
+            if panel._turn_tracker is None:
+                panel._turn_tracker = TurnPhaseTracker()
+            panel._turn_tracker.set_phase("thinking")
+            panel._turn_tracker.add_text(event.delta)
+            panel.set_stream_action(panel._turn_tracker.thinking_label(), confidence="assumption")
+            panel.append_thought_fragment(event.delta)
+        case ToolCall():
+            panel.set_runtime_status("thinking")
+            panel.upsert_tool_call(
+                event.tool_call_id,
+                event.title,
+                status="running",
+                args=event.args,
+                kind=event.kind,
+            )
+            panel.set_stream_action(f"Running tool: {event.title}", confidence="certain")
+        case ToolCallUpdate():
+            panel.set_runtime_status("thinking")
+            panel.update_tool_call(
+                event.tool_call_id,
+                event.progress or "running",
+                result=event.content,
+            )
+        case ToolCallResult():
+            status = "failed" if event.is_error else "completed"
+            panel.update_tool_call(event.tool_call_id, status, result=event.output)
+        case UsageUpdate():
+            panel.set_runtime_status("thinking")
+        case AssistantMessagePersisted():
+            pass
+        case TurnEnd(reason="done"):
+            panel._turn_tracker = None
+            panel.finish_thought()
+            panel.set_runtime_status("ready")
+            panel.set_stream_action("Waiting for prompt", confidence="certain")
+            panel.increment_turn_count()
+        case TurnEnd():
+            # cancelled or error
+            panel._turn_tracker = None
+            panel.finish_thought()
+            panel.set_runtime_status("ready")
+            panel.set_stream_action("Waiting for prompt", confidence="certain")
+        case Error():
+            panel.set_runtime_status("error")
+            panel.set_stream_action("Orchestrator error", confidence="needs-validation")
+            panel.add_system_message(f"Orchestrator error: {event.message}")
+        case AgentLifecycle():
+            _GLYPH = {"started": "▸", "finished": "✓", "stopped": "◯", "failed": "✗"}
+            glyph = _GLYPH.get(event.kind, "·")
+            task_ref = f"#{event.task_id[:8]}" if event.task_id else "task"
+            if event.kind == "failed":
+                detail_suffix = f": {event.detail}" if event.detail else ""
+                label = f"failed{detail_suffix}"
+            elif event.kind == "finished":
+                label = "finished"
+            elif event.kind == "stopped":
+                label = "stopped"
+            else:
+                label = event.kind
+            panel.add_system_message(f"{glyph} {task_ref} {label}")
+        case _:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +195,9 @@ async def send_chat_message(
     settings = await core.settings.get()
     backend = panel.preferred_agent_backend() or resolve_default_agent_backend(settings)
     panel.set_agent_backend(backend)
+    # Propagate show_reasoning setting to the streaming panel
+    _raw_reasoning = settings.get("chat.show_reasoning", "").strip().lower()
+    panel.set_show_reasoning(_raw_reasoning not in {"", "0", "false", "no", "off"})
 
     app = panel.app
     sessions_ns = getattr(app, "orchestrator_sessions", None)
@@ -317,12 +226,19 @@ async def send_chat_message(
                 prompt_blocks=[acp.text_block(prompt_text)],
                 agent_backend=backend,
             ):
-                if isinstance(event, AssistantChunk) and not event.thought:
-                    streamed_chunks.append(event.text)
+                if isinstance(event, PermissionRequest):
+                    from kagan.core.permission_ui import tool_action_key
+
+                    if tool_action_key(event.tool_call).startswith("mcp__kagan"):
+                        await core.chat.resolve_permission(
+                            chat_session_id, event.future_id, outcome="allow_once"
+                        )
+                    else:
+                        await panel.await_permission_resolution(core, chat_session_id, event)
+                elif isinstance(event, AssistantChunk):
+                    streamed_chunks.append(event.delta)
                 if isinstance(event, AssistantMessagePersisted):
                     persisted_response = event.content
-                if isinstance(event, TurnDone) and event.full_response:
-                    persisted_response = event.full_response
                 apply_chat_event_to_panel(panel, event)
         except TurnInProgressError:
             panel.add_system_message("A turn is already running for this session.")
@@ -351,141 +267,78 @@ def apply_task_chat_event(
     from :func:`apply_chat_event_to_panel`, which dispatches engine
     :class:`ChatEvent` values.
     """
-    if event_type == "output_chunk":
-        text = stream_chunk_text(payload)
-        if not text:
-            return
-        kind = stream_chunk_kind(payload)
-        panel.set_runtime_status("thinking")
-        if kind == "thought":
-            panel.set_stream_action("Reasoning through approach", confidence="assumption")
-            panel.append_thought_fragment(text)
-            return
-        panel.set_stream_action("Streaming response", confidence="certain")
-        panel.append_assistant_fragment(text)
-        return
-
-    if event_type == "tool_call_start":
-        title = tool_call_title(payload)
-        panel.set_runtime_status("thinking")
-        panel.upsert_tool_call(
-            tool_call_id(payload),
-            title,
-            status=tool_call_status(payload, default="running"),
-            args=tool_call_args(payload),
-            result=tool_call_result(payload),
-            kind=tool_call_kind(payload),
-        )
-        panel.set_stream_action(f"Running tool: {title}", confidence="certain")
-        return
-
-    if event_type == "tool_call_update":
-        title = tool_call_title(payload)
-        panel.set_runtime_status("thinking")
-        panel.upsert_tool_call(
-            tool_call_id(payload),
-            title,
-            status=tool_call_status(payload, default="updated"),
-            args=tool_call_args(payload),
-            result=tool_call_result(payload),
-            kind=tool_call_kind(payload),
-        )
-        panel.set_stream_action(f"Running tool: {title}", confidence="certain")
-        return
-
-    if event_type == "agent_completed":
-        panel.set_runtime_status("ready")
-        panel.set_stream_action("Waiting for prompt", confidence="certain")
-        return
-
-    if event_type == "agent_failed":
-        panel.set_runtime_status("error")
-        panel.set_stream_action("Agent failed", confidence="needs-validation")
-        detail = stream_chunk_text(payload) or "Agent failed"
-        panel.add_system_message(detail)
-        return
-
-    if event_type == "agent_status":
-        status_text = str(payload.get("status") or acp_payload(payload).get("status") or "").lower()
-        if status_text in {"running", "thinking", "initializing", "pending"}:
-            panel.set_runtime_status("thinking")
-            panel.set_stream_action("Waiting for task agent response", confidence="assumption")
+    render_agent_event_to_chat(panel, present_agent_event(event_type, payload))
 
 
-async def stream_task_chat(
+async def subscribe_session(
     *,
-    core: KaganCore,
     panel: ChatPanel,
-    task_id: str,
-    is_active: Callable[[], bool],
-) -> None:
-    async for event in core.tasks.events.stream(task_id):
-        if not is_active():
-            continue
-
-        payload = event.payload or {}
-        apply_task_chat_event(panel, event.event_type, payload)
-
-
-async def watch_chat_session(
-    *,
     session_id: str,
-    panel: ChatPanel,
-    http_client: httpx.AsyncClient | None,
+    kind: str,
+    event_source: HttpEventSource | InProcEventSource,
+    from_seq: int = 0,
+    stop_after_snapshot: bool = False,
 ) -> None:
-    """Subscribe to the /watch SSE endpoint for a chat session.
+    """Subscribe to session events via ``event_source`` and paint frames onto ``panel``.
 
-    Delivers a Textual notification when another client takes over the session
-    (``CHAT_TURN_TERMINATED`` with ``reason=="takeover"``).
+    Delegates to ``event_source.subscribe`` — the retry-loop for remote
+    connections is handled inside ``HttpEventSource.subscribe``.
 
-    If ``http_client`` is ``None`` the function returns immediately — the TUI
-    runs against a local ``KaganCore`` and has no HTTP connection to the server.
-    Retry after ``_WATCH_RETRY_DELAY`` seconds on any connection error.
+    Parameters
+    ----------
+    panel:
+        Target ``ChatPanel`` to receive frame renders.
+    session_id:
+        Session / task id to subscribe to.
+    kind:
+        ``"chat"`` or ``"task"``.
+    event_source:
+        ``InProcEventSource`` or ``HttpEventSource`` obtained from
+        ``KaganApp.event_source``.
+    from_seq:
+        Resume from this sequence number (default 0 = full replay).
+    stop_after_snapshot:
+        When ``True``, return after the first ``FrameReady`` frame is
+        received (useful for tests that want a one-shot replay without
+        blocking on the live-tail subscription forever).
     """
-    if http_client is None:
-        return
+    from kagan.tui._frame_reducer import apply_frame
 
-    watch_url = f"/api/chat/sessions/{session_id}/watch"
+    state: dict = {}
+    async for frame in event_source.subscribe(session_id, kind, from_seq):
+        frame_type: str = getattr(frame, "type", "")
 
-    while True:
-        try:
-            async with http_client.stream("GET", watch_url) as response:
-                if response.status_code == 404:
-                    logger.debug(
-                        "Chat watch endpoint not available for session {}; skipping", session_id
-                    )
-                    return
-                response.raise_for_status()
-                async for raw_line in response.aiter_lines():
-                    line = raw_line.strip()
-                    if not line or line.startswith(":"):
-                        continue
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        event = json.loads(line[6:])
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(event, dict):
-                        continue
-                    if (
-                        event.get("t") == _WATCH_EVENT_TAKEOVER
-                        and str(event.get("reason") or "") == "takeover"
-                        and panel.is_mounted
-                    ):
-                        panel.app.notify(
-                            "Session taken over by another client. Your turn was interrupted.",
-                            severity="warning",
-                        )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.debug("Chat watch connection lost for session {}: {}", session_id, exc)
+        if frame_type == "patch":
+            op: str = getattr(frame, "op", "")
+            value = getattr(frame, "value", None)
 
-        try:
-            await asyncio.sleep(_WATCH_RETRY_DELAY)
-        except asyncio.CancelledError:
-            raise
+            if op == "create":
+                text = value.get("text", "") if isinstance(value, dict) else ""
+                if text:
+                    panel.append_assistant_fragment(text)
+            elif op == "append":
+                delta = value if isinstance(value, str) else ""
+                if delta:
+                    panel.append_assistant_fragment(delta)
+            elif op == "finalize":
+                with contextlib.suppress(Exception):
+                    panel.finish_thought()
+
+            state = apply_frame(state, frame)
+
+        elif frame_type == "snapshot":
+            state = apply_frame(state, frame)
+            # Render snapshot entries to panel
+            for entry in sorted(state.values(), key=lambda e: e.idx):
+                if entry.text:
+                    panel.append_assistant_fragment(entry.text)
+
+        elif frame_type == "ready":
+            if stop_after_snapshot:
+                return
+
+        elif frame_type == "resume":
+            pass  # meta-frame, no entry mutations
 
 
 # Re-export the ACP schema names that older imports referenced via kanban_chat.
@@ -497,16 +350,17 @@ __all__ = [
     "acp_payload",
     "apply_chat_event_to_panel",
     "apply_task_chat_event",
+    "present_agent_event",
+    "render_agent_event_to_output",
     "run_orchestrator_turn",
     "send_chat_message",
     "stream_chunk_kind",
     "stream_chunk_text",
-    "stream_task_chat",
+    "subscribe_session",
     "tool_call_args",
     "tool_call_id",
     "tool_call_kind",
     "tool_call_result",
     "tool_call_status",
     "tool_call_title",
-    "watch_chat_session",
 ]

@@ -107,9 +107,9 @@ async def test_plan_tasks_from_description_includes_concurrency_and_dependency_g
         "plan_tasks_from_description", {"description": "Ship notifications"}
     )
     text = result.messages[0].content.text  # type: ignore[union-attr]
-    assert "Acceptance criteria (2-6 bullets" in text
-    assert "Dependency notes" in text
-    assert "Parallelization notes" in text
+    assert "2-6 verifiable acceptance criteria" in text
+    assert "dependency" in text.lower()
+    assert "parallelization" in text.lower()
     assert "concurrent waves" in text
 
 

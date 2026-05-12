@@ -28,7 +28,7 @@ function Command({
 }
 
 function CommandDialog({
-  title = "Quick Actions",
+  title = "Quick actions",
   description = "Search actions, tasks, and navigation...",
   children,
   className,

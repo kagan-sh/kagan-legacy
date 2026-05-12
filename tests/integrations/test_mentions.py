@@ -1,6 +1,6 @@
 """Tests: dual-source mention autocomplete (search_mentions)."""
 
-from unittest.mock import AsyncMock, patch
+from __future__ import annotations
 
 import pytest
 
@@ -41,17 +41,29 @@ async def test_mentions_returns_kagan_tasks_only_when_no_github_link(client) -> 
     assert any("Login feature" in m.title for m in results)
 
 
-async def test_mentions_insert_form_is_kagan_or_hash_n(client) -> None:
+async def test_mentions_insert_form_is_kagan_or_hash_n(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Kagan mention id is 'kagan#<8 chars>'; GitHub id is '#<n>'."""
     task = await client.tasks.create("Kagan task for mentions")
     project_id = client.active_project_id
 
-    with patch(
+    async def _fake_github_fetch(
+        _client: KaganCore,
+        _project_id: str,
+        _query: str,
+        *,
+        limit: int,
+    ) -> list[Mention]:
+        return [
+            Mention(source="github", id="#42", title="GitHub issue", state="open"),
+        ]
+
+    monkeypatch.setattr(
         "kagan.core.integrations.mentions._fetch_github_mentions",
-        new_callable=AsyncMock,
-        return_value=[Mention(source="github", id="#42", title="GitHub issue", state="open")],
-    ):
-        results = await search_mentions(client, project_id, "kagan", limit=10)
+        _fake_github_fetch,
+    )
+    results = await search_mentions(client, project_id, "kagan", limit=10)
 
     kagan_result = next((m for m in results if m.source == "kagan"), None)
     github_result = next((m for m in results if m.source == "github"), None)
@@ -73,25 +85,36 @@ async def test_mentions_insert_form_is_kagan_or_hash_n(client) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_mentions_merges_kagan_and_github_results(client) -> None:
+async def test_mentions_merges_kagan_and_github_results(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Results from both sources are present in merged output."""
     await client.tasks.create("Auth task")
     project_id = client.active_project_id
 
     github_results = [Mention(source="github", id="#5", title="Auth GitHub issue", state="open")]
-    with patch(
+
+    async def _fake_github_fetch(
+        _client: KaganCore,
+        _project_id: str,
+        _query: str,
+        *,
+        limit: int,
+    ) -> list[Mention]:
+        return github_results
+
+    monkeypatch.setattr(
         "kagan.core.integrations.mentions._fetch_github_mentions",
-        new_callable=AsyncMock,
-        return_value=github_results,
-    ):
-        results = await search_mentions(client, project_id, "auth", limit=10)
+        _fake_github_fetch,
+    )
+    results = await search_mentions(client, project_id, "auth", limit=10)
 
     sources = {m.source for m in results}
     assert "kagan" in sources
     assert "github" in sources
 
 
-async def test_mentions_returns_at_most_limit(client) -> None:
+async def test_mentions_returns_at_most_limit(client, monkeypatch: pytest.MonkeyPatch) -> None:
     """Total results never exceed limit."""
     for i in range(8):
         await client.tasks.create(f"Task {i} matching query")
@@ -100,12 +123,21 @@ async def test_mentions_returns_at_most_limit(client) -> None:
         Mention(source="github", id=f"#{i}", title=f"Issue {i}", state="open") for i in range(8)
     ]
     project_id = client.active_project_id
-    with patch(
+
+    async def _fake_github_fetch(
+        _client: KaganCore,
+        _project_id: str,
+        _query: str,
+        *,
+        limit: int,
+    ) -> list[Mention]:
+        return github_results
+
+    monkeypatch.setattr(
         "kagan.core.integrations.mentions._fetch_github_mentions",
-        new_callable=AsyncMock,
-        return_value=github_results,
-    ):
-        results = await search_mentions(client, project_id, "task", limit=5)
+        _fake_github_fetch,
+    )
+    results = await search_mentions(client, project_id, "task", limit=5)
 
     assert len(results) <= 5
 
@@ -126,19 +158,30 @@ async def test_mentions_short_id_exact_match_ranks_first(client) -> None:
     assert kagan_results[0].id == f"kagan#{short_id}"
 
 
-async def test_mentions_github_number_exact_match_ranks_first(client) -> None:
+async def test_mentions_github_number_exact_match_ranks_first(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A GitHub issue whose number exactly matches the query appears first."""
     github_results = [
         Mention(source="github", id="#42", title="Exact match", state="open"),
         Mention(source="github", id="#421", title="Similar number", state="open"),
     ]
     project_id = client.active_project_id
-    with patch(
+
+    async def _fake_github_fetch(
+        _client: KaganCore,
+        _project_id: str,
+        _query: str,
+        *,
+        limit: int,
+    ) -> list[Mention]:
+        return github_results
+
+    monkeypatch.setattr(
         "kagan.core.integrations.mentions._fetch_github_mentions",
-        new_callable=AsyncMock,
-        return_value=github_results,
-    ):
-        results = await search_mentions(client, project_id, "42", limit=10)
+        _fake_github_fetch,
+    )
+    results = await search_mentions(client, project_id, "42", limit=10)
 
     github_results_out = [m for m in results if m.source == "github"]
     assert github_results_out[0].id == "#42"

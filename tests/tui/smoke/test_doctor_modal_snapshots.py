@@ -2,7 +2,7 @@
 
 These tests verify the three visible states:
 1. All-green: no modal, project picker shown.
-2. WARN-only: project picker shown with a toast notification.
+2. WARN-only: project picker shown with no degraded-performance warning.
 3. FAIL: DoctorModal with N check rows visible.
 """
 
@@ -63,7 +63,7 @@ async def test_snapshot_all_green_routes_to_project_picker(tmp_path) -> None:
         assert "doctor-modal" not in screen_ids
 
 
-# ── State 2: WARN-only (project picker shown, notification emitted) ───────
+# ── State 2: WARN-only (project picker shown, no degraded warning) ─────────
 
 
 async def test_snapshot_warn_only_routes_to_project_picker(tmp_path) -> None:
@@ -378,14 +378,14 @@ async def test_snapshot_all_ready_no_modal(tmp_path) -> None:
 # ── Wave 3c: auto-promote snapshot tests ─────────────────────────────────────
 
 
-async def test_snapshot_auto_promote_row_marked_pass_after_install(tmp_path) -> None:
+async def test_snapshot_auto_promote_row_marked_pass_after_install(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC4: After a successful install rc=0 the promoted row shows dm-status-pass.
 
-    Uses a stub run_doctor_checks that returns the check as PASS, simulating
-    the state immediately after the backend was installed.
+    Stubs ``run_doctor_check_for_backend`` to return PASS, simulating the
+    targeted recheck after the backend was installed.
     """
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _CommandPane
 
@@ -420,24 +420,24 @@ async def test_snapshot_auto_promote_row_marked_pass_after_install(tmp_path) -> 
         assert skip_btn.disabled is True
 
         # Inject rc=0 finish — row should be marked pass
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_check_for_backend",
-            return_value=passing_check,
-        ):
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
-            )
-            # Wait for targeted recheck + auto-dismiss.
-            await _wait_for_setup_flow(app)
+            lambda _name: passing_check,
+        )
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
+        )
+        # Wait for targeted recheck + auto-dismiss.
+        await _wait_for_setup_flow(app)
 
         # After dismiss we should be at project selection (no FAILs)
         assert app.screen.id == "setup-flow"
 
 
-async def test_snapshot_modal_stays_open_when_other_fails_remain(tmp_path) -> None:
+async def test_snapshot_modal_stays_open_when_other_fails_remain(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC4: If other FAILs remain after install, modal stays open (not dismissed)."""
-    from unittest.mock import patch
-
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _check_row_id, _CommandPane
 
@@ -477,22 +477,22 @@ async def test_snapshot_modal_stays_open_when_other_fails_remain(tmp_path) -> No
 
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
-        with patch(
+        monkeypatch.setattr(
             "kagan.tui.screens.doctor_modal.run_doctor_check_for_backend",
-            return_value=passing_backend,
-        ):
-            modal._on_command_finished(
-                _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
-            )
-            # Give targeted recheck time to run
-            from tests.helpers.async_utils import wait_for as _wait_for
+            lambda _name: passing_backend,
+        )
+        modal._on_command_finished(
+            _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
+        )
+        # Give targeted recheck time to run
+        from tests.helpers.async_utils import wait_for as _wait_for
 
-            def _backend_row_passed() -> bool:
-                rid = _check_row_id(backend_check.name)
-                matched = modal.query(f"#{rid}")
-                return bool(matched) and "dm-status-pass" in matched.first().classes
+        def _backend_row_passed() -> bool:
+            rid = _check_row_id(backend_check.name)
+            matched = modal.query(f"#{rid}")
+            return bool(matched) and "dm-status-pass" in matched.first().classes
 
-            await _wait_for(_backend_row_passed, pump_delay=0.05)
+        await _wait_for(_backend_row_passed, pump_delay=0.05)
 
         # Modal must remain open because git is still failing
         assert app.screen.id == "doctor-modal"

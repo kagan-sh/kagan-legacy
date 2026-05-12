@@ -33,25 +33,17 @@ DEFAULT_ORCHESTRATOR_PROMPT: str = _load_orchestrator_prompt()
 
 DEFAULT_REVIEW_PROMPT = (
     "Review task {task_id}.\n\n"
-    # Keep this protocol aligned with core.models.ReviewVerdict / review_verdict.
+    # Keep aligned with core.models.ReviewVerdict / review_verdict.
     "<review-protocol>\n"
-    "1. Retrieve the task with task_get to read its acceptance criteria.\n"
-    "2. If the task has NO acceptance criteria, STOP. Respond with:\n"
-    "   'This task has no acceptance criteria — manual human review required.'\n"
-    "   Do NOT approve or reject.\n"
-    "3. Clear any previous verdicts by calling review_clear_verdicts(task_id).\n"
-    "4. If acceptance criteria exist, verify EACH criterion:\n"
-    "   - Check the diff/code changes for evidence that the criterion is met.\n"
-    "   - For EACH criterion, call review_verdict with:\n"
-    "     - criterion_index (0-based position in the acceptance_criteria list)\n"
-    "     - verdict: 'PASS' or 'FAIL'\n"
-    "     - reason: one-line justification with evidence\n"
-    "   Call the tool once per criterion. Do NOT skip any.\n"
-    "5. Review code quality: bugs, missing edge cases, style violations.\n"
-    "6. Final verdict:\n"
-    "   - ALL criteria PASS and no blocking issues → call review_decide(verdict='approve').\n"
-    "   - ANY criterion FAIL or blocking issue → call review_decide(verdict='reject',\n"
-    "     feedback='...') with specific feedback listing all failures.\n"
+    "1. `task_get` for acceptance criteria. None → respond "
+    "'This task has no acceptance criteria — manual human review required.' "
+    "and STOP (do not approve/reject).\n"
+    "2. `review_clear_verdicts(task_id)`.\n"
+    "3. For EACH criterion (0-based index): `review_verdict(criterion_index, "
+    "verdict='PASS'|'FAIL', reason=<one-line evidence from the diff>)`. Skip none.\n"
+    "4. Also flag bugs, missing edge cases, blocking style issues.\n"
+    "5. All PASS + no blockers → `review_decide(verdict='approve')`. "
+    "Any FAIL or blocker → `review_decide(verdict='reject', feedback=<failures>)`.\n"
     "</review-protocol>"
 )
 
@@ -173,18 +165,15 @@ def _build_detached_run_prompt(task: Any, criteria_texts: list[str] | None = Non
     lines.extend(
         [
             "COORDINATION (check before starting):",
-            "- Call task_list() to see other tasks in this project.",
-            "- If any are IN_PROGRESS, check for file overlap to avoid merge conflicts.",
-            "- Call task_get(task_id) on related tasks for full context.",
-            "- Call task_list(query=...) to find tasks by keyword.",
-            "- If overlap exists, coordinate: avoid shared files or sequence edits.",
+            "- `task_list()` for siblings; check IN_PROGRESS for file overlap.",
+            "- `task_get(task_id)` / `task_list(query=...)` for context.",
+            "- On overlap: avoid shared files or sequence edits.",
             "",
             "MUST DO:",
-            "- Commit ALL changes before signaling completion.",
-            "- Run the project's test/lint commands if they exist.",
-            "- Write a clear commit message explaining WHY, not just what.",
+            "- Commit ALL changes before signaling completion (WHY-focused message).",
+            "- Run project test/lint commands if present.",
             "",
-            "After changing files, run:",
+            "After edits:",
             "git add -A",
             (
                 'git -c user.name="'
@@ -196,7 +185,7 @@ def _build_detached_run_prompt(task: Any, criteria_texts: list[str] | None = Non
             ),
             "",
             "MUST NOT DO:",
-            "- Do NOT modify files outside the scope of this task.",
+            "- Do NOT modify files outside this task's scope.",
             "- Do NOT delete or skip existing tests to make the build pass.",
             "- Do NOT suppress type errors or linter warnings.",
             "- Do NOT leave uncommitted changes.",
@@ -206,8 +195,8 @@ def _build_detached_run_prompt(task: Any, criteria_texts: list[str] | None = Non
             "- [ ] Tests/lint pass (if applicable)",
             "- [ ] No uncommitted files left behind",
             "",
-            "Only signal completion after the checklist passes.",
-            "If blocked, explain the reason and signal blocked.",
+            "Signal completion only after the checklist passes. If blocked, "
+            "explain the reason and signal blocked.",
         ]
     )
     return "\n".join(lines).strip()

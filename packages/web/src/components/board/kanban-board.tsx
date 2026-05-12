@@ -23,12 +23,13 @@ import {
   searchQueryAtom,
   tasksAtom,
 } from '@/lib/atoms/board';
+import { boardViewModeAtom } from '@/lib/atoms/shell';
 import { COLUMN_ORDER, STATUS_LABELS, isAllowedTaskTransition } from '@/lib/utils/constants';
 import { KanbanColumn } from '@/components/board/kanban-column';
 import { TaskCardOverlayPreview } from '@/components/board/task-card';
 import { BoardDialogs } from '@/components/board/board-dialogs';
 import { BoardTaskInspector } from '@/components/board/board-task-inspector';
-import { BoardToolbar } from '@/components/board/board-toolbar';
+import { BoardToolbar, KbHintFooter } from '@/components/board/board-toolbar';
 import { BacklogListView } from '@/components/board/backlog-list-view';
 import { apiClient } from '@/lib/api/client';
 import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
@@ -37,6 +38,7 @@ import { toast } from 'sonner';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { useBoardDnd } from '@/lib/hooks/use-board-dnd';
 import { useBoardKeyboard } from '@/lib/hooks/use-board-keyboard';
+import { useActiveProject } from '@/lib/hooks/use-active-project';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 
@@ -57,11 +59,12 @@ export function KanbanBoard() {
   const fetchTasks = useSetAtom(fetchTasksAtom);
   const projectVersion = useAtomValue(projectSwitchVersionAtom);
   const [query, setQuery] = useAtom(searchQueryAtom);
-  const [statusFilter, setStatusFilter] = useAtom(boardStatusFilterAtom);
-  const [sort, setSort] = useAtom(boardSortAtom);
+  const [, setStatusFilter] = useAtom(boardStatusFilterAtom);
+  const [, setSort] = useAtom(boardSortAtom);
   const [boardDialog, setBoardDialog] = useAtom(boardDialogAtom);
   const setIntegrationImportOpen = useSetAtom(integrationImportOpenAtom);
-  const [view, setView] = useState<'kanban' | 'backlog'>('kanban');
+  const [view, setView] = useAtom(boardViewModeAtom);
+  const activeProject = useActiveProject();
   const [wipLimits, setWipLimits] = useState<Record<TaskStatus, number>>(DEFAULT_WIP_LIMITS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [inspectorClosed, setInspectorClosed] = useState(false);
@@ -128,7 +131,7 @@ export function KanbanBoard() {
   }, [selectedTaskId, view]);
 
   useEffect(() => {
-    if (view === 'kanban') {
+    if (view === 'board') {
       setStatusFilter('ALL');
     }
   }, [setStatusFilter, view]);
@@ -151,9 +154,6 @@ export function KanbanBoard() {
   }, [navigate, selectedTask]);
 
   const openCreateDialog = () => setBoardDialog({ kind: 'create' });
-  const openImportDialog = useCallback(() => {
-    setIntegrationImportOpen(true);
-  }, [setIntegrationImportOpen]);
   const editingTask = boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
   const deleteTask = boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
 
@@ -235,31 +235,27 @@ export function KanbanBoard() {
   const showFilteredEmpty = !loading && tasks.length > 0 && allFilteredTasks.length === 0;
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[1800px] flex-col px-4 py-3 sm:px-6">
+    <div
+      className="mx-auto flex h-full w-full max-w-[1800px] flex-col overflow-hidden"
+      style={{ background: 'var(--surface-0)' }}
+    >
       <BoardToolbar
-        query={query}
-        setQuery={setQuery}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        sort={sort}
-        setSort={setSort}
+        project={activeProject}
+        totalTasks={tasks.length}
         view={view}
         setView={setView}
-        boardMetrics={boardMetrics}
         onCreateTask={openCreateDialog}
-        onImportGitHub={openImportDialog}
         searchInputRef={searchInputRef}
       />
 
       {error ? (
-        <div className=" border border-[var(--destructive)]/25 bg-[var(--destructive)]/10 px-4 py-3 text-sm text-[var(--destructive)]">
+        <div className="border border-[var(--destructive)]/25 bg-[var(--destructive)]/10 px-4 py-3 text-sm text-[var(--destructive)]">
           {error}
         </div>
       ) : null}
 
-
-      <div className="flex min-h-0 flex-1 gap-px overflow-hidden pt-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-px overflow-hidden">
+        <div className="min-w-0 flex-1 overflow-hidden">
           {showBoardEmpty ? (
             <Empty>
               <EmptyHeader>
@@ -301,7 +297,7 @@ export function KanbanBoard() {
                 Reset filters
               </Button>
             </Empty>
-          ) : view === 'kanban' ? (
+          ) : view === 'board' ? (
             <DndContext
               sensors={sensors}
               collisionDetection={collisionDetection}
@@ -362,6 +358,8 @@ export function KanbanBoard() {
           </aside>
         ) : null}
       </div>
+
+      <KbHintFooter runningCount={boardMetrics.running} />
 
       <BoardDialogs
         boardDialog={boardDialog}

@@ -34,7 +34,7 @@ from kagan.cli.chat._approval_panel import no_color, strip_tool_prefix
 from kagan.cli.chat._theme import APPROVAL
 
 if TYPE_CHECKING:
-    from kagan.cli.chat._permission_ui import _DecisionTuple
+    from kagan.cli.chat._approval_types import _DecisionTuple
 
 # ---------------------------------------------------------------------------
 # Environment-configurable debounce + cap
@@ -89,7 +89,8 @@ class _PendingItem:
 
 _BATCH_OPTION_LABELS: list[tuple[str, str]] = [
     ("Approve once", "allow_once"),
-    ("Approve for this session", "allow_always"),
+    ("Approve tool for session", "allow_always"),
+    ("Allow all for session", "allow_all_session"),
     ("Reject", "reject_once"),
     ("Reject — tell the model what to do", "reject_feedback"),
     ("Approve all remaining", "approve_all"),
@@ -145,7 +146,7 @@ def _build_batch_panel_ansi(
     for idx, (label, _kind) in enumerate(_BATCH_OPTION_LABELS):
         num = idx + 1
         is_selected = idx == selected_option
-        is_feedback_slot = idx == 3
+        is_feedback_slot = idx == 4
         if is_selected:
             if is_feedback_slot and feedback_draft:
                 cursor_display = f"→ [{num}] Reject: {feedback_draft}█"
@@ -157,10 +158,10 @@ def _build_batch_panel_ansi(
 
     lines.append(Text(""))
 
-    if selected_option == 3 and feedback_draft:
+    if selected_option == 4 and feedback_draft:
         hint = "  Type feedback  Enter submit  Esc cancel"
     else:
-        hint = "  ▲/▼ option  Tab/S-Tab item  1-6 choose  ↵ confirm  Ctrl-E expand  Esc reject all"
+        hint = "  ▲/▼ option  Tab/S-Tab item  1-7 choose  ↵ confirm  Ctrl-E expand  Esc reject all"
     lines.append(Text(hint, style=APPROVAL.hint))
 
     title = f"[bold]approval ({n} tools)[/bold]"
@@ -237,12 +238,20 @@ def _handle_num_key(
     confirm_fn: Any,
 ) -> None:
     state["selected_option"] = idx
-    if idx == 3:
+    if idx == 4:
         state["feedback_mode"] = True
-    elif idx == 4:
+    elif idx == 2:
+        from kagan.cli.chat._approval_types import _session_approvals
+
+        # Allow all for session: pre-approve this tool for the rest of the session.
+        _session_approvals.grant_all()
         resolve_all("allow_once")
         app.exit(result=None)
     elif idx == 5:
+        # Approve all remaining in this batch only (no session-wide trust).
+        resolve_all("allow_once")
+        app.exit(result=None)
+    elif idx == 6:
         reject_all()
         app.exit(result=None)
     else:
@@ -303,23 +312,30 @@ async def _run_batch_interactive(
         if state["feedback_mode"]:
             state["feedback"] = feedback_buffer.text
             feedback_buffer.set_document(Document(), bypass_readonly=True)
-        state["selected_option"] = (state["selected_option"] + direction) % 6
-        state["feedback_mode"] = state["selected_option"] == 3
+        state["selected_option"] = (state["selected_option"] + direction) % 7
+        state["feedback_mode"] = state["selected_option"] == 4
 
     def _confirm_current(app: Any) -> None:
         opt = state["selected_option"]
         item_idx = state["focused_item"]
         fb = feedback_buffer.text.strip() if state["feedback_mode"] else state["feedback"]
-        if opt == 4:
+        if opt == 2:
+            from kagan.cli.chat._approval_types import _session_approvals
+
+            _session_approvals.grant_all()
             resolve_all("allow_once")
             app.exit(result=None)
             return
         if opt == 5:
+            resolve_all("allow_once")
+            app.exit(result=None)
+            return
+        if opt == 6:
             reject_all()
             app.exit(result=None)
             return
         resolve_item(item_idx, opt, fb)
-        state["resolved"][item_idx] = "approved" if opt in (0, 1) else "rejected"
+        state["resolved"][item_idx] = "approved" if opt in (0, 1, 2) else "rejected"
         state["feedback"] = ""
         feedback_buffer.set_document(Document(), bypass_readonly=True)
         next_idx = _find_next_unresolved(item_idx, n, set(state["resolved"]))
@@ -376,7 +392,7 @@ async def _run_batch_interactive(
                 confirm_fn=_confirm_current,
             )
 
-    for n_key in range(1, 7):
+    for n_key in range(1, 8):
         _make_num_handler(n_key)
 
     app: Application[None] = Application(
@@ -385,7 +401,7 @@ async def _run_batch_interactive(
         full_screen=False,
         mouse_support=False,
     )
-    from kagan.cli.chat._permission_ui import _modal_active
+    from kagan.cli.chat._approval_types import _modal_active
 
     with _modal_active():
         await app.run_async()
@@ -412,22 +428,32 @@ def _run_legacy_batch_input(
         )
         try:
             raw = input(
-                "  [1] approve once  [2] approve for session  [3] reject  "
-                "[5] approve all  [6] reject all  > "
+                "  [1] approve once  [2] approve tool session  [3] allow all session  "
+                "[4] reject  [6] approve all  [7] reject all  > "
             ).strip()
             if raw == "1":
                 resolve_item(i, 0, "")
             elif raw == "2":
                 resolve_item(i, 1, "")
-            elif raw in {"5", "a"}:
+            elif raw == "3":
+                from kagan.cli.chat._approval_types import _session_approvals
+
+                # "Allow all for session" — grant_all short-circuits future
+                # permission checks, so resolve every remaining item as
+                # allow_once and return (matching the interactive modal).
+                _session_approvals.grant_all()
                 for j in range(i, len(items)):
                     resolve_item(j, 0, "")
                 return
-            elif raw in {"6", "d"}:
+            elif raw in {"6", "a"}:
+                for j in range(i, len(items)):
+                    resolve_item(j, 0, "")
+                return
+            elif raw in {"7", "d"}:
                 reject_all()
                 return
             else:
-                resolve_item(i, 2, "")
+                resolve_item(i, 3, "")
         except (EOFError, KeyboardInterrupt):
             reject_all()
             return
@@ -466,7 +492,7 @@ def _resolve_decision_via_engine(
 
 
 def _cancelled_decision() -> _DecisionTuple:
-    from kagan.cli.chat._permission_ui import _DecisionTuple as _DT
+    from kagan.cli.chat._approval_types import _DecisionTuple as _DT
 
     return _DT(outcome="deny")
 
@@ -481,7 +507,7 @@ def _preresolve_session_approved(
     Returns ``(resolved_indices, unresolved_items, unresolved_index_map)``.
     Resolved items are dispatched to the engine immediately.
     """
-    from kagan.cli.chat._permission_ui import (
+    from kagan.cli.chat._approval_types import (
         _DecisionTuple,
         _session_approvals,
         _tool_action_key,
@@ -592,12 +618,14 @@ class _BatchApprovalQueue:
         await self._flush_batch(items)
 
     async def _flush_single(self, item: _PendingItem) -> None:
-        from kagan.cli.chat._permission_ui import (
+        from kagan.cli.chat._approval_types import (
             _DecisionTuple,
-            _map_decision_from_approval,
-            _run_approval_panel_async,
             _session_approvals,
             _tool_action_key,
+        )
+        from kagan.cli.chat._permission_ui import (
+            _map_decision_from_approval,
+            _run_approval_panel_async,
         )
 
         action_key = _tool_action_key(item.tool_call)
@@ -615,10 +643,13 @@ class _BatchApprovalQueue:
         _resolve_decision_via_engine(self._engine, item, decision)
 
     async def _flush_batch(self, items: list[_PendingItem]) -> None:
-        from kagan.cli.chat._permission_ui import (
+        from kagan.cli.chat._approval_types import (
             _DecisionTuple,
-            _map_decision_from_approval,
+            _session_approvals,
             _tool_action_key,
+        )
+        from kagan.cli.chat._permission_ui import (
+            _map_decision_from_approval,
         )
 
         resolved_indices, unresolved_items, unresolved_index_map = _preresolve_session_approved(
@@ -641,6 +672,13 @@ class _BatchApprovalQueue:
             original_idx = unresolved_index_map[unresolved_idx]
             item = items[original_idx]
             action_key = _tool_action_key(item.tool_call)
+            # Slot 2 in the batch panel is "Allow all for session" — intercept
+            # here (like the single-panel modal does) so the grant is applied
+            # instead of falling through to deny via the unmapped slot.
+            if opt_idx == 2:
+                _session_approvals.grant_all()
+                decisions[original_idx] = _DecisionTuple(outcome="allow_once")
+                return
             decisions[original_idx] = _map_decision_from_approval(
                 opt_idx, feedback, action_key=action_key
             )

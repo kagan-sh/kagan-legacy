@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -23,8 +22,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from kagan.core._db_helpers import _db_async
-from kagan.core.models import ChatMessage, ChatSession, Task
-from kagan.core.models import Session as TaskSession
+from kagan.core.models import ChatMessage, ChatSession
 
 if TYPE_CHECKING:
     import builtins
@@ -51,6 +49,7 @@ class ChatSessionView(BaseModel):
     source: str
     agent_backend: str | None
     project_id: str | None
+    session_type: str = "orchestrator"
     updated_at: str
     # Decoded message history as (role, content) pairs.
     orchestrator_history: list[list[str]]
@@ -76,6 +75,7 @@ def chat_session_to_view(
         label=row.label,
         source=row.source,
         agent_backend=row.agent_backend,
+        session_type=row.session_type,
         orchestrator_history=history,
         messages_rendered=[],
         updated_at=updated_at,
@@ -125,18 +125,6 @@ def clean_generated_title(raw: str) -> str:
     if len(cleaned) > _SESSION_TITLE_MAX_LENGTH:
         cleaned = cleaned[: _SESSION_TITLE_MAX_LENGTH - 3] + "..."
     return cleaned
-
-
-@dataclass(frozen=True, slots=True)
-class TaskBinding:
-    """A `task-session` source resolves to an agent-Session row, not a chat session."""
-
-    id: str
-    label: str
-    source: str
-    agent_backend: str | None
-    task_id: str
-    status: str
 
 
 def _detached(row: Any) -> Any:
@@ -308,6 +296,7 @@ class ChatSessions:
         agent_backend: str | None = None,
         project_id: str | None = None,
         session_id: str | None = None,
+        session_type: str | None = None,
     ) -> ChatSession:
         sid = (session_id or uuid4().hex[:16]).strip()
         now = _utc_now()
@@ -317,6 +306,7 @@ class ChatSessions:
             source=source,
             agent_backend=agent_backend,
             project_id=project_id,
+            session_type=session_type or "orchestrator",
             created_at=now,
             updated_at=now,
         )
@@ -329,6 +319,29 @@ class ChatSessions:
 
         return await _db_async(self._engine, _write, commit=True)
 
+    async def create_general(
+        self,
+        *,
+        backend: str,
+        label: str | None = None,
+        project_id: str | None = None,
+    ) -> ChatSession:
+        """Create a general session — raw backend chat without Kagan orchestration."""
+        row = await self.create(
+            source="general",
+            label=label or f"General {backend}",
+            agent_backend=backend,
+            project_id=project_id,
+            session_type="general",
+        )
+        await self.append_message(
+            row.id,
+            "system",
+            "General session: this chat talks directly to the selected backend "
+            "without Kagan project tools, task context, or orchestration prompts.",
+        )
+        return row
+
     # ------------------------------------------------------------------ update
 
     async def update(
@@ -339,6 +352,7 @@ class ChatSessions:
         source: str | None = None,
         agent_backend: str | None = None,
         project_id: str | None = None,
+        session_type: str | None = None,
     ) -> ChatSession | None:
         """Patch metadata on an existing session. Returns the updated row, or None if missing.
 
@@ -363,6 +377,8 @@ class ChatSessions:
                 row.agent_backend = agent_backend
             if project_id is not None:
                 row.project_id = project_id
+            if session_type is not None:
+                row.session_type = session_type
             row.updated_at = now
             s.add(row)
             s.flush()
@@ -495,33 +511,6 @@ class ChatSessions:
             return _detached(row)
 
         return await _db_async(self._engine, _write, commit=True)
-
-    # ------------------------------------------------------------------ task binding
-
-    async def resolve_task_binding(self, session_id: str) -> TaskBinding | None:
-        """Resolve a `task-session` source: the id refers to an agent-Session row."""
-        normalized = session_id.strip()
-        if not normalized:
-            return None
-
-        def _read(s: DBSession) -> TaskBinding | None:
-            bound = s.get(TaskSession, normalized)
-            if bound is None:
-                return None
-            task = s.get(Task, bound.task_id)
-            if task is None:
-                return None
-            status_value = getattr(bound.status, "value", str(bound.status))
-            return TaskBinding(
-                id=bound.id,
-                label=f"Task {task.id[:8]} - {task.title}",
-                source="task-session",
-                agent_backend=bound.agent_backend,
-                task_id=task.id,
-                status=status_value,
-            )
-
-        return await _db_async(self._engine, _read)
 
     # ------------------------------------------------------------------ scope state
 

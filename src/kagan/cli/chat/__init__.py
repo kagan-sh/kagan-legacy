@@ -3,7 +3,6 @@
 Public API re-exported from private sub-modules.
 """
 
-from kagan.cli.chat._completion import fuzzy_match
 from kagan.cli.chat._session_picker import (
     ChatSessionListItem,
     ChatSessionView,
@@ -12,6 +11,7 @@ from kagan.cli.chat._session_picker import (
     resolve_chat_session_selector,
 )
 from kagan.cli.chat._title import ensure_session_title, generate_session_title, is_default_title
+from kagan.cli.chat._utils import fuzzy_match
 from kagan.cli.chat.acp import run_orchestrator_turn, warm_orchestrator_backend
 from kagan.cli.chat.agents import (
     format_agent_backend_list,

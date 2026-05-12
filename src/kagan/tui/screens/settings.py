@@ -182,9 +182,7 @@ class SettingsModal(ModalScreen[None]):
             else "always"
         )
         self.query_one("#settings-theme", Select).value = (
-            settings.get("theme", "")
-            if settings.get("theme", "") in valid_theme_names()
-            else ""
+            settings.get("theme", "") if settings.get("theme", "") in valid_theme_names() else ""
         )
         self.query_one("#settings-attached-launcher", Select).value = (
             settings.get("attached_launcher", "tmux")
@@ -236,6 +234,9 @@ class SettingsModal(ModalScreen[None]):
         )
         self.query_one("#settings-skip-attached-instructions", Switch).value = _is_enabled(
             settings.get("skip_attached_instructions_popup"), default=False
+        )
+        self.query_one("#settings-show-reasoning", Switch).value = _is_enabled(
+            settings.get("chat.show_reasoning"), default=False
         )
 
         overrides = detect_dotfile_overrides(Path.cwd())
@@ -352,6 +353,7 @@ class SettingsModal(ModalScreen[None]):
                 "#settings-skip-attached-instructions"
             ),
             "auto_confirm_single_tasks": _switch_value("#settings-auto-confirm-single"),
+            "chat.show_reasoning": _switch_value("#settings-show-reasoning"),
         }
 
         git_user_name = self.query_one("#settings-git-user-name", Input).value.strip()

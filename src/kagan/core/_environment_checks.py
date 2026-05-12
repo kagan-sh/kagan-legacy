@@ -245,8 +245,7 @@ def check_node_version(min_version: tuple[int, ...] = (20, 6, 0)) -> bool:
 
     Args:
         min_version: Minimum required version as ``(major, minor, patch)`` tuple.
-                     Defaults to ``(20, 6, 0)`` which is required for
-                     ``@mariozechner/pi-coding-agent``.
+                     Defaults to ``(20, 6, 0)``.
     """
     node_version = _parse_node_version()
     if node_version is None:

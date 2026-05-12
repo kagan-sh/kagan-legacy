@@ -48,6 +48,9 @@ dependencies = [
   "platformdirs>=4.3.0",
   "pydantic>=2.0.0",
   "prompt-toolkit>=3.0.0",
+  # Direct constraint to pin past Snyk advisory SNYK-PYTHON-PYTHONMULTIPART-16438952
+  # (resource-allocation DoS); mcp 1.26.x pulls 0.0.22 transitively.
+  "python-multipart>=0.0.27",
   "qrcode>=8.2",
   "rich>=14.0.0",
   # Explicit dependency - imported directly in 11+ files, not just via sqlmodel
@@ -96,10 +99,13 @@ dev = [
   "pytest-cov>=7.0.0",
   "pytest-xdist>=3.8.0",
   "python-semantic-release>=10.5.3",
+  # Transitive via python-semantic-release; pin past SNYK-PYTHON-GITPYTHON-16624542 (high)
+  "gitpython>=3.1.50",
   "pytest-sugar>=1.1.1",
   "playwright>=1.58.0",
   "pytest-playwright>=0.7.2",
   "pillow>=12.2.0",
+  "inline-snapshot>=0.20.0",
 ]
 
 [tool.ruff]
@@ -133,9 +139,21 @@ max-complexity = 20
 "src/kagan/server/_system_routes.py" = [
   "C901",
 ] # Route registration nests all handlers inside one function
+"src/kagan/cli/chat/_approval_batch.py" = [
+  "C901",
+] # Interactive prompt_toolkit dispatch over j/k/space/y/n/a/r/Esc/? + feedback mode
+"src/kagan/core/chat/engine.py" = [
+  "C901",
+] # ChatEngine._run_stream interleaves ACP streaming, event_log patches, permissions, cancel paths
+"src/kagan/tui/screens/workspace.py" = [
+  "C901",
+] # Grouped session rendering (Active/Idle/Archived) with filter + prefer-key + per-row badges
 "tests/helpers/echo_agent.py" = [
   "TC002",
 ] # Vendored ACP example script run as subprocess — imports must resolve at runtime
+"tests/e2e_chat/**/*.py" = [
+  "TC001", "TC002", "TC003",
+] # Pytest fixture injection requires runtime Path annotations; FakeCue used in value position
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -189,6 +207,9 @@ markers = [
   "integrations: tests scoped to native integration implementations",
   "integration: tests scoped to real agent binary integration",
   "mock_platform_system(name): override platform.system() for the test",
+  "smoke_e2e: Playwright + subprocess CLI smoke (optional nightly job; wired via poe web-e2e)",
+  "e2e_chat: surface-aware chat-flow tests against scripted FakeAgentDirector",
+  "e2e_tui: surface-aware TUI-flow tests via KaganDriver + Pilot",
 ]
 addopts = "-p no:anyio -x -n auto --dist=loadgroup"
 
@@ -208,6 +229,10 @@ exclude_lines = [
 [tool.poe.tasks]
 dev = "python -m textual run --dev src/kagan/tui/app.py"
 test = "pytest tests/"
+e2e-chat = "pytest tests/e2e_chat -v -n0"
+e2e-chat-update = "pytest tests/e2e_chat -v -n0 --inline-snapshot=create"
+e2e-tui = "pytest tests/e2e_tui -v -n0"
+e2e-tui-update = "pytest tests/e2e_tui -v -n0 --inline-snapshot=create"
 lint = "ruff check src/"
 check-loc = "python scripts/check_python_loc_budget.py --max-lines 2500"
 check-complexity = "ruff check src/ --select C90"
@@ -220,13 +245,14 @@ typecheck = "pyrefly check --project-excludes src/kagan/core/adapters/db/migrati
 deadcode = "vulture"
 check = ["lint", "typecheck", "deadcode", "check-boundaries", "test"]
 db-migrations-check = "pytest tests/core/test_db_migrations.py -n 0 -v"
+prompt-tokens = "python evals/tokens/measure.py"
 docs-dev = "mkdocs serve -f mkdocs.local.yml"
 docs-build = "mkdocs build"
 docs-check = "mkdocs build"
 
 [tool.poe.tasks.db-migration-generate]
 help = "Generate an Alembic revision from SQLModel metadata"
-cmd = "alembic -c alembic.ini revision --autogenerate -m \"${message}\""
+cmd = "alembic -c src/kagan/core/adapters/db/alembic.ini revision --autogenerate -m \"${message}\""
 args = [
   { name = "message", positional = true, required = true, help = "Migration message" },
 ]
@@ -299,12 +325,16 @@ help = "Run Vitest unit tests on the web package"
 shell = "pnpm run web:test"
 
 [tool.poe.tasks.web-a11y]
-help = "Run accessibility checks (vitest-axe component scans)"
-shell = "pnpm --filter kagan-web exec vitest run src/test/a11y.test.tsx"
+help = "Run accessibility checks (axe-core/playwright against real surfaces)"
+shell = "cd packages/web && pnpm exec playwright test e2e/a11y.spec.ts"
 
 [tool.poe.tasks.web-check]
 help = "Run all web package checks (typecheck + test)"
 sequence = ["web-typecheck", "web-test"]
+
+[tool.poe.tasks.web-e2e]
+help = "Build web bundle and run Playwright E2E tests (requires kagan web server; started by playwright.config.ts webServer)"
+sequence = [{ ref = "web-build" }, { shell = "cd packages/web && pnpm exec playwright test" }]
 
 [tool.poe.tasks.vscode-typecheck]
 help = "Run TypeScript type checking on the VS Code extension package"
@@ -597,7 +627,6 @@ forbidden_modules = [
     "kagan.cli.chat._approval_batch",
     "kagan.cli.chat._approval_panel",
     "kagan.cli.chat._chat_ui",
-    "kagan.cli.chat._completion",
     "kagan.cli.chat._handshake",
     "kagan.cli.chat._permission_ui",
     "kagan.cli.chat._renderer",
@@ -606,7 +635,6 @@ forbidden_modules = [
     "kagan.cli.chat._streaming",
     "kagan.cli.chat._theme",
     "kagan.cli.chat._title",
-    "kagan.cli.chat._yolo",
 ]
 
 [tool.vulture]

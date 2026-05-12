@@ -6,7 +6,7 @@ search_mentions is mocked at the module boundary — no ``gh`` CLI calls.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from contextlib import contextmanager
 
 import pytest
 from textual.app import App, ComposeResult
@@ -30,11 +30,17 @@ _KAGAN_MENTION = _mention("kagan", "kagan#aabbccdd", "Implement login", "BACKLOG
 _GITHUB_MENTION = _mention("github", "#42", "Fix bug", "open")
 
 
+@contextmanager
 def _mock_search(results):
-    return patch(
-        "kagan.core.integrations.mentions.search_mentions",
-        AsyncMock(return_value=results),
-    )
+    async def _fake_search(*args, **kwargs):
+        return results
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr("kagan.core.integrations.mentions.search_mentions", _fake_search)
+    try:
+        yield
+    finally:
+        mp.undo()
 
 
 # ---------------------------------------------------------------------------

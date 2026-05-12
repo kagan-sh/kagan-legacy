@@ -247,16 +247,16 @@ async def test_acp_stream_wrappers_satisfy_client_side_connection_isinstance_gat
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader()
     transport = cast("Any", _NullTransport())
-    writer = asyncio.StreamWriter(
-        transport, asyncio.StreamReaderProtocol(reader), reader, loop
-    )
+    writer = asyncio.StreamWriter(transport, asyncio.StreamReaderProtocol(reader), reader, loop)
 
     class _FakeProcess:
         returncode: int | None = None
 
     wrappers: list[asyncio.StreamReader] = [
         JsonRpcObjectStreamReader(reader, backend_name="claude-code"),
-        cast("asyncio.StreamReader", _ByteCountingStreamReader(reader, cast("Any", _FakeProcess()))),
+        cast(
+            "asyncio.StreamReader", _ByteCountingStreamReader(reader, cast("Any", _FakeProcess()))
+        ),
     ]
 
     for wrapper in wrappers:
@@ -281,7 +281,10 @@ async def test_acp_stream_wrappers_delegate_exception_to_underlying_reader() -> 
 
     wrappers: list[asyncio.StreamReader] = [
         JsonRpcObjectStreamReader(underlying, backend_name="claude-code"),
-        cast("asyncio.StreamReader", _ByteCountingStreamReader(underlying, cast("Any", _FakeProcess()))),
+        cast(
+            "asyncio.StreamReader",
+            _ByteCountingStreamReader(underlying, cast("Any", _FakeProcess())),
+        ),
     ]
 
     for wrapper in wrappers:

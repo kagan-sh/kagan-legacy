@@ -54,7 +54,17 @@ class ToolRunTracker:
 
     @staticmethod
     def extract_tool_key_arg(update: object) -> str | None:
-        key_priority = ("title", "name", "query", "path", "command", "task_id", "pattern")
+        key_priority = (
+            "file_path",
+            "path",
+            "command",
+            "query",
+            "url",
+            "pattern",
+            "task_id",
+            "name",
+            "title",
+        )
         raw = ToolRunTracker.extract_tool_args(update)
         if raw is None:
             return None
@@ -70,8 +80,7 @@ class ToolRunTracker:
         for key in key_priority:
             value = parsed.get(key)
             if value is not None:
-                preview = str(value)[:60]
-                return f"{key}: {preview}"
+                return str(value)[:80]
         return None
 
     @staticmethod
@@ -128,6 +137,9 @@ class ToolRunTracker:
         if reason:
             summary = f"{summary} - {reason}"
         return summary
+
+    def get_run(self, tool_key: str) -> ToolRunRecord | None:
+        return self._tool_runs_by_key.get(tool_key)
 
     def status_for(self, tool_key: str) -> str | None:
         return self._tool_status_by_key.get(tool_key)

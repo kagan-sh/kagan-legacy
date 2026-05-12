@@ -52,6 +52,14 @@ def _ts_type(schema: dict, defs: dict) -> str:  # noqa: C901
         base = " | ".join(variants) if variants else "unknown"
         return f"{base} | null" if has_null else base
 
+    # Handle const (e.g. Pydantic Literal["snapshot"] with a default emits
+    # {"const": "snapshot", "default": "snapshot", "type": "string"}).
+    if "const" in schema:
+        v = schema["const"]
+        if isinstance(v, str):
+            return f"'{v}'"
+        return str(v)
+
     schema_type = schema.get("type")
     if schema_type == "string":
         # Literal enum
@@ -113,7 +121,11 @@ def _generate_definition(name: str, schema: dict, defs: dict) -> list[str]:
 
     for field_name, field_schema in props.items():
         ts = _ts_type(field_schema, defs)
-        optional = field_name not in required
+        # A field is optional in TS if it is not in the JSON Schema ``required``
+        # list, UNLESS it is a ``const`` field (discriminator tag like
+        # ``type: "snapshot"``), which is always present on the wire.
+        is_const = "const" in field_schema
+        optional = field_name not in required and not is_const
         opt_mark = "?" if optional else ""
         lines.append(f"  {field_name}{opt_mark}: {ts};")
 
@@ -155,99 +167,102 @@ def _generate_enum_section() -> list[str]:
 
 
 def _generate_constants_section() -> list[str]:
-    """Emit EVENT_TYPE and SSE_TYPE const objects derived from AgentEvent kind strings."""
-    from kagan.core.agent_events import (  # noqa: E402
-        AgentCompleted,
-        AgentEnd,
-        AgentFailed,
-        AgentStart,
-        AgentStatus,
-        AutoReviewStarted,
-        BackendAutoPromoted,
-        CheckpointCreated,
-        CompactionOccurred,
-        CompactionTriggered,
-        CriterionVerdict,
-        DoctorWarned,
-        FirstSessionSuccess,
-        HookBlocked,
-        InsightExtracted,
-        MergeCompleted,
-        MergeFailed,
-        MessageEnd,
-        MessageStart,
-        MessageUpdate,
-        OutputChunk,
-        PlanUpdate,
-        SessionRewound,
-        StepVerified,
-        TaskStatusChanged,
-        ToolCallStart,
-        ToolCallUpdate,
-        ToolExecutionEnd,
-        ToolExecutionStart,
-        ToolExecutionUpdate,
-        TurnEnd,
-        TurnStart,
-    )
+    """Emit EVENT_TYPE, SSE_TYPE, and CHAT_WATCH_TYPE const objects.
 
-    # All AgentEvent variant kinds in the canonical order.
-    _ALL_EVENT_VARIANTS = [
-        AgentStart,
-        AgentEnd,
-        TurnStart,
-        TurnEnd,
-        MessageStart,
-        MessageUpdate,
-        MessageEnd,
-        ToolExecutionStart,
-        ToolExecutionUpdate,
-        ToolExecutionEnd,
-        CompactionOccurred,
-        OutputChunk,
-        AgentStatus,
-        ToolCallStart,
-        ToolCallUpdate,
-        PlanUpdate,
-        TaskStatusChanged,
-        AgentCompleted,
-        AgentFailed,
-        MergeCompleted,
-        MergeFailed,
-        CriterionVerdict,
-        AutoReviewStarted,
-        InsightExtracted,
-        StepVerified,
-        CheckpointCreated,
-        SessionRewound,
-        HookBlocked,
-        CompactionTriggered,
-        DoctorWarned,
-        FirstSessionSuccess,
-        BackendAutoPromoted,
-    ]
+    EVENT_TYPE is derived from the ``type`` Literal fields on each variant in
+    ``kagan.core.events.Event`` (the new unified chat-event union).
+
+    SSE_TYPE covers the task-board SSE transport (TASK_UPDATED / SESSION_EVENT)
+    and is still used by the HTTP transport layer.
+
+    CHAT_WATCH_TYPE covers the transport-layer lifecycle frames that the server
+    emits with a ``t`` key on the /watch SSE channel.  These are distinct from
+    the engine events (which use the ``type`` key).
+    """
+    import dataclasses
+    import re
+
+    import kagan.core.events as _events_mod
+
+    # Collect all dataclass types in the Event union by inspecting the module.
+    # We read ``get_type_hints`` to avoid importing each class by name.
+    event_classes: list[type] = []
+    for name in _events_mod.__all__:
+        obj = getattr(_events_mod, name)
+        if dataclasses.is_dataclass(obj) and isinstance(obj, type):
+            event_classes.append(obj)
 
     lines: list[str] = [
-        "// ── Event type constants (derived from src/kagan/core/agent_events.py) ───────",
+        "// ── Event type constants (derived from src/kagan/core/events.py) ────────────",
     ]
 
-    # EVENT_TYPE from AgentEvent kind strings
+    # EVENT_TYPE — two groups merged into one const:
+    #   1. Chat engine events from kagan.core.events (new union, ``type`` field).
+    #   2. Task session DB event kinds from agent_events (legacy; still in DB
+    #      even though agent_events.py is deleted).  These are the ``kind``
+    #      strings stored in SessionEvent.event_type and emitted on the
+    #      SSE_TYPE.SESSION_EVENT channel.
     lines.append("export const EVENT_TYPE = {")
-    for variant_cls in _ALL_EVENT_VARIANTS:
-        # Each variant has a Literal ``kind`` field with default = the kind string.
-        kind: str = variant_cls.model_fields["kind"].default
-        ts_name = variant_cls.__name__
-        # Convert CamelCase class name to UPPER_SNAKE for the constant key.
-        import re
 
+    # Group 1: chat engine events (derived from kagan.core.events dataclasses).
+    lines.append("  // Chat engine events (kagan.core.events)")
+    for cls in event_classes:
+        type_field = next(
+            (f for f in dataclasses.fields(cls) if f.name == "type"),
+            None,
+        )
+        if type_field is None:
+            continue
+        wire_value: str = type_field.default  # type: ignore[assignment]
+        snake = re.sub(r"([A-Z])", r"_\1", cls.__name__).lstrip("_").upper()
+        lines.append(f'  {snake}: "{wire_value}",')
+
+    # Group 2: legacy task session DB event kinds (agent_events.py is deleted;
+    # these strings are still persisted in SessionEvent.event_type rows).
+    # Only add entries that were NOT already emitted by the chat engine group.
+    chat_engine_snakes = set()
+    for cls in event_classes:
+        ts_name = cls.__name__
         snake = re.sub(r"([A-Z])", r"_\1", ts_name).lstrip("_").upper()
-        lines.append(f'  {snake}: "{kind}",')
+        chat_engine_snakes.add(snake)
+
+    legacy_entries = [
+        ("OUTPUT_CHUNK", "output_chunk"),
+        ("TOOL_CALL_START", "tool_call_start"),
+        ("TOOL_CALL_UPDATE", "tool_call_update"),
+        ("AGENT_STATUS", "agent_status"),
+        ("TASK_STATUS_CHANGED", "task_status_changed"),
+        ("AGENT_COMPLETED", "agent_completed"),
+        ("AGENT_FAILED", "agent_failed"),
+        ("MERGE_COMPLETED", "merge_completed"),
+        ("MERGE_FAILED", "merge_failed"),
+        ("CRITERION_VERDICT", "criterion_verdict"),
+        ("AUTO_REVIEW_STARTED", "auto_review_started"),
+        ("PLAN_UPDATE", "plan_update"),
+        ("STEP_VERIFIED", "step_verified"),
+        ("CHECKPOINT_CREATED", "checkpoint_created"),
+        ("SESSION_REWOUND", "session_rewound"),
+        ("HOOK_BLOCKED", "hook_blocked"),
+        ("COMPACTION_OCCURRED", "compaction_occurred"),
+        ("COMPACTION_TRIGGERED", "compaction_triggered"),
+        ("DOCTOR_WARNED", "doctor_warned"),
+        ("FIRST_SESSION_SUCCESS", "first_session_success"),
+        ("BACKEND_AUTO_PROMOTED", "backend_auto_promoted"),
+        ("INSIGHT_EXTRACTED", "insight_extracted"),
+    ]
+    has_legacy = [entry for entry in legacy_entries if entry[0] not in chat_engine_snakes]
+    if has_legacy:
+        lines.append("  // Legacy task session event kinds (persisted in DB by agent runner)")
+        for key, value in has_legacy:
+            lines.append(f'  {key}: "{value}",')
+
+
     lines.append("} as const;")
     lines.append("")
     lines.append("export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];")
     lines.append("")
 
-    # SSE_TYPE — static (not a Python enum, but a protocol constant)
+    # SSE_TYPE — task-board transport channel constants (HTTP layer, not chat).
     lines.extend([
         "export const SSE_TYPE = {",
         '  TASK_UPDATED: "TASK_UPDATED",',
@@ -255,6 +270,24 @@ def _generate_constants_section() -> list[str]:
         "} as const;",
         "",
         "export type SSEType = (typeof SSE_TYPE)[keyof typeof SSE_TYPE];",
+        "",
+    ])
+
+    # CHAT_WATCH_TYPE — transport-layer lifecycle frames on the /watch SSE channel.
+    # These use the ``t`` key (not ``type``).  Engine events use ``type`` instead
+    # and are covered by EVENT_TYPE above.
+    lines.extend([
+        "export const CHAT_WATCH_TYPE = {",
+        '  CHAT_USER_MESSAGE: "CHAT_USER_MESSAGE",',
+        '  CHAT_ASSISTANT_MESSAGE: "CHAT_ASSISTANT_MESSAGE",',
+        '  CHAT_TURN_STARTED: "CHAT_TURN_STARTED",',
+        '  CHAT_TURN_TERMINATED: "CHAT_TURN_TERMINATED",',
+        '  CHAT_SESSION_UPDATED: "CHAT_SESSION_UPDATED",',
+        '  CHAT_ERROR: "CHAT_ERROR",',
+        '  CHAT_PERMISSION_REQUEST: "CHAT_PERMISSION_REQUEST",',
+        "} as const;",
+        "",
+        "export type ChatWatchType = (typeof CHAT_WATCH_TYPE)[keyof typeof CHAT_WATCH_TYPE];",
         "",
     ])
 
@@ -275,199 +308,206 @@ def _generate_constants_section() -> list[str]:
 # ── Static wire sections ──────────────────────────────────────────────────────
 
 _STATIC_WIRE_SECTIONS = """\
-// ── AgentEvent typed union (from src/kagan/core/agent_events.py) ─────────────
-// Discriminated on the ``kind`` field. All task session events use these
-// shapes.
+// ── Chat engine events (from src/kagan/core/events.py) ───────────────────────
+// Discriminated on the ``type`` field.  Emitted by the engine over the /watch
+// SSE channel alongside the transport-layer lifecycle frames (which use ``t``).
 
-export interface AgentEventAgentStart {
-  kind: "agent_start";
+export interface ChatEventTurnStart {
+  type: "turn_start";
+  turn_id: string;
   session_id: string;
-  agent_backend: string;
+  agent_id: string;
 }
-export interface AgentEventAgentEnd {
-  kind: "agent_end";
+export interface ChatEventTurnEnd {
+  type: "turn_end";
+  turn_id: string;
+  reason: "done" | "cancelled" | "error" | "max_turns" | "refusal" | "permission_denied";
+}
+export interface ChatEventAssistantChunk {
+  type: "assistant_chunk";
+  turn_id: string;
   session_id: string;
-  stop_reason: "completed" | "error" | "aborted" | "compacted";
-}
-export interface AgentEventTurnStart {
-  kind: "turn_start";
-  turn_index: number;
-}
-export interface AgentEventTurnEnd {
-  kind: "turn_end";
-  turn_index: number;
-}
-export interface AgentEventMessageStart {
-  kind: "message_start";
-  message_id: string;
-}
-export interface AgentEventMessageUpdate {
-  kind: "message_update";
   message_id: string;
   delta: string;
 }
-export interface AgentEventMessageEnd {
-  kind: "message_end";
+export interface ChatEventThinkingChunk {
+  type: "thinking_chunk";
+  turn_id: string;
+  session_id: string;
   message_id: string;
-  full_text: string;
+  delta: string;
 }
-export interface AgentEventToolExecutionStart {
-  kind: "tool_execution_start";
-  tool_id: string;
+export interface ChatEventToolCall {
+  type: "tool_call";
+  turn_id: string;
+  session_id: string;
+  tool_call_id: string;
   name: string;
-  args?: Record<string, unknown> | null;
+  args: string | null;
+  title: string;
+  kind: string | null;
 }
-export interface AgentEventToolExecutionUpdate {
-  kind: "tool_execution_update";
-  tool_id: string;
-  partial_result: string;
+export interface ChatEventToolCallUpdate {
+  type: "tool_call_update";
+  tool_call_id: string;
+  content: string | null;
+  progress: string | null;
 }
-export interface AgentEventToolExecutionEnd {
-  kind: "tool_execution_end";
-  tool_id: string;
-  status: "success" | "error" | "cancelled";
-  result?: string | null;
+export interface ChatEventToolCallResult {
+  type: "tool_call_result";
+  tool_call_id: string;
+  output: string | null;
+  is_error: boolean;
 }
-export interface AgentEventCompactionOccurred {
-  kind: "compaction_occurred";
-  backend: string;
-  threshold?: number | null;
+export interface ChatEventUsageUpdate {
+  type: "usage_update";
+  turn_id: string;
+  input: number | null;
+  output: number | null;
+  cached: number | null;
+  cost: number | null;
 }
-export interface AgentEventOutputChunk {
-  kind: "output_chunk";
-  text: string;
-  thought?: boolean;
-  acp?: Record<string, unknown> | null;
-}
-export interface AgentEventAgentStatus {
-  kind: "agent_status";
-  usage?: Record<string, unknown> | null;
-  acp?: Record<string, unknown> | null;
-}
-export interface AgentEventToolCallStart {
-  kind: "tool_call_start";
-  acp: Record<string, unknown>;
-}
-export interface AgentEventToolCallUpdate {
-  kind: "tool_call_update";
-  acp: Record<string, unknown>;
-}
-export interface AgentEventPlanUpdate {
-  kind: "plan_update";
-  acp: Record<string, unknown>;
-}
-export interface AgentEventTaskStatusChanged {
-  kind: "task_status_changed";
-  from_status: string;
-  to_status: string;
-}
-export interface AgentEventAgentCompleted {
-  kind: "agent_completed";
-  message?: string | null;
-}
-export interface AgentEventAgentFailed {
-  kind: "agent_failed";
-  message?: string | null;
-}
-export interface AgentEventMergeCompleted {
-  kind: "merge_completed";
-  message?: string | null;
-}
-export interface AgentEventMergeFailed {
-  kind: "merge_failed";
-  message?: string | null;
-}
-export interface AgentEventCriterionVerdict {
-  kind: "criterion_verdict";
-  verdict: "pass" | "fail" | "skip";
-  reason: string;
-  criterion_index?: number | null;
-}
-export interface AgentEventAutoReviewStarted {
-  kind: "auto_review_started";
-}
-export interface AgentEventInsightExtracted {
-  kind: "insight_extracted";
-  content: string;
-  category?: string | null;
-}
-export interface AgentEventStepVerified {
-  kind: "step_verified";
-  step_index: number;
-  step_description: string;
-  verdict: string;
-  reason: string;
-}
-export interface AgentEventCheckpointCreated {
-  kind: "checkpoint_created";
-  step_index: number;
-  commit_sha: string;
-  tag_name: string;
-  description?: string | null;
-}
-export interface AgentEventSessionRewound {
-  kind: "session_rewound";
-  step_index: number;
-  commit_sha: string;
-}
-export interface AgentEventHookBlocked {
-  kind: "hook_blocked";
-  hook: string;
-  details?: string | null;
-}
-export interface AgentEventCompactionTriggered {
-  kind: "compaction_triggered";
-  backend: string;
-  threshold?: number | null;
-}
-export interface AgentEventDoctorWarned {
-  kind: "doctor_warned";
+export interface ChatEventError {
+  type: "error";
+  turn_id: string | null;
+  code: string;
   message: string;
-  check?: string | null;
+  fatal: boolean;
 }
-export interface AgentEventFirstSessionSuccess {
-  kind: "first_session_success";
+export interface ChatEventAgentLifecycle {
+  type: "agent_lifecycle";
+  session_id: string;
+  task_id: string | null;
+  kind: "started" | "finished" | "stopped" | "failed";
+  detail: string | null;
 }
-export interface AgentEventBackendAutoPromoted {
-  kind: "backend_auto_promoted";
-  from_backend: string;
-  to_backend: string;
-  reason?: string | null;
+export interface ChatEventAssistantMessage {
+  type: "assistant_message";
+  message_id: number;
+  content: string;
+  terminated: boolean;
+}
+export interface ChatEventUserMessage {
+  type: "user_message";
+  message_id: number;
+  content: string;
 }
 
-export type AgentEvent =
-  | AgentEventAgentStart
-  | AgentEventAgentEnd
-  | AgentEventTurnStart
-  | AgentEventTurnEnd
-  | AgentEventMessageStart
-  | AgentEventMessageUpdate
-  | AgentEventMessageEnd
-  | AgentEventToolExecutionStart
-  | AgentEventToolExecutionUpdate
-  | AgentEventToolExecutionEnd
-  | AgentEventCompactionOccurred
-  | AgentEventOutputChunk
-  | AgentEventAgentStatus
-  | AgentEventToolCallStart
-  | AgentEventToolCallUpdate
-  | AgentEventPlanUpdate
-  | AgentEventTaskStatusChanged
-  | AgentEventAgentCompleted
-  | AgentEventAgentFailed
-  | AgentEventMergeCompleted
-  | AgentEventMergeFailed
-  | AgentEventCriterionVerdict
-  | AgentEventAutoReviewStarted
-  | AgentEventInsightExtracted
-  | AgentEventStepVerified
-  | AgentEventCheckpointCreated
-  | AgentEventSessionRewound
-  | AgentEventHookBlocked
-  | AgentEventCompactionTriggered
-  | AgentEventDoctorWarned
-  | AgentEventFirstSessionSuccess
-  | AgentEventBackendAutoPromoted;
+/** Engine events — discriminated on ``type``. */
+export type ChatEngineEvent =
+  | ChatEventTurnStart
+  | ChatEventTurnEnd
+  | ChatEventAssistantChunk
+  | ChatEventThinkingChunk
+  | ChatEventToolCall
+  | ChatEventToolCallUpdate
+  | ChatEventToolCallResult
+  | ChatEventUsageUpdate
+  | ChatEventError
+  | ChatEventAgentLifecycle
+  | ChatEventAssistantMessage
+  | ChatEventUserMessage;
+
+// ── Chat /watch transport-layer lifecycle frames ──────────────────────────────
+// These are emitted directly by the server transport (not the engine).
+// Discriminated on the ``t`` field.
+
+export interface ChatWatchUserMessage {
+  t: "CHAT_USER_MESSAGE";
+  message_id: number;
+  content: string;
+}
+export interface ChatWatchAssistantMessage {
+  t: "CHAT_ASSISTANT_MESSAGE";
+  message_id: number;
+  content: string;
+  terminated: boolean;
+}
+export interface ChatWatchTurnStarted {
+  t: "CHAT_TURN_STARTED";
+  at: string;
+  by_source: string | null;
+}
+export interface ChatWatchTurnTerminated {
+  t: "CHAT_TURN_TERMINATED";
+  reason: "user" | "takeover" | string;
+}
+export interface ChatWatchSessionUpdated {
+  t: "CHAT_SESSION_UPDATED";
+  session: ChatSessionSummaryResponse;
+}
+export interface ChatWatchError {
+  t: "CHAT_ERROR";
+  error: string;
+}
+export interface ChatWatchPermissionRequest {
+  t: "CHAT_PERMISSION_REQUEST";
+  future_id: string;
+  tool_name: string;
+}
+
+/**
+ * All events that can arrive on the GET /api/chat/sessions/{id}/watch SSE channel.
+ *
+ * Two discriminator keys are in play:
+ *   - ``type`` — engine events from ``kagan.core.events`` (ChatEngineEvent union).
+ *   - ``t``    — transport-layer lifecycle frames emitted by the server directly.
+ *
+ * Consumers should handle both.  A narrow switch on ``type`` covers engine
+ * events; a switch on ``t`` covers lifecycle frames.
+ */
+export type ChatWatchEvent = ChatEngineEvent | ChatWatchUserMessage | ChatWatchAssistantMessage | ChatWatchTurnStarted | ChatWatchTurnTerminated | ChatWatchSessionUpdated | ChatWatchError | ChatWatchPermissionRequest;
+
+// ── Chat POST /stream response events ────────────────────────────────────────
+// The POST /api/chat/{id}/stream endpoint also uses ``t``-keyed frames for
+// compatibility with the orchestrator streaming path.
+
+export interface ChatStreamChunk {
+  t: "CHAT_CHUNK";
+  content: string;
+  thought?: boolean;
+}
+export interface ChatStreamToolStart {
+  t: "CHAT_TOOL_START";
+  tool: string;
+}
+export interface ChatStreamToolProgress {
+  t: "CHAT_TOOL_PROGRESS";
+  tool: string;
+  status: string | null;
+}
+export interface ChatStreamDone {
+  t: "CHAT_DONE";
+  full_response: string;
+}
+export interface ChatStreamError {
+  t: "CHAT_ERROR";
+  error?: string;
+}
+export interface ChatStreamSessionUpdated {
+  t: "CHAT_SESSION_UPDATED";
+  session?: ChatSessionSummaryResponse;
+}
+
+export type ChatStreamEvent =
+  | ChatStreamChunk
+  | ChatStreamToolStart
+  | ChatStreamToolProgress
+  | ChatStreamDone
+  | ChatStreamError
+  | ChatStreamSessionUpdated;
+
+/** Abbreviated-key constant map for the POST /api/chat/{id}/stream event types. */
+export const CHAT_STREAM_EVENT = {
+  CHUNK: "CHAT_CHUNK",
+  TOOL_START: "CHAT_TOOL_START",
+  TOOL_PROGRESS: "CHAT_TOOL_PROGRESS",
+  DONE: "CHAT_DONE",
+  ERROR: "CHAT_ERROR",
+  SESSION_UPDATED: "CHAT_SESSION_UPDATED",
+} as const;
+
+export type ChatStreamEventType = (typeof CHAT_STREAM_EVENT)[keyof typeof CHAT_STREAM_EVENT];
 
 // ── Envelope ─────────────────────────────────────────────────────────────────
 
@@ -503,91 +543,6 @@ export interface SSESessionEvent {
 }
 
 export type SSEMessage = SSETaskUpdated | SSESessionEvent;
-
-// ── Chat stream event types (GET /api/chat/{id}/watch) ────────────────────────
-
-export interface ChatWatchChunk {
-  t: "CHAT_CHUNK";
-  content: string;
-  thought?: boolean;
-}
-
-export interface ChatWatchToolStart {
-  t: "CHAT_TOOL_START";
-  tool: string;
-}
-
-export interface ChatWatchToolProgress {
-  t: "CHAT_TOOL_PROGRESS";
-  tool: string;
-  status: string | null;
-}
-
-export interface ChatWatchDone {
-  t: "CHAT_DONE";
-  full_response: string;
-}
-
-export interface ChatWatchUserMessage {
-  t: "CHAT_USER_MESSAGE";
-  message_id: number;
-  content: string;
-}
-
-export interface ChatWatchAssistantMessage {
-  t: "CHAT_ASSISTANT_MESSAGE";
-  message_id: number;
-  content: string;
-  terminated: boolean;
-}
-
-export interface ChatWatchTurnStarted {
-  t: "CHAT_TURN_STARTED";
-  at: string;
-  by_source: string | null;
-}
-
-export interface ChatWatchTurnTerminated {
-  t: "CHAT_TURN_TERMINATED";
-  reason: "user" | "takeover" | string;
-}
-
-export interface ChatWatchSessionUpdated {
-  t: "CHAT_SESSION_UPDATED";
-  session: ChatSessionResponse;
-}
-
-export interface ChatWatchError {
-  t: "CHAT_ERROR";
-  error: string;
-}
-
-export type ChatWatchEvent =
-  | ChatWatchChunk
-  | ChatWatchToolStart
-  | ChatWatchToolProgress
-  | ChatWatchDone
-  | ChatWatchUserMessage
-  | ChatWatchAssistantMessage
-  | ChatWatchTurnStarted
-  | ChatWatchTurnTerminated
-  | ChatWatchSessionUpdated
-  | ChatWatchError;
-
-export const CHAT_WATCH_TYPE = {
-  CHAT_CHUNK: "CHAT_CHUNK",
-  CHAT_TOOL_START: "CHAT_TOOL_START",
-  CHAT_TOOL_PROGRESS: "CHAT_TOOL_PROGRESS",
-  CHAT_DONE: "CHAT_DONE",
-  CHAT_USER_MESSAGE: "CHAT_USER_MESSAGE",
-  CHAT_ASSISTANT_MESSAGE: "CHAT_ASSISTANT_MESSAGE",
-  CHAT_TURN_STARTED: "CHAT_TURN_STARTED",
-  CHAT_TURN_TERMINATED: "CHAT_TURN_TERMINATED",
-  CHAT_SESSION_UPDATED: "CHAT_SESSION_UPDATED",
-  CHAT_ERROR: "CHAT_ERROR",
-} as const;
-
-export type ChatWatchType = (typeof CHAT_WATCH_TYPE)[keyof typeof CHAT_WATCH_TYPE];
 
 // ── Turn status ───────────────────────────────────────────────────────────────
 
@@ -810,61 +765,6 @@ export interface SearchMentionsInput {
   q: string;
   limit?: number;
 }
-
-// ── Chat stream event types (POST /api/chat/{id}/stream response) ────────────
-
-export interface ChatStreamChunk {
-  t: "CHAT_CHUNK";
-  content: string;
-  thought?: boolean;
-}
-
-export interface ChatStreamToolStart {
-  t: "CHAT_TOOL_START";
-  tool: string;
-}
-
-export interface ChatStreamToolProgress {
-  t: "CHAT_TOOL_PROGRESS";
-  tool: string;
-  status: string | null;
-}
-
-export interface ChatStreamDone {
-  t: "CHAT_DONE";
-  full_response: string;
-}
-
-export interface ChatStreamError {
-  t: "CHAT_ERROR";
-  error?: string;
-}
-
-export interface ChatStreamSessionUpdated {
-  t: "CHAT_SESSION_UPDATED";
-  /** Session summary from the server (post-turn metadata refresh). */
-  session?: ChatSessionSummaryResponse;
-}
-
-export type ChatStreamEvent =
-  | ChatStreamChunk
-  | ChatStreamToolStart
-  | ChatStreamToolProgress
-  | ChatStreamDone
-  | ChatStreamError
-  | ChatStreamSessionUpdated;
-
-/** Abbreviated-key constant map for the POST /api/chat/{id}/stream event types. */
-export const CHAT_STREAM_EVENT = {
-  CHUNK: "CHAT_CHUNK",
-  TOOL_START: "CHAT_TOOL_START",
-  TOOL_PROGRESS: "CHAT_TOOL_PROGRESS",
-  DONE: "CHAT_DONE",
-  ERROR: "CHAT_ERROR",
-  SESSION_UPDATED: "CHAT_SESSION_UPDATED",
-} as const;
-
-export type ChatStreamEventType = (typeof CHAT_STREAM_EVENT)[keyof typeof CHAT_STREAM_EVENT];
 
 // ── Task event query options ──────────────────────────────────────────────────
 

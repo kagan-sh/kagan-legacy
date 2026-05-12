@@ -7,9 +7,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class ApprovalStyles:
-    border: str = "yellow"
-    focused: str = "cyan bold"
-    cursor: str = "cyan"
+    border: str = "#d4a84b"
+    focused: str = "#d4a84b bold"
+    cursor: str = "#d4a84b"
     dim: str = "dim"
     hint: str = "dim"
     meta: str = "dim grey50"

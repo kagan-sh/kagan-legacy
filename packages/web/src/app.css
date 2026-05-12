@@ -31,6 +31,7 @@
   --popover-foreground: #1a1612;
   --primary: #d4a84b;
   --primary-foreground: #0b0a09;
+  --primary-soft: #b89154;
   --secondary: #d8cebf;
   --secondary-foreground: #1a1612;
   --muted: #e5dccf;
@@ -73,6 +74,8 @@
   --kagan-info: #6e6458;
   --kagan-accent-copper: #a58f74;
   --kagan-kanban-bg: #ece3d6;
+  --primary-glow: rgb(212 168 75 / 0.18);
+  --primary-glow-strong: rgb(212 168 75 / 0.30);
   --kagan-rail-running: #1a8563;
   --kagan-rail-error: #d04025;
   --kagan-rail-warning: #a87b25;
@@ -83,7 +86,7 @@
   --border-blurred: #bcae9a80;
   --text-muted: #665c50;
   --text-disabled: #6e6456;
-  --link-color: #316595;
+  --link-color: var(--primary-soft);
   --link-hover-color: #1c6f4e;
   --scrollbar: #2a251f;
   --scrollbar-hover: #d4a84b;
@@ -189,6 +192,8 @@
   --kagan-info: #6a8fba;
   --kagan-accent-copper: #b0846a;
   --kagan-kanban-bg: hsl(240 6% 6%);
+  --primary-glow: rgb(212 168 75 / 0.18);
+  --primary-glow-strong: rgb(212 168 75 / 0.30);
   --kagan-rail-running: #3fb58e;
   --kagan-rail-error: #ef4444;
   --kagan-rail-warning: #e6c07b;
@@ -512,6 +517,28 @@ textarea {
   }
 }
 
+/* Shell popover entrance animation */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Worked-accordion live-spin icon */
+@keyframes worked-icon-spin {
+  to { transform: rotate(360deg); }
+}
+
+.worked-icon-live {
+  display: inline-block;
+  animation: worked-icon-spin 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .worked-icon-live {
+    animation: none;
+  }
+}
+
 /* Streaming glyph — half-disc rotating at 4fps (◐ ◓ ◑ ◒).
    Uses steps(4) so the rotation snaps rather than interpolates.
    Reduced-motion: component renders a static ◐ and skips this animation. */
@@ -560,4 +587,24 @@ textarea {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ─── CRT scanline atmosphere — dark mode only ──────────────────────────── */
+/* Subtle 2-px repeating-linear-gradient overlay on the shell, mirroring the
+   Claude Design "Kagan Workspace" prototype. Static (no animation), so
+   prefers-reduced-motion is unaffected. */
+.kg-shell-scanline {
+  position: relative;
+}
+.dark .kg-shell-scanline::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 2px,
+    rgba(0, 0, 0, 0.025) 2px 4px
+  );
+  pointer-events: none;
+  z-index: 100;
 }

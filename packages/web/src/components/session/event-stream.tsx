@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, BrainCircuit, ChevronRight, User, Wrench } from 'lucide-react';
+import { Bot, BrainCircuit, ChevronRight, User } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
 import type { WireEvent } from '@kagan/shared-api-client';
 import { EVENT_TYPE } from '@kagan/shared-api-client';
@@ -16,7 +16,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ChatOverlayEmptyState } from '@/components/session/chat-overlay-empty-state';
 import { extractToolStatus, extractToolTitle } from '@/lib/api/event-rendering';
 import { StreamingGlyph } from '@/components/chat/streaming-glyph';
-import { StreamingStatus } from '@/components/chat/streaming-status';
 
 /** A user follow-up message displayed inline in the event stream. */
 export interface UserFollowUp {
@@ -65,6 +64,46 @@ function extractToolDetail(payload: Record<string, unknown>): Record<string, unk
 
   const { session_id: _s, created_at: _c, acp: _a, ...rest } = payload;
   return Object.keys(rest).length > 0 ? rest : null;
+}
+
+/** Priority-ordered arg keys to surface as a one-line hint beside the tool name. */
+const KEY_ARG_CANDIDATES_ES = ['path', 'file', 'command', 'query', 'pattern', 'task_id'] as const;
+
+/** Extract the first meaningful arg value from a tool call payload for collapsed display. */
+function extractKeyArgFromPayload(payload: Record<string, unknown>): string | null {
+  const acp = acpPayload(payload);
+  // Try acp.input first (JSON string or object), then payload.args
+  let args: Record<string, unknown> | null = null;
+  const rawInput = acp.input ?? acp.rawInput ?? payload.args ?? payload.rawInput;
+  if (typeof rawInput === 'string') {
+    try {
+      const parsed = JSON.parse(rawInput) as unknown;
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        args = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // not JSON — use as literal string hint
+      const trimmed = rawInput.trim();
+      return trimmed.length > 40 ? `…${trimmed.slice(-38)}` : trimmed || null;
+    }
+  } else if (typeof rawInput === 'object' && rawInput !== null && !Array.isArray(rawInput)) {
+    args = rawInput as Record<string, unknown>;
+  }
+  if (!args) return null;
+  for (const key of KEY_ARG_CANDIDATES_ES) {
+    const v = args[key];
+    if (typeof v === 'string' && v.trim().length > 0) {
+      const trimmed = v.trim();
+      return trimmed.length > 40 ? `…${trimmed.slice(-38)}` : trimmed;
+    }
+  }
+  for (const [, v] of Object.entries(args)) {
+    if (typeof v === 'string' && v.trim().length > 0) {
+      const trimmed = v.trim();
+      return trimmed.length > 40 ? `…${trimmed.slice(-38)}` : trimmed;
+    }
+  }
+  return null;
 }
 
 // ── Message coalescing (mirrors TUI StreamingOutput merge behaviour) ──────────
@@ -317,8 +356,8 @@ function AgentMessage({ text, thought, time }: { text: string; thought: boolean;
   return (
     <div className="flex gap-3 py-2">
       <Avatar className="mt-0.5 size-6 shrink-0">
-        <AvatarFallback className={thought ? 'bg-fuchsia-500/20' : 'bg-[var(--muted)]'}>
-          {thought ? <BrainCircuit className="size-3.5 text-fuchsia-300" /> : <Bot className="size-3.5 text-[var(--muted-foreground)]" />}
+        <AvatarFallback className={thought ? 'bg-[var(--primary-glow)]' : 'bg-[var(--muted)]'}>
+          {thought ? <BrainCircuit className="size-3.5 text-[var(--kagan-thinking)]" /> : <Bot className="size-3.5 text-[var(--muted-foreground)]" />}
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
@@ -357,20 +396,41 @@ function UserFollowUpMessage({ text, time }: { text: string; time: string }) {
     </div>
   );
 }
-// ── Tool call (collapsible row — mirrors TUI ToolCallView) ───────────────────
+// ── Tool call (collapsible row) ───────────────────────────────────────────────
 function ToolCallRow({ title, status, payload, time }: { title: string; status: string; payload: Record<string, unknown>; time: string }) {
   const detail = extractToolDetail(payload);
+  const keyArg = extractKeyArgFromPayload(payload);
   const hasDetail = detail !== null;
+  const isFailed = status === 'failed';
+  const isRunning = status === 'running';
+  const headerLabel = keyArg ? `${title} (${keyArg})` : title;
+
   return (
     <Collapsible disabled={!hasDetail}>
-      <div className="flex items-center gap-2 bg-[color:var(--surface-1)] shadow-[var(--ambient-shadow)] px-3 py-1.5 text-[12px]">
-        <Wrench className={cn('size-3.5 shrink-0', status === 'running' ? 'text-[var(--kagan-thinking)]' : 'text-[var(--kagan-rail-running)]')} />
-        <span className="min-w-0 flex-1 truncate font-medium text-[var(--foreground)]">{title}</span>
-        {status === 'running' ? <StreamingStatus label="running" /> : null}
-        <span className="font-code text-[10px] text-[var(--muted-foreground)]">{time}</span>
+      <div className="flex items-center gap-1.5 bg-[color:var(--surface-1)] shadow-[var(--ambient-shadow)] px-3 py-1.5 text-[11px]">
+        {isFailed ? (
+          <span className="shrink-0 text-[var(--destructive)]" aria-label="Tool call failed">
+            {'✗'}
+          </span>
+        ) : isRunning ? (
+          <StreamingGlyph className="shrink-0 text-[11px] leading-none" />
+        ) : (
+          <span className="shrink-0 text-[var(--muted-foreground)]" aria-label="Tool call completed">
+            {'▸'}
+          </span>
+        )}
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate font-medium',
+            isFailed ? 'text-[var(--destructive)]' : 'text-[var(--foreground)]',
+          )}
+        >
+          {headerLabel}
+        </span>
+        <span className="shrink-0 font-code text-[10px] text-[var(--muted-foreground)]">{time}</span>
         {hasDetail ? (
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon-xs" className="size-5 " aria-label={`Toggle ${title} details`}>
+            <Button variant="ghost" size="icon-xs" className="size-5" aria-label={`Toggle ${title} details`}>
               <ChevronRight className="size-3 transition-transform duration-150 [[data-state=open]_&]:rotate-90" />
             </Button>
           </CollapsibleTrigger>
@@ -417,9 +477,9 @@ function formatCost(cost: number, currency: string | null): string {
 function UsageRow({ used, size, cost, currency, time }: { used: number; size: number; cost: number | null; currency: string | null; time: string }) {
   const pct = size > 0 ? (used / size) * 100 : 0;
   const pctClamped = Math.min(100, Math.max(0, pct));
-  const barColor = pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
-  const dotColor = pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
-  const textColor = pct > 80 ? 'text-red-400' : pct > 60 ? 'text-amber-400' : 'text-[var(--muted-foreground)]';
+  const barColor = pct > 80 ? 'bg-[var(--kagan-rail-error)]' : pct > 60 ? 'bg-[var(--kagan-thinking)]' : 'bg-[var(--kagan-rail-running)]';
+  const dotColor = pct > 80 ? 'bg-[var(--kagan-rail-error)]' : pct > 60 ? 'bg-[var(--kagan-thinking)]' : 'bg-[var(--kagan-rail-running)]';
+  const textColor = pct > 80 ? 'text-[var(--kagan-rail-error)]' : pct > 60 ? 'text-[var(--kagan-thinking)]' : 'text-[var(--muted-foreground)]';
 
   return (
     <div className={cn("flex items-center gap-2 px-3 py-1 text-[11px] font-code whitespace-nowrap", textColor)}>

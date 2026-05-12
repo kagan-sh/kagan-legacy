@@ -22,12 +22,14 @@ __all__ = [
     "HELP_BINDINGS",
     "KANBAN_BINDINGS",
     "MESSAGE_ACTIONS_BINDINGS",
+    "ORCHESTRATOR_OVERLAY_BINDINGS",
     "PERMISSION_BINDINGS",
     "REJECTION_BINDINGS",
     "REJECTION_INPUT_BINDINGS",
     "REPO_PICKER_BINDINGS",
     "REVIEW_NO_CRITERIA_BINDINGS",
     "SESSION_DASHBOARD_BINDINGS",
+    "SESSION_LIST_BINDINGS",
     "SESSION_PICKER_BINDINGS",
     "SETTINGS_BINDINGS",
     "SETTINGS_COMMAND_BINDINGS",
@@ -47,17 +49,52 @@ __all__ = [
 ]
 
 APP_BINDINGS: list[BindingType] = [
-    Binding("question_mark,f1", "show_help", "Help", key_display="?"),
+    Binding("question_mark,f1", "show_help", "help", key_display="?"),
     Binding(
         "ctrl+shift+p,f2",
         "command_palette",
-        "Quick Actions",
+        "quick actions",
         key_display="Ctrl+Shift+P",
     ),
-    Binding("ctrl+o", "open_project_selector", "Projects", key_display="Ctrl+O"),
-    Binding("ctrl+r", "open_repo_selector", "Repos", key_display="Ctrl+R"),
-    Binding("ctrl+comma", "open_settings", "Settings", key_display="Ctrl+,"),
-    Binding("ctrl+q", "quit", "Quit", key_display="Ctrl+Q"),
+    Binding("ctrl+o", "open_project_selector", "projects", key_display="Ctrl+O"),
+    Binding("ctrl+r", "open_repo_selector", "repos", key_display="Ctrl+R"),
+    Binding("ctrl+comma", "open_settings", "settings", key_display="Ctrl+,"),
+    Binding("ctrl+q", "quit", "quit", key_display="Ctrl+Q"),
+    Binding(
+        "ctrl+space",
+        "open_orchestrator",
+        "orchestrator",
+        key_display="Ctrl+Space",
+    ),
+    Binding("ctrl+w", "toggle_mode", "toggle chat/board", key_display="Ctrl+W"),
+]
+
+ORCHESTRATOR_OVERLAY_BINDINGS: list[BindingType] = [
+    Binding("escape", "handle_esc", "back / close", priority=True),
+    Binding("ctrl+space", "handle_esc", "", show=False, priority=True),
+    # Ctrl+↑/↓ are Mission Control / Spaces on macOS — prefer Ctrl+Shift+[/] there;
+    # keep Ctrl+↑/↓ as secondary for Linux/Windows terminals.
+    Binding(
+        "ctrl+shift+close_square_bracket,ctrl+down",
+        "cycle_agent_next",
+        "next agent",
+        key_display="Ctrl+Shift+] / Ctrl+↓",
+        priority=True,
+    ),
+    Binding(
+        "ctrl+shift+open_square_bracket,ctrl+up",
+        "cycle_agent_prev",
+        "previous agent",
+        key_display="Ctrl+Shift+[ / Ctrl+↑",
+        priority=True,
+    ),
+    Binding(
+        "ctrl+shift+f",
+        "toggle_fullscreen",
+        "AI fullscreen",
+        key_display="Ctrl+Shift+F",
+        priority=True,
+    ),
 ]
 
 CHECK_ROW_BINDINGS: list[BindingType] = [
@@ -70,88 +107,90 @@ DOCTOR_MODAL_BINDINGS: list[BindingType] = [
 ]
 
 KANBAN_BINDINGS: list[BindingType] = [
-    Binding("n", "new_task", "New Task"),
-    Binding("enter", "open_task", "Open"),
-    Binding("w", "toggle_workspace", "Workspace"),
-    Binding("i", "open_analytics", "Analytics"),
-    Binding("e", "edit_task", "Edit"),
-    Binding("x", "delete_task", "Delete"),
-    Binding("y", "copy_task_id", "Copy ID"),
-    Binding("s", "start_agent", "Start"),
-    Binding("a", "attach_agent", "Attach"),
-    Binding("shift+s", "stop_agent", "Stop", key_display="Shift+S"),
-    Binding("shift+left", "move_left", "Move Left", key_display="Shift+←"),
-    Binding("shift+right", "move_right", "Move Right", key_display="Shift+→"),
-    Binding("slash", "search", "Search", key_display="/"),
-    Binding("f", "expand_description", "Expand Description"),
-    Binding("p", "peek_task", "Peek"),
-    Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "AI Panel", key_display="Ctrl+."),
+    Binding("n", "new_task", "new task"),
+    Binding("enter", "open_task", "open"),
+    Binding("w", "toggle_workspace", "workspace"),
+    Binding("ctrl+w", "toggle_mode", "chat/board", key_display="Ctrl+W"),
+    Binding("i", "open_analytics", "analytics"),
+    Binding("e", "edit_task", "edit"),
+    Binding("x", "delete_task", "delete"),
+    Binding("y", "copy_task_id", "copy id"),
+    Binding("s", "start_agent", "start"),
+    Binding("a", "attach_agent", "attach"),
+    Binding("shift+s", "stop_agent", "stop", key_display="Shift+S"),
+    Binding("shift+left", "move_left", "move left", key_display="Shift+Left"),
+    Binding("shift+right", "move_right", "move right", key_display="Shift+Right"),
+    Binding("slash", "search", "search", key_display="/"),
+    Binding("f", "expand_description", "expand description"),
+    Binding("p", "peek_task", "peek"),
+    Binding("ctrl+f", "expand_chat_overlay", "AI expand", key_display="Ctrl+F"),
+    Binding("ctrl+period", "toggle_chat", "sessions", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
-    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
-    Binding("b", "set_branch", "Branch"),
-    Binding("h,left", "focus_left", "Left", show=False),
-    Binding("j,down", "focus_down", "Down", show=False),
-    Binding("k,up", "focus_up", "Up", show=False),
-    Binding("l,right", "focus_right", "Right", show=False),
-    Binding("tab", "focus_next_card", "Next Card", show=False),
-    Binding("shift+tab", "focus_prev_card", "Prev Card", show=False),
-    Binding("escape", "clear_focus", "Clear", show=False),
+    Binding("ctrl+k", "switch_session", "session switcher", key_display="Ctrl+K"),
+    Binding("b", "set_branch", "branch"),
+    Binding("h,left", "focus_left", "left", show=False),
+    Binding("j,down", "focus_down", "down", show=False),
+    Binding("k,up", "focus_up", "up", show=False),
+    Binding("l,right", "focus_right", "right", show=False),
+    Binding("tab", "focus_next_card", "next card", show=False),
+    Binding("shift+tab", "focus_prev_card", "prev card", show=False),
+    Binding("escape", "clear_focus", "clear", show=False),
 ]
 
 TASK_SCREEN_BINDINGS: list[BindingType] = [
-    Binding("1", "tab_overview", "Overview"),
-    Binding("2", "tab_changes", "Changes"),
-    Binding("3", "tab_review", "Review"),
-    Binding("enter", "primary_action", "Primary Action"),
-    Binding("e", "edit_task", "Edit"),
-    Binding("d", "delete_task", "Delete"),
-    Binding("a", "approve", "Approve"),
-    Binding("x", "reject", "Reject"),
-    Binding("m", "merge", "Merge"),
-    Binding("b", "rebase", "Rebase"),
-    Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "AI Panel", key_display="Ctrl+."),
+    Binding("1", "tab_overview", "overview"),
+    Binding("2", "tab_changes", "changes"),
+    Binding("3", "tab_review", "review"),
+    Binding("enter", "primary_action", "primary action"),
+    Binding("e", "edit_task", "edit"),
+    Binding("d", "delete_task", "delete"),
+    Binding("a", "approve", "approve"),
+    Binding("x", "reject", "reject"),
+    Binding("m", "merge", "merge"),
+    Binding("b", "rebase", "rebase"),
+    Binding("ctrl+f", "expand_chat_overlay", "AI expand", key_display="Ctrl+F"),
+    Binding("ctrl+period", "toggle_chat", "sessions", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
-    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
-    Binding("escape", "back", "Back"),
+    Binding("ctrl+k", "switch_session", "session switcher", key_display="Ctrl+K"),
+    Binding("escape", "back", "back"),
 ]
 
 SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
-    Binding("enter", "primary_action", "Start/Focus"),
-    Binding("s", "start_agent", "Start"),
-    Binding("x", "stop_agent", "Stop"),
-    Binding("r", "restart_agent", "Restart"),
-    Binding("ctrl+period,ctrl+i,f4", "toggle_chat", "AI Panel", key_display="Ctrl+."),
+    Binding("enter", "primary_action", "start/focus"),
+    Binding("s", "start_agent", "start"),
+    Binding("x", "stop_agent", "stop"),
+    Binding("r", "restart_agent", "restart"),
+    Binding("ctrl+period", "toggle_chat", "sessions", key_display="Ctrl+."),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
-    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
-    Binding("escape", "back", "Back"),
+    Binding("ctrl+k", "switch_session", "session switcher", key_display="Ctrl+K"),
+    Binding("escape", "back", "back"),
 ]
 
 WORKSPACE_BINDINGS: list[BindingType] = [
-    Binding("enter", "open_session", "Open"),
-    Binding("n", "new_session", "New"),
-    Binding("x", "delete_session", "Delete"),
-    Binding("slash", "focus_search", "Search", key_display="/"),
-    Binding("ctrl+period,ctrl+i,f4", "focus_chat", "Chat", key_display="Ctrl+."),
-    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
-    Binding("w", "toggle_board", "Board"),
-    Binding("escape", "back", "Back"),
+    Binding("enter", "open_session", "open"),
+    Binding("n", "new_session", "new"),
+    Binding("x", "delete_session", "delete"),
+    Binding("slash", "focus_search", "search", key_display="/"),
+    Binding("ctrl+period", "focus_chat", "chat", key_display="Ctrl+."),
+    Binding("ctrl+k", "switch_session", "session switcher", key_display="Ctrl+K"),
+    Binding("w", "toggle_board", "board"),
+    Binding("ctrl+w", "toggle_mode", "chat/board", key_display="Ctrl+W"),
+    Binding("escape", "back", "back"),
 ]
 
 CHAT_BINDINGS: list[BindingType] = [
-    Binding("enter", "send_message", "Send"),
-    Binding("shift+enter", "insert_newline", "Newline", key_display="Shift+Enter"),
-    Binding("tab", "accept_completion", "Complete"),
-    Binding("ctrl+p", "open_file_picker", "Files", key_display="Ctrl+P"),
-    Binding("ctrl+c", "clear_input", "Clear", key_display="Ctrl+C"),
-    Binding("escape", "dismiss", "Stop / Edit", key_display="Esc"),
-    Binding("ctrl+k", "open_session_picker", "Session Switcher", key_display="Ctrl+K"),
+    Binding("enter", "send_message", "send"),
+    Binding("shift+enter", "insert_newline", "newline", key_display="Shift+Enter"),
+    Binding("tab", "accept_completion", "complete"),
+    Binding("ctrl+p", "open_file_picker", "files", key_display="Ctrl+P"),
+    Binding("ctrl+c", "clear_input", "clear", key_display="Ctrl+C"),
+    Binding("escape", "dismiss", "stop / edit", key_display="Esc"),
+    Binding("ctrl+k", "open_session_picker", "session switcher", key_display="Ctrl+K"),
 ]
 
 SETTINGS_BINDINGS: list[BindingType] = [
-    Binding("escape", "cancel", "Close"),
-    Binding("slash", "search", "Search", key_display="/"),
+    Binding("escape", "cancel", "close"),
+    Binding("slash", "search", "search", key_display="/"),
 ]
 
 SETTINGS_COMMAND_BINDINGS: list[BindingType] = [
@@ -159,22 +198,22 @@ SETTINGS_COMMAND_BINDINGS: list[BindingType] = [
 ]
 
 SETUP_FLOW_BINDINGS: list[BindingType] = [
-    Binding("enter", "submit", "Continue"),
-    Binding("escape", "dismiss", "Close"),
+    Binding("enter", "submit", "continue"),
+    Binding("escape", "dismiss", "close"),
 ]
 
 CONFIRM_BINDINGS: list[BindingType] = [
-    Binding("enter", "confirm", "Confirm"),
-    Binding("escape", "cancel", "Cancel"),
+    Binding("enter", "confirm", "confirm"),
+    Binding("escape", "cancel", "cancel"),
 ]
 
 DIFF_BINDINGS: list[BindingType] = [
-    Binding("j,down", "next", "Next"),
-    Binding("k,up", "prev", "Prev"),
-    Binding("enter", "approve", "Approve"),
-    Binding("x", "reject", "Reject"),
-    Binding("y", "copy", "Copy"),
-    Binding("escape", "close", "Close"),
+    Binding("j,down", "next", "next"),
+    Binding("k,up", "prev", "prev"),
+    Binding("enter", "approve", "approve"),
+    Binding("x", "reject", "reject"),
+    Binding("y", "copy", "copy"),
+    Binding("escape", "close", "close"),
 ]
 
 DIFF_FILE_TREE_BINDINGS: list[BindingType] = [
@@ -198,42 +237,48 @@ DIFF_VIEW_BINDINGS: list[BindingType] = [
 ]
 
 EDITOR_BINDINGS: list[BindingType] = [
-    Binding("ctrl+s", "finish", "Create", key_display="Ctrl+S"),
-    Binding("escape", "cancel", "Cancel"),
-    Binding("pagedown", "page_down", "Page Down", show=False),
-    Binding("pageup", "page_up", "Page Up", show=False),
+    Binding("ctrl+s", "finish", "create", key_display="Ctrl+S"),
+    Binding("escape", "cancel", "cancel"),
+    Binding("pagedown", "page_down", "page down", show=False),
+    Binding("pageup", "page_up", "page up", show=False),
 ]
 
 HELP_BINDINGS: list[BindingType] = [
-    Binding("slash", "focus_search", "Search", key_display="/"),
-    Binding("escape", "close", "Close"),
+    Binding("slash", "focus_search", "search", key_display="/"),
+    Binding("escape", "close", "close"),
 ]
 
 PERMISSION_BINDINGS: list[BindingType] = [
-    Binding("enter", "allow_once", "Allow Once"),
-    Binding("a", "allow_always", "Allow Always"),
-    Binding("escape", "deny", "Deny"),
+    Binding("enter", "allow_once", "allow once"),
+    Binding("a", "allow_always", "allow always"),
+    Binding("escape", "deny", "deny"),
 ]
 
 REJECTION_BINDINGS: list[BindingType] = [
-    Binding("enter", "send_back", "Confirm", priority=True),
-    Binding("ctrl+s", "send_back", "Submit", key_display="Ctrl+S"),
-    Binding("escape", "cancel", "Cancel"),
+    Binding("enter", "send_back", "confirm", priority=True),
+    Binding("ctrl+s", "send_back", "submit", key_display="Ctrl+S"),
+    Binding("escape", "cancel", "cancel"),
 ]
 
 REVIEW_NO_CRITERIA_BINDINGS: list[BindingType] = [
-    Binding("a", "add_criteria", "Add Criteria"),
-    Binding("enter", "approve_manually", "Approve Manually", priority=True),
-    Binding("x", "reject", "Reject"),
-    Binding("escape", "cancel", "Cancel"),
+    Binding("a", "add_criteria", "add criteria"),
+    Binding("enter", "approve_manually", "approve manually", priority=True),
+    Binding("x", "reject", "reject"),
+    Binding("escape", "cancel", "cancel"),
 ]
 
 TMUX_GATEWAY_BINDINGS: list[BindingType] = [
-    Binding("enter", "proceed", "Continue"),
-    Binding("escape", "cancel", "Cancel"),
-    Binding("s", "skip_future", "Don't show again"),
+    Binding("enter", "proceed", "continue"),
+    Binding("escape", "cancel", "cancel"),
+    Binding("s", "skip_future", "don't show again"),
 ]
 
+
+SESSION_LIST_BINDINGS: list[BindingType] = [
+    Binding("escape", "return_focus", "Back to input", show=False, priority=True),
+    Binding("s", "stop_session", "Stop session", show=False),
+    Binding("x", "close_session", "Close session", show=False),
+]
 
 SESSION_PICKER_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel", show=False),
@@ -247,57 +292,60 @@ SESSION_PICKER_BINDINGS: list[BindingType] = [
 ]
 
 REPO_PICKER_BINDINGS: list[BindingType] = [
-    Binding("enter", "select_repo", "Select"),
-    Binding("escape", "dismiss", "Close"),
+    Binding("enter", "select_repo", "select"),
+    Binding("escape", "dismiss", "close"),
 ]
 
 GITHUB_IMPORT_BINDINGS: list[BindingType] = [
-    Binding("enter", "run_import", "Import", key_display="Enter", priority=True),
-    Binding("escape", "dismiss", "Close", key_display="Esc"),
-    Binding("a", "select_all", "Select All", show=False),
-    Binding("n", "select_none", "Select None", show=False),
+    Binding("enter", "run_import", "import", key_display="Enter", priority=True),
+    Binding("escape", "dismiss", "close", key_display="Esc"),
+    Binding("a", "select_all", "select all", show=False),
+    Binding("n", "select_none", "select none", show=False),
 ]
 
 AGENT_PICKER_BINDINGS: list[BindingType] = [
-    Binding("enter", "select_agent", "Select", show=False, priority=True),
-    Binding("escape", "dismiss", "Close"),
-    Binding("a", "toggle_all_backends", "Show all"),
+    Binding("enter", "select_agent", "select", show=False, priority=True),
+    Binding("escape", "dismiss", "close"),
+    Binding("a", "toggle_all_backends", "show all"),
 ]
 
 ANALYTICS_BINDINGS: list[BindingType] = [
-    Binding("escape", "close", "Close"),
-    Binding("r", "refresh", "Refresh"),
-    Binding("e", "export", "Export JSON"),
+    Binding("escape", "close", "close"),
+    Binding("r", "refresh", "refresh"),
+    Binding("e", "export", "export JSON"),
 ]
 
 CHAT_PERMISSION_BINDINGS: list[BindingType] = [
-    Binding("a", "allow", "Allow"),
-    Binding("d", "deny", "Deny"),
-    Binding("escape", "deny", "Deny"),
+    Binding("a", "allow", "allow once"),
+    Binding("s", "allow_session", "allow session"),
+    Binding("A", "allow_all", "allow all"),
+    Binding("d", "deny", "deny"),
+    Binding("escape", "deny", "deny"),
 ]
 
 MESSAGE_ACTIONS_BINDINGS: list[BindingType] = [
-    Binding("enter", "select", "Select"),
-    Binding("escape", "cancel", "Cancel"),
-    Binding("j,down", "cursor_down", "Next", show=False),
-    Binding("k,up", "cursor_up", "Prev", show=False),
+    Binding("enter", "select", "select"),
+    Binding("escape", "cancel", "cancel"),
+    Binding("j,down", "cursor_down", "next", show=False),
+    Binding("k,up", "cursor_up", "prev", show=False),
 ]
 
 TOOL_CALL_VIEW_BINDINGS: list[BindingType] = [
-    Binding("enter", "toggle_expand", "Toggle Details", show=False),
+    Binding("enter", "toggle_expand", "toggle details", show=False),
 ]
 
 STREAMING_TIMELINE_BINDINGS: list[BindingType] = [
-    Binding("j,down", "focus_next_entry", "Next", show=False),
-    Binding("k,up", "focus_prev_entry", "Prev", show=False),
-    Binding("h,left", "collapse_entry", "Collapse", show=False),
-    Binding("l,right", "expand_entry", "Expand", show=False),
-    Binding("g,home", "focus_first_entry", "First", show=False),
-    Binding("G,end", "jump_to_latest", "Latest", key_display="Shift+G", show=False),
+    Binding("j,down", "focus_next_entry", "next", show=False),
+    Binding("k,up", "focus_prev_entry", "prev", show=False),
+    Binding("h,left", "collapse_entry", "collapse", show=False),
+    Binding("l,right", "expand_entry", "expand", show=False),
+    Binding("g,home", "focus_first_entry", "first", show=False),
+    Binding("G,end", "jump_to_latest", "latest", key_display="Shift+G", show=False),
+    Binding("ctrl+t", "toggle_reasoning", "reasoning", key_display="Ctrl+T", show=False),
 ]
 
 USER_INPUT_BINDINGS: list[BindingType] = [
-    Binding("enter", "open_actions", "Actions", priority=True),
+    Binding("enter", "open_actions", "actions", priority=True),
 ]
 
 TASK_EDITOR_BINDINGS = EDITOR_BINDINGS
@@ -317,8 +365,8 @@ class FooterBuilder:
     def kanban_with_card() -> list[tuple[str, str]]:
         return [
             ("Enter", "open"),
-            ("Ctrl+.", "AI panel"),
-            ("P", "peek"),
+            ("Ctrl+.", "sessions"),
+            ("p", "peek"),
             ("e", "edit"),
             ("x", "delete"),
             ("s", "start"),
@@ -334,8 +382,9 @@ class FooterBuilder:
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
-            ("Ctrl+.", "AI panel"),
-            ("Ctrl+F", "assistant full"),
+            ("Ctrl+.", "sessions"),
+            ("Ctrl+F", "AI expand"),
+            ("Ctrl+K", "switch session"),
             ("e", "edit"),
             ("d", "delete"),
             ("a", "approve"),
@@ -360,7 +409,7 @@ class FooterBuilder:
             ("s", "start"),
             ("x", "stop"),
             ("r", "restart"),
-            ("Ctrl+.", "AI panel"),
+            ("Ctrl+.", "sessions"),
             ("Esc", "back"),
         ]
 

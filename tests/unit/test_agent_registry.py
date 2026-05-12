@@ -9,7 +9,6 @@ import pytest
 
 from kagan.core._agent import (
     REFERENCE_BACKENDS,
-    AgentError,
     BackendCapability,
     get_backend_spec,
     list_backend_specs,

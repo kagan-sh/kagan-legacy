@@ -8,7 +8,7 @@ interface UseBoardKeyboardOptions {
   selectedTaskPosition: { status: TaskStatus; index: number } | null;
   grouped: Record<TaskStatus, WireTask[]>;
   allFilteredTasks: WireTask[];
-  view: 'kanban' | 'backlog';
+  view: 'board' | 'list';
   query: string;
   setSelectedTaskId: (id: string | null) => void;
   setEditingTask: (task: WireTask | null) => void;
@@ -71,7 +71,7 @@ export function useBoardKeyboard({
           return;
         }
 
-        if (view === 'backlog') {
+        if (view === 'list') {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
             const currentIndex = allFilteredTasks.findIndex((task) => task.id === selectedTask.id);

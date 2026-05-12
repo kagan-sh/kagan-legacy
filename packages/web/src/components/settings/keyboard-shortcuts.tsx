@@ -2,27 +2,27 @@ import { Card } from '@/components/ui/card';
 import { Kbd } from '@/components/ui/kbd';
 
 const SHORTCUTS = [
-  { keys: '? / F1', action: 'Help & Shortcuts' },
-  { keys: 'Cmd/Ctrl+Shift+P', action: 'Quick Actions' },
-  { keys: 'Cmd/Ctrl+K', action: 'Session Switcher' },
-  { keys: 'Cmd/Ctrl+.', action: 'Toggle AI Panel' },
-  { keys: 'Cmd/Ctrl+Shift+F', action: 'Fullscreen AI Panel' },
-  { keys: 'Esc', action: 'Stop / dismiss' },
-  { keys: 'N', action: 'Create task' },
-  { keys: '/', action: 'Focus board search' },
-  { keys: 'Enter', action: 'Open selected item' },
-  { keys: 'S / Shift+S', action: 'Start / Stop task' },
+  { shortcut: '? / F1', action: 'Help & shortcuts' },
+  { shortcut: 'Cmd/Ctrl+Shift+P', action: 'Quick actions' },
+  { shortcut: 'Cmd/Ctrl+K', action: 'Session switcher' },
+  { shortcut: 'Cmd/Ctrl+.', action: 'Toggle Sessions' },
+  { shortcut: 'Cmd/Ctrl+Shift+F', action: 'Expand overlay' },
+  { shortcut: 'Esc', action: 'Stop / dismiss' },
+  { shortcut: 'N', action: 'Create task' },
+  { shortcut: '/', action: 'Focus board search' },
+  { shortcut: 'Enter', action: 'Open selected item' },
+  { shortcut: 'S / Shift+S', action: 'Start / Stop task' },
 ];
 
 export function KeyboardShortcuts() {
   return (
     <Card className="p-4">
-      <h3 className="mb-3 text-sm font-medium">Keyboard Shortcuts</h3>
+      <h3 className="mb-3 text-sm font-medium">Keyboard shortcuts</h3>
       <div className="space-y-2">
-        {SHORTCUTS.map(({ keys, action }) => (
-          <div key={keys} className="flex items-center justify-between text-sm">
+        {SHORTCUTS.map(({ shortcut, action }) => (
+          <div key={shortcut} className="flex items-center justify-between text-sm">
             <span className="text-[var(--muted-foreground)]">{action}</span>
-            <Kbd>{keys}</Kbd>
+            <Kbd>{shortcut}</Kbd>
           </div>
         ))}
       </div>

@@ -37,7 +37,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from sqlalchemy import Engine
+    from kagan.core._event_log import EventLog
 
 from kagan.core._agent import (
     _BACKEND_SPECS,
@@ -427,7 +427,7 @@ def _cues_to_json(cues: list[FakeCue]) -> str:
 
 
 async def emit_resume_frame(
-    engine: Engine,
+    event_log: EventLog,
     session_id: str,
     kind: Literal["chat", "task"] = "task",
     turn_active: bool = True,
@@ -439,7 +439,9 @@ async def emit_resume_frame(
     real orphan reap.  Never call this from production code paths.
 
     Args:
-        engine: The SQLAlchemy engine from the live ``KaganCore`` instance.
+        event_log: The **same** in-process ``EventLog`` that SSE routes subscribe
+            to (e.g. ``KaganCore._event_log``). A fresh ``EventLog(engine)``
+            would persist to the DB but would not fan out to live subscribers.
         session_id: Target session to receive the frame.
         kind: Frame kind — ``"chat"`` or ``"task"``.
         turn_active: Forwarded to ``FrameResume.turn_active``; controls whether
@@ -448,11 +450,9 @@ async def emit_resume_frame(
     Returns:
         The assigned ``seq`` for the new frame.
     """
-    from kagan.core._event_log import EventLog
     from kagan.server.responses import FrameResume
 
     frame = FrameResume(kind=kind, turn_active=turn_active).model_dump()
-    event_log = EventLog(engine)
     seq = await event_log.append(session_id, kind, frame)
     logger.debug(
         "FakeAgent.emit_resume_frame: session={} kind={} turn_active={} seq={}",

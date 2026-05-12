@@ -60,6 +60,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
 
+from kagan.core.errors import NotFoundError
 from kagan.server._frame_reduce import reduce_frames
 from kagan.server._helpers import _err, handle_errors, require_context
 from kagan.server.responses import FrameEntry, FrameReady, FrameSnapshot
@@ -222,8 +223,12 @@ async def _sse_generator(
         )
 
     # --- Phase 2: ready sentinel ----------------------------------------------
+    # When we skip the snapshot (reconnect at head: from_seq > 0, empty history),
+    # max_seq_floored is 0 while the client sent Last-Event-ID = from_seq - 1.
+    # Emit ready with that id so the browser does not treat id:0 as a rewind.
+    ready_event_id = max_seq_floored if emit_snapshot else max(from_seq - 1, 0)
     ready = FrameReady()
-    yield _sse_event(max_seq_floored, "ready", ready.model_dump_json())
+    yield _sse_event(ready_event_id, "ready", ready.model_dump_json())
 
     # --- Phase 3: live tail ---------------------------------------------------
     # After replaying *history* into the snapshot, new rows start at
@@ -365,10 +370,10 @@ async def _task_events(request: Request, *, ctx: ServerContext) -> StreamingResp
     """
     task_id = cast("str", request.path_params["task_id"])
 
-    # Verify task exists.
+    # Verify task exists (narrow catch — DB/client errors must not become 404).
     try:
         await ctx.client.tasks.get(task_id)
-    except Exception:
+    except NotFoundError:
         return _err("Task not found", status=404)
 
     # Resolve session: prefer active, fall back to latest.

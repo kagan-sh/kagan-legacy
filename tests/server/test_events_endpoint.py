@@ -392,17 +392,24 @@ async def test_last_event_id_at_head_yields_ready_only(setup) -> None:
     chat_session = await core.chat_sessions.create(
         source="test", label="at-head-test", project_id=project_id
     )
-    seq0 = await core._event_log.append(
-        chat_session.id, "chat", _create_frame(0, role="user", text="only")
+    await core._event_log.append(
+        chat_session.id, "chat", _create_frame(0, role="user", text="first")
+    )
+    seq_last = await core._event_log.append(
+        chat_session.id, "chat", _create_frame(1, role="user", text="second")
     )
 
     ctx.shutdown_event.set()
-    resp = await _get_session_sse(mcp, chat_session.id, headers={"last-event-id": str(seq0)})
+    resp = await _get_session_sse(mcp, chat_session.id, headers={"last-event-id": str(seq_last)})
     events = await _collect_from_stream_response(resp, stop_after=10, timeout=2.0)
 
     event_types = [e.get("event") for e in events if "event" in e]
     assert "snapshot" not in event_types, f"Unexpected snapshot when at head: {event_types}"
     assert "ready" in event_types
+    ready_events = [e for e in events if e.get("event") == "ready"]
+    assert ready_events, "expected a ready frame"
+    # Ready id must match client's Last-Event-ID when max_seq > 0 (avoids backlog replay).
+    assert ready_events[0]["id"] == str(seq_last)
 
 
 @pytest.mark.asyncio
@@ -420,6 +427,8 @@ async def test_last_event_id_ahead_of_max_does_not_error(setup) -> None:
 
     event_types = [e.get("event") for e in events if "event" in e]
     assert "ready" in event_types, f"No ready event in {event_types}"
+    ready_events = [e for e in events if e.get("event") == "ready"]
+    assert ready_events[0]["id"] == "9999"
 
 
 @pytest.mark.asyncio

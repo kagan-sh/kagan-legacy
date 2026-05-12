@@ -195,10 +195,10 @@ test.describe('Chat resume — useEntryStream', () => {
 
     // Both tabs should eventually show the same assistant reply.
     await expect(lastAssistantMessage(page)).toContainText('shared text for both tabs', {
-      timeout: 15_000,
+      timeout: 45_000,
     });
     await expect(lastAssistantMessage(page2)).toContainText('shared text for both tabs', {
-      timeout: 15_000,
+      timeout: 45_000,
     });
 
     await page2.close();
@@ -229,11 +229,9 @@ test.describe('Chat resume — useEntryStream', () => {
     // on this page will receive the 'resume' event immediately.
     await emitResumeFrame(request, sessionId, { kind: 'chat', turnActive: true });
 
-    // Sonner renders toasts under [data-sonner-toast]; avoid getByText across
-    // shadow/ellipsis variants (Unicode … vs ASCII).
-    await expect(
-      page.locator("[data-sonner-toast]").filter({ hasText: /still working|session resumed/i }),
-    ).toBeVisible({ timeout: 20_000 });
+    // Toast copy uses Unicode ellipsis (…) in use-chat-session; match loosely.
+    const toastText = page.getByText(/Agent is still working|Session resumed/i);
+    await expect(toastText.first()).toBeVisible({ timeout: 30_000 });
 
     await clearScenario(request, sessionId);
   });

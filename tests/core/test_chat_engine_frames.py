@@ -208,15 +208,18 @@ async def test_two_subscribers_see_identical_seq_stream(board: KaganDriver) -> N
     collected_a: list[Any] = []
     collected_b: list[Any] = []
     stop = asyncio.Event()
+    reg_a = asyncio.Event()
+    reg_b = asyncio.Event()
 
-    async def _subscribe(collector: list[Any]) -> None:
-        async for row in event_log.subscribe(sid, "chat"):
+    async def _subscribe(collector: list[Any], registered: asyncio.Event) -> None:
+        async for row in event_log.subscribe(sid, "chat", queue_registered=registered):
             collector.append(row)
             if stop.is_set():
                 break
 
-    sub_a = asyncio.create_task(_subscribe(collected_a))
-    sub_b = asyncio.create_task(_subscribe(collected_b))
+    sub_a = asyncio.create_task(_subscribe(collected_a, reg_a))
+    sub_b = asyncio.create_task(_subscribe(collected_b, reg_b))
+    await asyncio.wait_for(asyncio.gather(reg_a.wait(), reg_b.wait()), timeout=5.0)
 
     await board.chat_send(sid, "hello", agent_chunks=["one", "two"])
 

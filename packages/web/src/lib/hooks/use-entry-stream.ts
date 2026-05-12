@@ -143,8 +143,9 @@ export function useEntryStream(options: UseEntryStreamOptions): EntryStreamState
 
     es.addEventListener('resume', (e: MessageEvent) => {
       try {
-        const frame = JSON.parse(e.data as string) as { turn_active: boolean };
-        setResumeNotice({ turnActive: frame.turn_active });
+        const raw = JSON.parse(e.data as string) as Record<string, unknown>;
+        const turnActive = raw.turn_active === true || raw.turnActive === true;
+        setResumeNotice({ turnActive });
       } catch {
         // Malformed resume — ignore.
       }

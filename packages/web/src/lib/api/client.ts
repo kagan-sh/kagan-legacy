@@ -155,8 +155,8 @@ export class KaganApiClient extends BaseClient {
     const response = await this.streamRequest(
       this.getFullUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}/message`),
       {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, ...options }),
       },
     );

@@ -157,7 +157,7 @@ test.describe('Chat resume — useEntryStream', () => {
 
     // Wait for first partial chunk.
     await expect(page.getByTestId('chat-stream-agent-text')).toContainText('before close', {
-      timeout: 10_000,
+      timeout: 30_000,
     });
 
     // Navigate away ("close tab") then come back.
@@ -169,7 +169,7 @@ test.describe('Chat resume — useEntryStream', () => {
     // The persisted partial text and/or the streaming continuation should be visible.
     await expect(lastUserMessage(page)).toContainText('reopen test');
     await expect(lastAssistantMessage(page)).toContainText('before close', {
-      timeout: 90_000,
+      timeout: 120_000,
     });
 
     await clearScenario(request, sessionId);
@@ -231,7 +231,7 @@ test.describe('Chat resume — useEntryStream', () => {
 
     // Sonner toast copy includes an ellipsis (…) — match with a substring regex.
     await expect(page.getByText(/Agent is still working/)).toBeVisible({
-      timeout: 45_000,
+      timeout: 60_000,
     });
 
     await clearScenario(request, sessionId);

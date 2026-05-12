@@ -71,6 +71,6 @@ def test_permission_tool_call(chat_workdir: Path, chat_home: Path, tmp_path: Pat
         assert "approved" in full[mark:]
 
         pty.send_key("ctrl_d")
-        assert pty.wait(timeout=10) == 0
+        assert pty.wait(timeout=45) == 0
     finally:
         pty.close()

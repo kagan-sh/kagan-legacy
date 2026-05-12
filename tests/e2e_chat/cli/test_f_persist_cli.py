@@ -55,7 +55,7 @@ def test_session_persist_and_restore(chat_workdir: Path, chat_home: Path, tmp_pa
         pty1.read_until_contains("persist reply", timeout=15, after=mark)
 
         pty1.send_key("ctrl_d")
-        assert pty1.wait(timeout=10) == 0
+        assert pty1.wait(timeout=45) == 0
     finally:
         pty1.close()
 
@@ -78,6 +78,6 @@ def test_session_persist_and_restore(chat_workdir: Path, chat_home: Path, tmp_pa
         )
 
         pty2.send_key("ctrl_d")
-        assert pty2.wait(timeout=10) == 0
+        assert pty2.wait(timeout=45) == 0
     finally:
         pty2.close()

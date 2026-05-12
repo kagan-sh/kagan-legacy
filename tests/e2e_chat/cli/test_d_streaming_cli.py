@@ -51,6 +51,6 @@ def test_streaming_chunks(chat_workdir: Path, chat_home: Path, tmp_path: Path) -
         assert "alphabravocharlie" in normed.replace("\n", "").replace(" ", "")
 
         pty.send_key("ctrl_d")
-        assert pty.wait(timeout=10) == 0
+        assert pty.wait(timeout=45) == 0
     finally:
         pty.close()

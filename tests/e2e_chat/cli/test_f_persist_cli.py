@@ -73,13 +73,18 @@ def test_session_persist_and_restore(chat_workdir: Path, chat_home: Path, tmp_pa
         args=["--session-id", session_id],
     )
     try:
-        pty2.read_until_prompt_ready(timeout=15)
-
+        # Anchor after the restore-specific banner so `after=mark2` waits are not
+        # vacuous (Greptile): `read_until_prompt_ready` can leave the cursor past
+        # the entire resumed transcript when the first "Type a request" is only
+        # rendered at the bottom.
+        pty2.read_until_contains("Resumed transcript", timeout=20)
+        mark2 = pty2.mark()
+        pty2.read_until_contains("persist reply", timeout=20, after=mark2)
         full = pty2.normalised_text()
         assert "persist reply" in full or "remember this" in full, (
             f"Restored transcript missing prior turn:\n{full[-1000:]}"
         )
-        pty2.read_until_contains("Type a request", timeout=20)
+        pty2.read_until_contains("Type a request", timeout=8, after=mark2)
 
         pty2.send_key("ctrl_d")
         assert pty2.wait(timeout=120) == 0

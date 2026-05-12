@@ -597,7 +597,7 @@ class KaganDriver:
 
         assert self._ctx is not None, "Driver not booted"
         return await _emit(
-            self._ctx.engine,
+            self._ctx._event_log,
             session_id=session_id,
             kind=kind,  # type: ignore[arg-type]  # narrowed to Literal at runtime
             turn_active=turn_active,

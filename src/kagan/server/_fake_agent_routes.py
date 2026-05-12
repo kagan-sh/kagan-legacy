@@ -97,7 +97,7 @@ def register_fake_agent_routes(mcp: Any) -> None:
         turn_active = bool(body.get("turn_active", True))
 
         seq = await emit_resume_frame(
-            ctx.client.engine,
+            ctx.client._event_log,
             session_id=session_id,
             kind=kind,
             turn_active=turn_active,

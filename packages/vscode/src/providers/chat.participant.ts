@@ -202,6 +202,7 @@ export function registerChatParticipant(
       state.selectedSessionId = null;
       state.selectedSessionType = null;
       state.selectedSessionRole = null;
+      state.stopLiveStreamSubscription();
       void vscode.window.showInformationMessage(`Session ${sessionId.slice(0, 8)} closed.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -247,6 +248,7 @@ async function handleRequest(
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<void> {
+  const prevRaw = state.activeRawChatSessionId;
   const next = resetStickyChatStateIfNewConversation(
     { activeRawChatSessionId: state.activeRawChatSessionId },
     chatCtx,
@@ -256,6 +258,9 @@ async function handleRequest(
     state.selectedSessionId = null;
     state.selectedSessionType = null;
     state.selectedSessionRole = null;
+  }
+  if (prevRaw !== null && state.activeRawChatSessionId === null) {
+    state.stopLiveStreamSubscription();
   }
 
   switch (request.command) {
@@ -372,6 +377,7 @@ async function handleChat(
           state.activeRawChatSessionId = null;
           state.selectedSessionId = null;
           state.selectedSessionType = null;
+          state.stopLiveStreamSubscription();
           return;
         }
       }
@@ -382,6 +388,7 @@ async function handleChat(
     state.activeRawChatSessionId = null;
     state.selectedSessionId = null;
     state.selectedSessionType = null;
+    state.stopLiveStreamSubscription();
   }
 }
 
@@ -584,6 +591,7 @@ async function handleClose(
     state.selectedSessionId = null;
     state.selectedSessionType = null;
     state.selectedSessionRole = null;
+    state.stopLiveStreamSubscription();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     stream.markdown(`**Error closing session:** ${message}\n`);

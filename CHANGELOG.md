@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.37 (2026-05-12)
+
+
+
+
+### Features
+
+- **web,vscode**: Dashboard shell, clients, docs, and CI
+  ([`c48b470`](https://github.com/kagan-sh/kagan/commit/c48b470aa4af763e49158f2cd13dcf1ddf56152d))
+
+
+
+
+
 ## v0.19.0-beta.36 (2026-05-12)
 
 

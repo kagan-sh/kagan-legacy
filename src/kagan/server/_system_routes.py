@@ -210,6 +210,18 @@ def register_system_routes(mcp: FastMCP) -> None:
 
         from kagan.server.responses import DoctorCheckResponse, DoctorReportResponse
 
+        # Playwright-managed webServer sets KAGAN_E2E_TEMP_DIR. CI runners often
+        # fail real doctor checks (missing agent CLIs, etc.); welcome e2e must not
+        # be blocked by the non-dismissible PreflightGate in that mode only.
+        if os.environ.get("KAGAN_E2E_TEMP_DIR"):
+            report = DoctorReportResponse(
+                checks=[],
+                ok=True,
+                fail_count=0,
+                warn_count=0,
+            )
+            return _ok(report.model_dump())
+
         checks = await asyncio.to_thread(run_doctor_checks)
         check_responses = [
             DoctorCheckResponse(

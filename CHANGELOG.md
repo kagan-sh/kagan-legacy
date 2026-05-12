@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.36 (2026-05-12)
+
+
+
+
+### Features
+
+- **core,server,cli**: Engine, event log, and non-TUI tests
+  ([`ae486de`](https://github.com/kagan-sh/kagan/commit/ae486deaba24e5a27d3d68ebc478a93e636e8982))
+
+
+
+
+
 ## v0.19.0-beta.35 (2026-05-06)
 
 

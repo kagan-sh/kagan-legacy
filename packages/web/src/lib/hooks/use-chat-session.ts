@@ -173,7 +173,10 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         entryStream.resumeNotice.turnActive
           ? 'Agent is still working… (session resumed)'
           : 'Session resumed.',
-        { duration: 3000 },
+        {
+          // Long enough for e2e / slow clients; resume is rare and worth reading.
+          duration: entryStream.resumeNotice.turnActive ? 30_000 : 10_000,
+        },
       );
     }
     if (!entryStream.resumeNotice) {

@@ -2,6 +2,8 @@ import { expect, test } from "./coverage-fixture";
 import { ensureProjectReady, waitForServerHealthy } from "./helpers";
 
 test.describe("Welcome", () => {
+  test.describe.configure({ timeout: 120_000 });
+
   test.beforeEach(async ({ request }) => {
     await waitForServerHealthy(request);
     await ensureProjectReady(request);

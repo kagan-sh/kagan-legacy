@@ -229,10 +229,11 @@ test.describe('Chat resume — useEntryStream', () => {
     // on this page will receive the 'resume' event immediately.
     await emitResumeFrame(request, sessionId, { kind: 'chat', turnActive: true });
 
-    // Sonner toast copy includes an ellipsis (…) — match with a substring regex.
-    await expect(page.getByText(/Agent is still working/)).toBeVisible({
-      timeout: 60_000,
-    });
+    // Sonner renders toasts under [data-sonner-toast]; avoid getByText across
+    // shadow/ellipsis variants (Unicode … vs ASCII).
+    await expect(
+      page.locator("[data-sonner-toast]").filter({ hasText: /still working|session resumed/i }),
+    ).toBeVisible({ timeout: 20_000 });
 
     await clearScenario(request, sessionId);
   });

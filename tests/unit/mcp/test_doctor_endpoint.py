@@ -19,6 +19,30 @@ from tests.helpers.server_ws import make_api_server
 pytestmark = [pytest.mark.unit]
 
 
+@pytest.mark.asyncio
+async def test_doctor_short_circuits_when_kagan_e2e_temp_dir_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Isolated Playwright webServer sets KAGAN_E2E_TEMP_DIR — doctor must not block UI."""
+
+    def _boom() -> list[DoctorCheck]:
+        raise AssertionError("run_doctor_checks must not run in e2e isolation mode")
+
+    monkeypatch.setenv("KAGAN_E2E_TEMP_DIR", "/tmp/kagan-e2e-isolation-test")
+    monkeypatch.setattr("kagan.server._system_routes.run_doctor_checks", _boom)
+    mcp = make_api_server()
+    endpoint = get_http_endpoint(mcp, "/api/doctor", "GET")
+
+    response = await endpoint(make_request("GET", "/api/doctor"))
+
+    payload = json_body(response)
+    data: dict[str, Any] = payload["data"]
+    assert data["ok"] is True
+    assert data["fail_count"] == 0
+    assert data["warn_count"] == 0
+    assert data["checks"] == []
+
+
 def _make_checks(*statuses: str) -> list[DoctorCheck]:
     """Build minimal DoctorCheck stubs for the given statuses."""
     return [

@@ -53,7 +53,7 @@ jobs:
           app-id: ${{ secrets.BOT_ID }}
           private-key: ${{ secrets.BOT_SK }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Fetch entire repository history so we can determine version number from it
           fetch-depth: 0
@@ -148,7 +148,7 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7

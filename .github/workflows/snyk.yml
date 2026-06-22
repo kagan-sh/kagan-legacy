@@ -25,7 +25,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -64,7 +64,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # snyk/actions/setup@master
 
       - name: Snyk code scan

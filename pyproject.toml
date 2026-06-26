@@ -127,7 +127,11 @@ max-complexity = 20
 docstring-code-format = true
 
 [tool.pyrefly]
-project_includes = ["src", "tests"]
+# Scoped to src/ — what CI gates (poe typecheck = `pyrefly check src/`). tests/ carries
+# ~135 latent findings (mostly test idioms: dynamic fake-stub attrs, un-narrowed Task|None,
+# 3rd-party stub gaps) that are not yet gated; including tests here made editors surface that
+# ungated backlog. Gating tests/ is tracked as a low-priority follow-up issue.
+project_includes = ["src"]
 search_path = ["src", "."]
 permissive-ignores = true
 

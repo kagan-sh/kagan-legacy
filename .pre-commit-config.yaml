@@ -19,9 +19,9 @@ repos:
       rev: v6.0.0
       hooks:
           - id: end-of-file-fixer
-            exclude: ^(tests/snapshots/__snapshots__/|CNAME$)
+            exclude: ^(tests/kagan/tui/smoke/__snapshots__/|(^|/)CNAME$)
           - id: trailing-whitespace
-            exclude: ^(tests/snapshots/__snapshots__/|.*\.svg$)
+            exclude: ^(tests/kagan/tui/smoke/__snapshots__/|.*\.svg$)
           - id: check-yaml
             # --unsafe permits mkdocs-material's !!python/name: emoji tags
             # while still validating YAML structure.
@@ -30,14 +30,14 @@ repos:
           - id: check-merge-conflict
           - id: mixed-line-ending
             args: [--fix=lf]
-            exclude: ^tests/snapshots/__snapshots__/
+            exclude: ^tests/kagan/tui/smoke/__snapshots__/
 
     # Markdown formatter
     - repo: https://github.com/hukkin/mdformat
       rev: 1.0.0
       hooks:
           - id: mdformat
-            exclude: ^(\.github/|README\.md$|CNAME$|CHANGELOG\.md$)
+            exclude: ^(\.github/|README\.md$|(^|/)CNAME$|CHANGELOG\.md$)
             additional_dependencies:
                 - mdformat-gfm
                 - mdformat-ruff
@@ -71,18 +71,4 @@ repos:
             entry: uv run poe typecheck
             language: system
             types: [python]
-            pass_filenames: false
-
-          - id: web-typecheck
-            name: web typecheck
-            entry: bash -c 'cd packages/web && pnpm exec tsc --noEmit'
-            language: system
-            files: ^packages/web/.*\.(ts|tsx)$
-            pass_filenames: false
-
-          - id: wire-drift
-            name: wire drift check
-            entry: uv run python scripts/check_wire_drift.py
-            language: system
-            files: ^(src/kagan/server/responses\.py|packages/shared/api-client/src/wire\.ts)$
             pass_filenames: false

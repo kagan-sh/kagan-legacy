@@ -1,7 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "include": ["src", "vite-env.d.ts", "vitest.config.ts"],
-  "compilerOptions": {
-    "types": ["@testing-library/jest-dom/vitest", "vitest/globals"]
-  }
-}

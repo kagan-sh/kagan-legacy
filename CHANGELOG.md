@@ -257,7 +257,7 @@
 
 ### Continuous Integration
 
-- Point fast-gate at relocated tests/unit/core/ path
+- Point fast-gate at relocated tests/kagan/core/ path
   ([#151](https://github.com/kagan-sh/kagan/pull/151),
   [`f34286c`](https://github.com/kagan-sh/kagan/commit/f34286cbcca3cccd519dfe5c18684043fff5079b))
 

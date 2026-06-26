@@ -1,8 +1,8 @@
 # Kagan Documentation
 
-> Documentation for Kagan: a Kanban TUI for AI coding agents with a structural human review gate. No agent-authored task reaches your main branch without an explicit approval — the state machine enforces it.
+> Documentation for Kagan: an interactive CLI supervision layer for AI coding agents with a structural human review gate. No agent-authored task reaches your main branch without an explicit approval — the harness enforces it.
 
-Kagan runs coding agents (Claude Code, Codex, Gemini CLI, and 11 more) in isolated git worktrees. When an agent finishes, the task lands in REVIEW. A human approves and merges. That gate is structural — not a setting.
+Kagan runs supported coding agents (Claude Code, Codex, and fake-agent in tests) in isolated git worktrees. When an agent finishes, the task lands in REVIEW. A human approves and merges. That gate is structural — not a setting.
 
 ## Docs
 
@@ -14,14 +14,11 @@ Kagan runs coding agents (Claude Code, Codex, Gemini CLI, and 11 more) in isolat
 - [Chat & REPL](https://docs.kagan.sh/guides/chat/): Interactive chat orchestrator
 - [ACP Sessions](https://docs.kagan.sh/guides/acp-session-lifecycle/): Chat session lifecycle management
 - [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/): Editor integration via MCP
-- [Web Dashboard](https://docs.kagan.sh/guides/web-dashboard/): Browser-based companion surface
-- [VS Code Extension](https://docs.kagan.sh/guides/vscode-extension/): VS Code companion surface
-- [GitHub integration](https://docs.kagan.sh/guides/github/): Two-way metadata sync (title, body, labels, criteria), create-and-link, `#`-mention autocomplete; status lifecycles stay independent
+- [GitHub integration](https://docs.kagan.sh/guides/github/): Two-way metadata sync (title, body, labels, criteria), create-and-link; status lifecycles stay independent
 - [GitHub Models](https://docs.kagan.sh/guides/github-models/): Use 40+ LLMs for free via GitHub Models
-- [Remote Access](https://docs.kagan.sh/guides/remote-access/): Access Kagan from web or phone
 - [CLI Reference](https://docs.kagan.sh/reference/cli/): All CLI commands and flags
 - [Configuration](https://docs.kagan.sh/reference/configuration/): Config.toml reference
-- [Keybindings](https://docs.kagan.sh/reference/keybindings/): TUI and web shortcuts; orchestrator overlay cycles attached agent streams with `Ctrl+↑` / `Ctrl+↓` (TUI) and `Cmd/Ctrl+↑` / `Cmd/Ctrl+↓` (web). Kanban fullscreen-AI is `Ctrl+F`.
+- [Keybindings](https://docs.kagan.sh/reference/keybindings/): in-session CLI key bindings for the `kagan` interactive session.
 - [MCP Tools](https://docs.kagan.sh/reference/mcp-tools/): Full MCP tool catalog (23+ tools)
 - [Integrations](https://docs.kagan.sh/guides/github/): GitHub two-way sync
 - [Troubleshooting](https://docs.kagan.sh/troubleshooting/): Common issues and fixes
@@ -31,4 +28,4 @@ Kagan runs coding agents (Claude Code, Codex, Gemini CLI, and 11 more) in isolat
 - [Landing Page](https://kagan.sh/): Product homepage
 - [GitHub](https://github.com/kagan-sh/kagan): Source code
 - [PyPI](https://pypi.org/project/kagan/): Python package
-- [Discord](https://discord.gg/dB5AgMwWMy): Community
+- [Discord](https://discord.gg/dB5AgMwMy): Community

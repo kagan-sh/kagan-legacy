@@ -2,14 +2,13 @@
 
 ## Prerequisites
 
-| Tool                             | Install                                                             | Why                           |
-| -------------------------------- | ------------------------------------------------------------------- | ----------------------------- |
-| Python 3.12+                     | [python.org](https://www.python.org/downloads/)                     | Runtime                       |
-| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh`                  | Package manager + task runner |
-| Git                              | system package manager                                              | Version control               |
-| Node 18+ / pnpm                  | [nodejs.org](https://nodejs.org) — only if touching `packages/web/` | Web dashboard                 |
+| Tool                             | Install                                            | Why                           |
+| -------------------------------- | -------------------------------------------------- | ----------------------------- |
+| Python 3.12+                     | [python.org](https://www.python.org/downloads/)    | Runtime                       |
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | Package manager + task runner |
+| Git                              | system package manager                             | Version control               |
 
-`uv run poe` is the single entry point for all dev commands. [Poe the Poet](https://poethepoet.naez.com/) is installed automatically by `uv sync`.
+`uv run poe` is the single entry point for all dev commands. [Poe the Poet](https://poethepoet.natn.io/) is installed automatically by `uv sync`.
 
 ## Quick start
 
@@ -28,7 +27,6 @@ uv run poe dev             # launch TUI in dev mode
 uv run poe test            # run all Python tests
 uv run poe fix             # auto-fix lint + format
 uv run poe check           # all quality gates
-uv run poe web-build       # build web dashboard
 uv run poe eval            # run prompt evaluation suite
 ```
 
@@ -36,41 +34,46 @@ Run `uv run poe --help` for the full task list.
 
 ## Where to look
 
-| Task              | Location                   | Notes                                         |
-| ----------------- | -------------------------- | --------------------------------------------- |
-| Add CLI command   | `src/kagan/cli/`           | Click group, lazy-loaded                      |
-| Add MCP tool      | `src/kagan/mcp/toolsets/`  | One file per domain                           |
-| Add TUI screen    | `src/kagan/tui/screens/`   | Register in `app.py` SCREENS dict (see below) |
-| Add agent backend | `src/kagan/core/_agent.py` | Dict entry in AGENT_BACKENDS                  |
-| Web UI feature    | `packages/web/src/`        | React 19 + jotai + Tailwind 4                 |
-| Modify prompts    | `src/kagan/core/_prompts/` | Run `uv run poe eval` after                   |
+| Task              | Location                            | Notes                                                                  |
+| ----------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| Add CLI command   | `src/kagan/cli/`                    | Click group, lazy-loaded                                               |
+| Add MCP tool      | `src/kagan/mcp/toolsets/`           | One file per domain                                                    |
+| Add TUI screen    | `src/kagan/tui/screens/`            | Register in `app.py` SCREENS dict (see below)                          |
+| Add agent backend | `src/kagan/core/agents/registry.py` | Add backend spec; update `SUPPORTED_AGENT_BACKENDS` if it ships in 1.0 |
+| Modify prompts    | `src/kagan/core/prompts/`           | Run `uv run poe eval` after                                            |
 
 ## Module ownership
 
-Each `_`-prefixed module in `src/kagan/core/` owns a specific concern. Patch the right layer:
+Each package under `src/kagan/core/` owns a specific concern. Patch the right layer:
 
-| Module                 | Owns                                                                     | Go elsewhere if…                                              |
-| ---------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| `core/_tasks.py`       | Task CRUD, worktree coordination                                         | Adding session/ACP logic → `_sessions.py`                     |
-| `core/_sessions.py`    | Session lifecycle, ACP streaming                                         | Adding task-level features → `_tasks.py`                      |
-| `core/_agent.py`       | Agent backend registry + launcher                                        | Adding session features → `_sessions.py`                      |
-| `core/_transitions.py` | Status state machine — the only place to add valid (from→to) transitions | You want to bypass the funnel — don't                         |
-| `core/_prompts/`       | Three-layer prompt resolution                                            | Changing persona defaults → add to the config layer, not here |
-| `core/_events.py`      | DB-persisted task/session event streams                                  | Adding in-memory signals → `agent_events.py`                  |
-| `cli/chat/`            | CLI chat REPL + streaming controller                                     | Adding TUI chat — that lives in `tui/widgets/chat.py`         |
-| `server/_routes.py`    | HTTP/SSE endpoints                                                       | Adding MCP tools — those live in `mcp/toolsets/`              |
+| Module / package           | Owns                                                                     | Go elsewhere if…                                               |
+| -------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `core/tasks/service.py`    | Task CRUD, worktree coordination                                         | Adding session/ACP logic → `sessions/service.py`               |
+| `core/sessions/service.py` | Session lifecycle, ACP streaming                                         | Adding task-level features → `tasks/service.py`                |
+| `core/agents/registry.py`  | Agent backend registry + launcher                                        | Adding session features → `sessions/service.py`                |
+| `core/transitions.py`      | Status state machine — the only place to add valid (from→to) transitions | You want to bypass the funnel — don't                          |
+| `core/prompts/`            | Three-layer prompt resolution                                            | Changing behavioral defaults → settings layer, not prompt code |
+| `core/board/events.py`     | DB-persisted task/session event streams                                  | Adding in-memory signals → wire frames                         |
+
+Surfaces (`cli`, `tui`, `mcp`) should import domain behavior through **`kagan.core.api`** plus stable submodules (`models`, `enums`, `errors`, `chat`, `doctor_checks`, `git`, `format`).
+
+Do not use `from __future__ import annotations` anywhere in the repo (`src/`, `scripts/`, `evals/`, `tests/`).
 
 ## Package boundaries
 
-Private modules (`_*.py`) are internal to their package. `kagan.tui` and `kagan.cli` may only import
-from `kagan.core`'s public API (non-underscore modules). This is enforced by `import-linter` (see
-`[tool.importlinter]` in `pyproject.toml`).
+Internal packages (`persistence`, `tasks`, `sessions`, `agents`, `board`, etc.) are not importable from surfaces. This is enforced by `import-linter` (see `[tool.importlinter]` in `pyproject.toml`).
 
-If you need a new cross-package capability, expose it through the public `__init__.py` of the source
-package — do not import `_`-prefixed modules from outside their parent package.
+If you need a new cross-package capability, expose it through `kagan.core.api` — do not import internal modules from `kagan.tui`, `kagan.cli`, or `kagan.mcp`.
 
 You will see this failure as `ERROR — contract 'kagan.tui private module access'` when running
 `uv run poe check-boundaries`.
+
+## House rules
+
+- Mutate `task.status` and `session.status` through `transition_task` / `transition_session`; add missing valid transitions to the funnel instead of bypassing it.
+- Use `db_sync` / `db_async` helpers for database access. Do not open raw SQLModel sessions in feature code.
+- Use `loguru.logger` for application logging, not stdlib `logging`.
+- Do not write `task.status = ...` or `session.status = ...` directly outside the documented low-level DB callback exceptions.
 
 ## Adding a TUI screen
 
@@ -112,23 +115,9 @@ test: add edge case for empty acceptance criteria
 - Tests for behavior changes
 - Run `uv run poe check` before pushing
 
-## Web dashboard
-
-If your PR touches `packages/web/`:
-
-```bash
-uv run poe dev-web-hot     # backend + Vite hot reload (best for development)
-uv run poe web-check       # typecheck + unit tests
-uv run poe web-build       # bundle for Python package
-```
-
-The Vite dev server proxies API calls to a running Kagan backend. `dev-web-hot` starts both automatically.
-
-See [`packages/web/README.md`](packages/web/README.md) for frontend-specific details and [`docs/internal/architecture/web.md`](docs/internal/architecture/web.md) for architecture.
-
 ## Prompt changes
 
-If you modify `src/kagan/core/_prompts/`:
+If you modify `src/kagan/core/prompts/`:
 
 1. Run `uv run poe eval` to benchmark against the eval suite
 1. Update `evals/promptfooconfig.yaml` if adding new prompt behaviors
@@ -141,10 +130,6 @@ Hooks run automatically on commit: gitleaks, ruff lint/format, pyrefly typecheck
 ```bash
 pre-commit install
 ```
-
-## Persona preset safety
-
-Kagan imports persona presets from public GitHub repos. Trusted repos are listed in `registry/persona_repo_whitelist.json`. To add your repo, open a PR with: what the preset contains, why it is safe, and how users can review it.
 
 ## Security
 

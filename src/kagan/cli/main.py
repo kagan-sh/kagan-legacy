@@ -141,7 +141,8 @@ def _launch_session() -> None:
     # blocking confirm still gates ONLY on a fail; warnings inform and proceed.
     checks = run_doctor_checks()
     fails = [c for c in checks if c.status == "fail"]
-    if fails or any(c.status == "warn" for c in checks):
+    degraded = bool(fails) or any(c.status == "warn" for c in checks)
+    if degraded:
         from kagan.format._console import print_themed
 
         print_themed(render_preflight(checks))
@@ -161,6 +162,10 @@ def _launch_session() -> None:
     elif fails and not click.confirm("Continue anyway?", default=False):
         return
 
+    if degraded:
+        # The preflight/init phase printed with raw click on the primary screen;
+        # wipe it before the full-screen session renders into the litter.
+        click.clear()
     run_async(session_run(repo_root=repo_root))
 
 

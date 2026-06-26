@@ -19,6 +19,9 @@ def _wire(monkeypatch, tmp_path, checks, *, confirm: bool):
     monkeypatch.setattr("kagan.cli.doctor.run_doctor_checks", lambda: checks)
     monkeypatch.setattr("kagan.core.git.repo_root", lambda _start: tmp_path)
     monkeypatch.setattr(main_mod.click, "confirm", lambda *_a, **_k: confirm)
+    monkeypatch.setattr(
+        main_mod.click, "clear", lambda: calls.__setitem__("clears", calls.get("clears", 0) + 1)
+    )
     monkeypatch.setattr("kagan.cli.init.run_init", fake_init)
     monkeypatch.setattr("kagan.cli.session.run", fake_session)
     return calls
@@ -34,6 +37,22 @@ def test_offers_init_when_only_manifest_missing(tmp_path, monkeypatch):
     main_mod._launch_session()
     assert calls.get("init") == tmp_path
     assert calls.get("session") == tmp_path  # session still launches after setup
+    # The raw-click preflight + init walk printed on the primary screen; the seam
+    # must wipe it once before the full-screen session renders into the litter.
+    assert calls.get("clears") == 1
+
+
+def test_clean_launch_does_not_clear(tmp_path, monkeypatch):
+    # All-pass preflight prints nothing — the session must NOT flash-wipe the user's
+    # scrollback on the way in (clear is gated on a degraded preflight).
+    checks = [
+        DoctorCheck(name="git", status="pass", message=""),
+        DoctorCheck(name="repo manifest", status="pass", message=""),
+    ]
+    calls = _wire(monkeypatch, tmp_path, checks, confirm=False)
+    main_mod._launch_session()
+    assert calls.get("session") == tmp_path
+    assert "clears" not in calls
 
 
 def test_declining_setup_does_not_launch_session(tmp_path, monkeypatch):

@@ -8,8 +8,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from loguru import logger
+
 from kagan.core import git
-from kagan.core.comprehension import required_keys
+from kagan.core.comprehension import prompts_for_risk, required_keys_for_task
 from kagan.core.config import load_repo_config
 from kagan.core.errors import ConfigurationError, NotFoundError, ValidationError
 from kagan.core.models import Decision, DriftConcern, Finding, NeedsYou, SmokeTest, Task
@@ -207,6 +209,34 @@ class TaskService:
         self._commit(task, {"type": "comprehension_recorded", "key": key})
         return task
 
+    def record_comprehension_prompts(
+        self, task_id: str, prompts: list[tuple[str, str]] | list[dict[str, Any]]
+    ) -> Task:
+        task = self._load(task_id)
+        floor = len(prompts_for_risk(task.risk))
+        if floor == 0:
+            return task
+        normalized: list[tuple[str, str]] = []
+        for item in prompts:
+            if isinstance(item, dict):
+                key = item.get("key")
+                question = item.get("question")
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                key, question = item[0], item[1]
+            else:
+                logger.warning("dropping malformed comprehension prompt for task {}", task_id)
+                continue
+            if not key or not question:
+                logger.warning("dropping malformed comprehension prompt for task {}", task_id)
+                continue
+            normalized.append((str(key), str(question)))
+        if len(normalized) < floor:
+            return task
+        stored = normalized[:floor]
+        task.comprehension_prompts = stored
+        self._commit(task, {"type": "comprehension_prompts_recorded", "count": len(stored)})
+        return task
+
     def record_approver(self, task_id: str, approver: str) -> Task:
         # Lever 6: append a distinct approver identity. Idempotent per identity so
         # one human pressing approve twice never counts twice toward the high-risk bar.
@@ -231,7 +261,9 @@ class TaskService:
             return False
         if task.risk == "low":
             return True
-        return all(_is_substantive(task.comprehension.get(key)) for key in required_keys(task.risk))
+        return all(
+            _is_substantive(task.comprehension.get(key)) for key in required_keys_for_task(task)
+        )
 
     def add_smoke_test(self, task_id: str, *, behaviour: str, service: str | None = None) -> Task:
         task = self._load(task_id)

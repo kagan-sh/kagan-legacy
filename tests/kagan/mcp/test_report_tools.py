@@ -120,6 +120,57 @@ async def test_report_findings_tool_lands_ai_review_source(data_dir):
 
 
 @pytest.mark.mcp
+async def test_report_comprehension_prompts_tool(data_dir):
+    server = create_server(ServerOptions(data_dir=str(data_dir)))
+    task = Harness(data_dir=data_dir).create_task("Billing retry")
+    prompts = [
+        {"key": "postcondition", "question": "How does billing retry after this diff?"},
+        {"key": "what_breaks", "question": "What race could still lose a charge?"},
+    ]
+    async with connect(server) as client:
+        result = await client.call_tool(
+            "report_comprehension_prompts",
+            {"task_id": task.id, "prompts": prompts},
+        )
+    assert result.isError is False
+    stored = Harness(data_dir=data_dir).get_task(task.id).comprehension_prompts
+    assert stored == [
+        ("postcondition", "How does billing retry after this diff?"),
+        ("what_breaks", "What race could still lose a charge?"),
+    ]
+
+
+@pytest.mark.mcp
+async def test_report_comprehension_prompts_disabled_in_readonly(data_dir):
+    server = create_server(ServerOptions(data_dir=str(data_dir), readonly=True))
+    task = Harness(data_dir=data_dir).create_task("Billing retry")
+    async with connect(server) as client:
+        result = await client.call_tool(
+            "report_comprehension_prompts",
+            {
+                "task_id": task.id,
+                "prompts": [{"key": "postcondition", "question": "q?"}],
+            },
+        )
+    assert result.isError is True
+    assert not Harness(data_dir=data_dir).get_task(task.id).comprehension_prompts
+
+
+@pytest.mark.mcp
+async def test_report_comprehension_prompts_rejects_cross_task_when_bound(data_dir):
+    server = create_server(ServerOptions(data_dir=str(data_dir), task_id="task-bound"))
+    async with connect(server) as client:
+        result = await client.call_tool(
+            "report_comprehension_prompts",
+            {
+                "task_id": "other",
+                "prompts": [{"key": "postcondition", "question": "q?"}],
+            },
+        )
+    assert result.isError is True
+
+
+@pytest.mark.mcp
 async def test_report_findings_disabled_in_readonly(data_dir):
     # MCP-SEC: read-only mode rejects the validator's mutating report too.
     server = create_server(ServerOptions(data_dir=str(data_dir), readonly=True))

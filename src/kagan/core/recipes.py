@@ -103,6 +103,75 @@ _ALIAS_MAP: dict[str, dict[str, str | None]] = {
 }
 
 
+_CLAUDE_TIERS: frozenset[str] = frozenset((*CANONICAL_TIERS, "fable"))
+
+
+def _model_vendor_family(value: str) -> str | None:
+    """Best-effort vendor family for a repo.yaml model string.
+
+    Returns None when the id is not recognizably cross-vendor — unknown native ids
+    pass through to the CLI unchanged."""
+    low = value.lower()
+    if value in _CLAUDE_TIERS or low.startswith("claude") or "/claude-" in low:
+        return "claude"
+    if low.startswith("anthropic/"):
+        return "claude"
+    if low.startswith(("kimi", "moonshot/")):
+        return "moonshot"
+    if low.startswith(("gpt-", "openai/")):
+        return "openai"
+    if len(low) >= 2 and low[0] == "o" and low[1].isdigit():
+        return "openai"
+    return None
+
+
+def _cli_accepts_family(cli: str, value: str, family: str) -> bool:
+    if cli in ("claude", "opencode"):
+        if family == "claude":
+            return True
+        if cli == "opencode" and family == "openai":
+            low = value.lower()
+            return low.startswith(("openai/", "opencode/"))
+        return False
+    if cli == "codex":
+        return family == "openai"
+    if cli == "kimi":
+        return family == "moonshot"
+    return True
+
+
+def validate_model_for_cli(cli: str, value: str | None) -> None:
+    """Reject a builder/reviewer model the task CLI cannot run.
+
+    Canonical tier aliases go through ``resolve_model`` (vendor-locked CLIs fail loud).
+    Detectable cross-vendor native ids (e.g. ``claude-opus`` on codex) fail here;
+    genuinely unknown ids pass through."""
+    if value is None:
+        return
+    if value in CANONICAL_TIERS:
+        resolve_model(cli, value)
+        return
+    family = _model_vendor_family(value)
+    if family is None:
+        return
+    if not _cli_accepts_family(cli, value, family):
+        cli_vendor = {
+            "claude": "Claude",
+            "opencode": "Claude",
+            "codex": "OpenAI",
+            "kimi": "Moonshot",
+        }.get(cli, cli)
+        model_vendor = {"claude": "Claude", "openai": "OpenAI", "moonshot": "Moonshot"}[family]
+        raise ConfigurationError(
+            context="model",
+            detail=(
+                f"model {value!r} is a {model_vendor} model but CLI {cli!r} runs "
+                f"{cli_vendor} models; use a {cli}-native id, a canonical tier alias "
+                f"({'/'.join(CANONICAL_TIERS)}), or unset for the CLI default"
+            ),
+        )
+
+
 def resolve_model(cli: str, value: str | None) -> str | None:
     """Map a repo.yaml builder/reviewer value to the model string the CLI's --model
     flag actually accepts.
@@ -141,4 +210,5 @@ __all__ = [
     "available_clis",
     "recipe_for",
     "resolve_model",
+    "validate_model_for_cli",
 ]

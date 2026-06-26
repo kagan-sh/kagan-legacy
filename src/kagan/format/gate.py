@@ -13,7 +13,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 from kagan.core.api import humanize_task_state
-from kagan.core.comprehension import prompts_for_risk
+from kagan.core.comprehension import prompts_for_task
 from kagan.core.tasks import _is_substantive
 from kagan.format import _symbols as sym
 from kagan.format._risk import risk_label, risk_style
@@ -126,9 +126,7 @@ def _unanswered_keys(task: Task) -> list[str]:
     """Required prompt keys still missing a substantive answer (reuses the core
     per-answer check — never a duplicate of the substantive logic)."""
     return [
-        key
-        for key, _ in prompts_for_risk(task.risk)
-        if not _is_substantive(task.comprehension.get(key))
+        key for key, _ in prompts_for_task(task) if not _is_substantive(task.comprehension.get(key))
     ]
 
 
@@ -139,7 +137,7 @@ def render_comprehension(task: Task) -> RenderableType:
     Pure — ``task.comprehension`` is the recorded fact; the lock decision is the
     caller's (``can_approve``)."""
     heading = Text("Comprehension", style="bold")
-    prompts = prompts_for_risk(task.risk)
+    prompts = prompts_for_task(task)
     if not prompts:
         return Group(heading, Text("Not required at low risk.", style="secondary"))
     rows: list[RenderableType] = [heading]

@@ -81,6 +81,10 @@ def run_doctor_checks() -> list[DoctorCheck]:
 
     checks.append(_check_repo_manifest())
 
+    models = _check_manifest_models()
+    if models is not None:
+        checks.append(models)
+
     protection = _check_branch_protection()
     if protection is not None:
         checks.append(protection)
@@ -182,6 +186,55 @@ def _check_branch_protection() -> DoctorCheck | None:
         message=message,
         fix_hint=fix,
         verify_hint=verify,
+        category="configuration",
+    )
+
+
+def _model_runnable(cli: str, value: str) -> bool:
+    from kagan.core.recipes import validate_model_for_cli
+
+    try:
+        validate_model_for_cli(cli, value)
+        return True
+    except ConfigurationError:
+        return False
+
+
+def _check_manifest_models() -> DoctorCheck | None:
+    from kagan.core.recipes import validate_model_for_cli
+
+    repo_root = find_repo_root()
+    if repo_root is None:
+        return None
+    try:
+        cfg = load_repo_config(repo_root)
+    except ConfigurationError:
+        return None
+    found = [cli for cli in _AGENT_CLIS if shutil.which(cli)]
+    if not found:
+        return None
+
+    problems: list[str] = []
+    for field in ("builder", "reviewer"):
+        value = getattr(cfg, field)
+        if not value:
+            continue
+        if any(_model_runnable(cli, value) for cli in found):
+            continue
+        try:
+            validate_model_for_cli(found[0], value)
+        except ConfigurationError as exc:
+            problems.append(f"{field}: {exc.detail}")
+    if not problems:
+        return None
+    return DoctorCheck(
+        name="manifest models",
+        status="fail",
+        message="; ".join(problems),
+        fix_hint=(
+            "Set builder/reviewer to a canonical tier alias (opus/sonnet/haiku) or a "
+            "model id native to an agent CLI on your PATH."
+        ),
         category="configuration",
     )
 

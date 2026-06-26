@@ -116,6 +116,10 @@ class Task(BaseModel):
     # Author's own-words answers to the risk-scaled comprehension prompt set
     # (lever 1): prompt-key → answer. Empty until the human answers any prompt.
     comprehension: dict[str, str] = Field(default_factory=dict)
+    # Validator-generated (key, question) prompts for this diff (lever 2). Empty
+    # means use the static risk-tier set; a short generated set falls back to static
+    # so med/high never drop below the tier floor (rule 8).
+    comprehension_prompts: list[tuple[str, str]] = Field(default_factory=list)
     # Risk tier classified at intake from scope vs config.risk_tiers (lever 4
     # spine). Default medium so unconfigured repos behave like today. Scales
     # ceremony: low skips the validator + comprehension lock; high keeps both.

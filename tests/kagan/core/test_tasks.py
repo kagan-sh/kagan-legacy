@@ -149,7 +149,146 @@ def test_high_risk_locked_until_all_five_prompts_answered(tmp_path: Path):
     core.close()
 
 
-def test_is_substantive_rejects_trivial_filler():
+def test_short_generated_prompts_fall_back_to_static_floor(tmp_path: Path):
+    # Rule 8: a high-risk task with a too-short generated set still demands every
+    # static prompt answered — the floor check must not let approve unlock early.
+    from kagan.core.comprehension import required_keys
+
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Touch auth")
+    core.update_task(
+        task.id,
+        risk="high",
+        comprehension_prompts=[("postcondition", "Only one generated prompt?")],
+    )
+    task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.record_comprehension(task.id, "postcondition", _SUBSTANTIVE)
+    assert not core.can_approve(task.id)
+    for key in required_keys("high")[1:]:
+        core.record_comprehension(task.id, key, _SUBSTANTIVE)
+    assert core.can_approve(task.id)
+    core.close()
+
+
+def test_empty_generated_prompts_on_high_risk_still_demand_static_set(tmp_path: Path):
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Touch auth")
+    core.update_task(task.id, risk="high", comprehension_prompts=[])
+    task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    assert not core.can_approve(task.id)
+    _answer_all(core, task.id)
+    assert core.can_approve(task.id)
+    core.close()
+
+
+def test_can_approve_uses_generated_prompts_when_at_floor(tmp_path: Path):
+    generated = [
+        ("postcondition", "How does billing retry after this diff?"),
+        ("what_breaks", "What race could still lose a charge?"),
+    ]
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Billing retry")
+    core.update_task(task.id, comprehension_prompts=generated)
+    task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.record_comprehension(task.id, "postcondition", _SUBSTANTIVE)
+    assert not core.can_approve(task.id)
+    core.record_comprehension(task.id, "what_breaks", _SUBSTANTIVE)
+    assert core.can_approve(task.id)
+    core.close()
+
+
+_MEDIUM_GENERATED = [
+    ("postcondition", "How does billing retry after this diff?"),
+    ("what_breaks", "What race could still lose a charge?"),
+]
+
+
+def test_record_comprehension_prompts_populates_task(tmp_path: Path):
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Billing retry")
+    task = core.record_comprehension_prompts(task.id, _MEDIUM_GENERATED)
+    assert task.comprehension_prompts == _MEDIUM_GENERATED
+    from kagan.core.comprehension import prompts_for_task
+
+    assert prompts_for_task(task) == _MEDIUM_GENERATED
+    core.close()
+
+
+def test_record_comprehension_prompts_caps_extras(tmp_path: Path):
+    from kagan.core.comprehension import required_keys
+
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Touch auth")
+    core.update_task(task.id, risk="high")
+    extras = [
+        ("postcondition", "q1"),
+        ("delta", "q2"),
+        ("dependencies", "q3"),
+        ("security", "q4"),
+        ("gotchas", "q5"),
+        ("extra", "q6"),
+    ]
+    task = core.record_comprehension_prompts(task.id, extras)
+    assert len(task.comprehension_prompts) == len(required_keys("high"))
+    assert task.comprehension_prompts == extras[:5]
+    core.close()
+
+
+def test_record_comprehension_prompts_short_leaves_empty_and_gate_demands_static(
+    tmp_path: Path,
+):
+    from kagan.core.comprehension import required_keys
+
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Touch auth")
+    core.update_task(task.id, risk="high")
+    task = core.record_comprehension_prompts(
+        task.id, [("postcondition", "Only one generated prompt?")]
+    )
+    assert task.comprehension_prompts == []
+    task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.record_comprehension(task.id, "postcondition", _SUBSTANTIVE)
+    assert not core.can_approve(task.id)
+    for key in required_keys("high")[1:]:
+        core.record_comprehension(task.id, key, _SUBSTANTIVE)
+    assert core.can_approve(task.id)
+    core.close()
+
+
+def test_record_comprehension_prompts_skips_malformed_and_stores_rest(tmp_path: Path):
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Billing retry")
+    mixed = [
+        {"key": "postcondition", "question": "How does retry behave in src/billing.py?"},
+        {"question": "missing key"},
+        ("what_breaks", "What race could still lose a charge?"),
+    ]
+    task = core.record_comprehension_prompts(task.id, mixed)
+    assert task.comprehension_prompts == [
+        ("postcondition", "How does retry behave in src/billing.py?"),
+        ("what_breaks", "What race could still lose a charge?"),
+    ]
+    core.close()
+
+
+def test_record_comprehension_prompts_emits_event(tmp_path: Path):
+    svc = _service(tmp_path)
+    task = svc.create("Billing retry")
+    svc.record_comprehension_prompts(task.id, _MEDIUM_GENERATED)
+    events = Ledger(tmp_path / "tasks").read_events(task.id)
+    assert any(
+        e.get("type") == "comprehension_prompts_recorded" and e.get("count") == 2 for e in events
+    )
+    reloaded = Ledger(tmp_path / "tasks").load_task(task.id)
+    assert reloaded is not None
+    assert reloaded.comprehension_prompts == _MEDIUM_GENERATED
+
+
+def test_record_comprehension_emits_event(tmp_path: Path):
     # The gate measures substance, not just length: repeated single tokens and
     # multi-word placeholders are trivial and must stay locked (else it is theater).
     for trivial in ("", "   ", "ok", "n/a", "looks good to me", "a a a a a", ". . . . ."):

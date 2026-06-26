@@ -7,6 +7,11 @@ answer. Low risk has no prompts — it auto-satisfies the lock (lever-4 invarian
 low/docs skips the comprehension lock; DESIGN §8).
 """
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from kagan.core.models import Task
+
 COMPREHENSION_PROMPTS: dict[str, list[tuple[str, str]]] = {
     "low": [],
     "medium": [
@@ -31,3 +36,18 @@ def prompts_for_risk(risk: str) -> list[tuple[str, str]]:
 def required_keys(risk: str) -> list[str]:
     """The prompt keys the tier requires answered before approve unlocks."""
     return [key for key, _ in prompts_for_risk(risk)]
+
+
+def prompts_for_task(task: Task) -> list[tuple[str, str]]:
+    """The (key, question) prompts for a task — generated when present and long
+    enough for the tier, else the static risk-tier set."""
+    static = prompts_for_risk(task.risk)
+    generated = task.comprehension_prompts
+    if static and generated and len(generated) >= len(static):
+        return generated
+    return static
+
+
+def required_keys_for_task(task: Task) -> list[str]:
+    """The prompt keys this task requires answered before approve unlocks."""
+    return [key for key, _ in prompts_for_task(task)]

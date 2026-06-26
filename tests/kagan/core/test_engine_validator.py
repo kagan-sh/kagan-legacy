@@ -258,6 +258,36 @@ async def test_validator_timeout_degrades_to_unaided_review(tmp_path, monkeypatc
     assert "validator unavailable" in core.render_receipt(task.id)
 
 
+async def test_cross_vendor_reviewer_model_fails_loud_not_soft_degrade(tmp_path, monkeypatch):
+    # Rule 8: claude-opus on codex is a config error (not a validator crash). run_validation
+    # must raise ConfigurationError BEFORE VALIDATING — never soft-degrade to unaided review.
+    from kagan.core.errors import ConfigurationError
+
+    repo = await _repo(tmp_path / "repo", "builder: o3\nreviewer: claude-opus\n")
+    bin_dir = tmp_path / "bin"
+    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+
+    called = {"v": False}
+
+    async def _must_not_run(task, *, model, timeout=None):
+        called["v"] = True
+        return [], True
+
+    monkeypatch.setattr("kagan.core.harness.launch_validate", _must_not_run)
+
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("feature")
+    core.update_task(task.id, agent_cli="codex", worktree_path=repo, risk="medium")
+    core.transition_task(task.id, TaskState.RUNNING)
+
+    with pytest.raises(ConfigurationError) as exc:
+        await core.run_validation(task.id)
+    assert "claude-opus" in str(exc.value) and "codex" in str(exc.value)
+    assert called["v"] is False
+    assert core.get_task(task.id).state is TaskState.RUNNING
+
+
 async def test_unresolvable_reviewer_model_fails_loud_not_soft_degrade(tmp_path, monkeypatch):
     # R-003: a canonical tier alias the task's CLI can't map (codex/kimi are
     # vendor-locked) is a CONFIG error, not a validator crash. run_validation must raise

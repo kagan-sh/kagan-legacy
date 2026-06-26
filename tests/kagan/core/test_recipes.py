@@ -4,7 +4,13 @@ import pytest
 
 from kagan.core.agent import _build_cmd
 from kagan.core.errors import ConfigurationError
-from kagan.core.recipes import RECIPES, available_clis, recipe_for, resolve_model
+from kagan.core.recipes import (
+    RECIPES,
+    available_clis,
+    recipe_for,
+    resolve_model,
+    validate_model_for_cli,
+)
 
 SUPPORTED_CLIS = ("claude", "codex", "kimi", "opencode")
 
@@ -147,6 +153,33 @@ def test_build_cmd_raises_on_an_unresolvable_alias(tmp_path: Path):
     prompt.write_text("x")
     with pytest.raises(ConfigurationError):
         _build_cmd("codex", prompt, cwd=tmp_path, model="opus")
+
+
+def test_validate_model_rejects_claude_native_on_codex():
+    # Rule 8: claude-opus is NOT a canonical tier alias, so resolve_model passes it
+    # through — validate_model_for_cli must catch the cross-vendor mismatch loud.
+    with pytest.raises(ConfigurationError) as exc:
+        validate_model_for_cli("codex", "claude-opus")
+    assert "claude-opus" in str(exc.value)
+    assert "codex" in str(exc.value)
+
+
+def test_validate_model_accepts_claude_native_on_claude():
+    validate_model_for_cli("claude", "claude-opus")
+
+
+def test_validate_model_accepts_codex_native_on_codex():
+    validate_model_for_cli("codex", "o3")
+    validate_model_for_cli("codex", "gpt-5-codex")
+
+
+@pytest.mark.parametrize("cli", ["codex", "kimi"])
+@pytest.mark.parametrize("alias", ["opus", "sonnet", "haiku"])
+def test_validate_model_alias_on_vendor_locked_cli_fails_loud(cli: str, alias: str):
+    with pytest.raises(ConfigurationError) as exc:
+        validate_model_for_cli(cli, alias)
+    assert alias in str(exc.value)
+    assert cli in str(exc.value)
 
 
 def test_available_clis_filters_to_path(tmp_path: Path):

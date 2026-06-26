@@ -35,7 +35,7 @@ from kagan.core.models import CheckResult, Finding, NeedsYou, ReportMessage, Tas
 from kagan.core.notifications import NotificationEvent, Notifier
 from kagan.core.paths import ensure_gitignore_line, is_run_artifact
 from kagan.core.receipt import render_pr_body, render_receipt
-from kagan.core.recipes import available_clis, recipe_for, resolve_model
+from kagan.core.recipes import available_clis, recipe_for, validate_model_for_cli
 from kagan.core.remote_ci import RemoteCi
 from kagan.core.reports import detect_drift, read_ask, summarize_learnings
 from kagan.core.retro import append_learning
@@ -206,6 +206,11 @@ class Harness:
 
     def record_comprehension(self, task_id: str, key: str, answer: str) -> Task:
         return self._tasks.record_comprehension(task_id, key, answer)
+
+    def record_comprehension_prompts(
+        self, task_id: str, prompts: list[tuple[str, str]] | list[dict[str, Any]]
+    ) -> Task:
+        return self._tasks.record_comprehension_prompts(task_id, prompts)
 
     def can_approve(self, task_id: str) -> bool:
         return self._tasks.can_approve(task_id)
@@ -514,7 +519,7 @@ class Harness:
         # "reviewed unaided" (which would tell the user opus reviewed when nothing did).
         # Distinct from a genuine validator RUNTIME crash below, which legitimately keeps
         # the F2 fallback.
-        resolve_model(task.agent_cli or "claude", reviewer)
+        validate_model_for_cli(task.agent_cli or "claude", reviewer)
         self.transition_task(task_id, TaskState.VALIDATING)
         # F2: the validator is an enhancement, not the floor. If it crashes (raises)
         # OR exits unclean / times out (ok=False), do NOT strand the task in
@@ -712,9 +717,9 @@ class Harness:
         task = self._require(task_id)
         # R-003: fail LOUD on a misconfigured builder model (a canonical alias with no
         # mapping for this task's CLI) BEFORE any worktree/transition side effect, so a
-        # config error never strands a task in RUNNING. resolve_model raises
+        # config error never strands a task in RUNNING. validate_model_for_cli raises
         # ConfigurationError the surface shows; None and native ids are no-ops here.
-        resolve_model(task.agent_cli or "claude", self._builder_model())
+        validate_model_for_cli(task.agent_cli or "claude", self._builder_model())
         # Idempotent: send-back reuses the existing worktree (TUI-GATE-07).
         task = await self._tasks.prepare_worktree(task, self.repo_root)
         assert task.worktree_path is not None
@@ -906,6 +911,9 @@ class Harness:
                     )
                 except Exception:
                     logger.warning("dropping malformed validator finding for task {}", task_id)
+        elif report.type == "comprehension_prompts":
+            items = p.get("prompts") or []
+            self.record_comprehension_prompts(task_id, prompts=items)
         elif report.type == "done":
             self.record_done(task_id)
         # "raw"/"unknown" ignored; MCP-AGENT-03 governs completion via process exit.

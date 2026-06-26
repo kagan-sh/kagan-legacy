@@ -257,7 +257,9 @@ async def _verify(
     return all(r.passed for r in results), {r.name for r in results if not r.passed}
 
 
-def _draft_to_config(draft: ManifestDraft, approved: dict[str, str], project_name: str) -> dict:
+def _draft_to_config(
+    draft: ManifestDraft, approved: dict[str, str], project_name: str, *, agent_cli: str
+) -> dict:
     # Only WALKED executables (checks) and DECLARATIVE fields (risk tiers, models) are
     # committed. `security` and `services.command` also execute later (gate SAST / task
     # start) but are NOT walked — so kagan does not auto-write them unreviewed; they are
@@ -268,9 +270,13 @@ def _draft_to_config(draft: ManifestDraft, approved: dict[str, str], project_nam
         cfg["checks"] = approved
     if draft.risk_tiers:
         cfg["risk_tiers"] = draft.risk_tiers
+    from kagan.core.recipes import validate_model_for_cli
+
     if draft.builder:
+        validate_model_for_cli(agent_cli, draft.builder)
         cfg["builder"] = draft.builder
     if draft.reviewer:
+        validate_model_for_cli(agent_cli, draft.reviewer)
         cfg["reviewer"] = draft.reviewer
     return cfg
 
@@ -378,12 +384,13 @@ async def run_init(repo_root: Path | None) -> Path | None:
     try:
         clis = core.available_clis()
         draft = None
+        draft_cli: str | None = None
         if clis and click.confirm(
             "Let an agent read the repo and draft a manifest?",
             default=True,
         ):
-            cli = _choose_cli(clis)
-            reports = await _draft_with_progress(cli, repo_root)
+            draft_cli = _choose_cli(clis)
+            reports = await _draft_with_progress(draft_cli, repo_root)
             if reports is not None:
                 draft = parse_manifest_report(reports)
 
@@ -412,7 +419,18 @@ async def run_init(repo_root: Path | None) -> Path | None:
             ):
                 approved = {n: c for n, c in approved.items() if n not in failed}
 
-        cfg = _draft_to_config(draft, approved, project_name=repo_root.name)
+        from kagan.core.errors import ConfigurationError
+
+        try:
+            assert draft_cli is not None
+            cfg = _draft_to_config(
+                draft, approved, project_name=repo_root.name, agent_cli=draft_cli
+            )
+        except ConfigurationError as exc:
+            click.echo(f"Invalid model in manifest draft: {exc.detail}")
+            click.echo("Fix the draft or re-run `kagan init` and edit builder/reviewer.")
+            return None
+
         manifest_path = _write_files(repo_root, render_manifest_yaml(cfg))
     finally:
         core.close()

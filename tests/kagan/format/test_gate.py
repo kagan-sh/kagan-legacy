@@ -183,6 +183,42 @@ def test_render_comprehension_not_required_at_low_risk():
     assert "Not required at low risk." in out
 
 
+def test_render_comprehension_uses_generated_prompts_at_floor():
+    generated = [
+        ("postcondition", "How does billing retry after this diff?"),
+        ("what_breaks", "What race could still lose a charge?"),
+    ]
+    out = to_str(gate.render_comprehension(_task(risk="medium", comprehension_prompts=generated)))
+    assert "How does billing retry after this diff?" in out
+    assert "What race could still lose a charge?" in out
+    assert "What does this change do, end to end?" not in out
+
+
+def test_readiness_counts_generated_prompts_at_floor():
+    generated = [
+        ("postcondition", "How does billing retry after this diff?"),
+        ("what_breaks", "What race could still lose a charge?"),
+    ]
+    pending = to_str(
+        gate.render_readiness(
+            _task(risk="medium", comprehension_prompts=generated),
+            locked=True,
+        )
+    )
+    assert "● Answer 2 comprehension prompt(s)" in pending
+
+
+def test_readiness_falls_back_when_generated_set_too_short():
+    short = [("postcondition", "Only one generated prompt?")]
+    pending = to_str(
+        gate.render_readiness(
+            _task(risk="high", comprehension_prompts=short),
+            locked=True,
+        )
+    )
+    assert "● Answer 5 comprehension prompt(s)" in pending
+
+
 # -- Phase 12d-2: review-screen density + focused-walk sub-frames ---------------
 
 

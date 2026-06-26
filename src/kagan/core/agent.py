@@ -65,7 +65,9 @@ def _intake_prompt(task: Task) -> str:
 
 
 def _validate_prompt(task: Task) -> str:
-    return (
+    from kagan.core.comprehension import prompts_for_risk, required_keys
+
+    prompt = (
         f"Task: {task.title}\n{task.description}\n"
         "Mode: review. You are an adversarial validator, NOT the builder. You have "
         "NO write capability — do not implement or fix anything.\n"
@@ -76,6 +78,17 @@ def _validate_prompt(task: Task) -> str:
         "breaks, do not report it. Set confidence 0-10 and status "
         "VERIFIED/UNVERIFIED/TENTATIVE per finding.\n"
     )
+    n = len(prompts_for_risk(task.risk))
+    if n > 0:
+        keys = ", ".join(required_keys(task.risk))
+        prompt += (
+            f"Also generate exactly {n} own-words comprehension questions a human "
+            "must answer to prove they understand THIS diff — target the riskiest "
+            f"hunks. Use these keys in order: {keys}. Report them via "
+            "report_comprehension_prompts. Each question must reference something "
+            "concrete in the diff, not a generic template.\n"
+        )
+    return prompt
 
 
 def _init_prompt() -> str:
@@ -94,11 +107,14 @@ def _init_prompt() -> str:
         "  base_branch (str), checks (list of {name, command, provenance, source}),\n"
         "  risk_tiers ({low|medium|high: [globs]}), services ({name: {command, port_env}}),\n"
         "  security (SAST command or null), builder (model or null), reviewer (model or null).\n"
+        "For builder and reviewer, emit a canonical tier alias (opus/sonnet/haiku) or null — "
+        "NOT a native model id like claude-opus-4-8. The reviewer must be runnable by the "
+        "same agent CLI the repo will use (the validator spawns that CLI with the reviewer "
+        "model). Prefer a model DIFFERENT from builder (a different size of the same vendor "
+        "is fine) so the adversarial validator is a fresh second opinion; leave null only "
+        "if no second model is available.\n"
         "provenance is one of ci|precommit|scripts|makefile|pyproject|lockfile|instructions|"
-        "invented; source names the file it was lifted from (empty when invented). For "
-        "reviewer, prefer a model DIFFERENT from "
-        "builder (a different size of the same vendor is fine) so the adversarial validator is "
-        "a fresh second opinion; leave null only if no second model is available.\n"
+        "invented; source names the file it was lifted from (empty when invented).\n"
     )
 
 

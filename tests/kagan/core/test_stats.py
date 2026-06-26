@@ -85,6 +85,28 @@ def test_cfr_is_none_when_no_pr_has_a_verdict():
     assert card.cfr_total is None
 
 
+def test_comprehension_first_try_uses_required_keys_for_task_on_fallback():
+    tasks = [
+        Task(
+            id="t0",
+            title="t0",
+            risk="high",
+            comprehension_prompts=[("postcondition", "Only one?")],
+        ),
+    ]
+    events = {
+        "t0": [
+            {"type": "comprehension_recorded", "key": "postcondition"},
+            {"type": "comprehension_recorded", "key": "delta"},
+            {"type": "comprehension_recorded", "key": "dependencies"},
+            {"type": "comprehension_recorded", "key": "security"},
+            {"type": "comprehension_recorded", "key": "gotchas"},
+        ],
+    }
+    card = compute_scorecard(tasks, events)
+    assert card.comprehension_first_try == 1
+
+
 def test_comprehension_first_try_fails_when_note_was_re_recorded():
     # First-try = the full risk-scaled prompt set answered once each (distinct keys
     # cover the tier's required keys AND no key re-recorded). A re-answered prompt

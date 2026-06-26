@@ -74,6 +74,62 @@ def test_skeleton_floor_when_no_agent(tmp_path, monkeypatch):
     assert (tmp_path / ".kagan" / "review.md").exists()
 
 
+def test_init_rejects_incompatible_reviewer_for_codex_builder(tmp_path, monkeypatch):
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["codex"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload(
+            [{"name": "test", "command": "pytest", "provenance": "invented"}],
+            reviewer="claude-opus",
+        ),
+    )
+    result = _invoke_init(input="y\na\nn\n")
+    assert result.exit_code == 0
+    assert not (tmp_path / ".kagan" / "repo.yaml").exists()
+    assert "claude-opus" in result.output
+    assert "codex" in result.output
+
+
+def test_init_accepts_opus_tier_for_claude_builder(tmp_path, monkeypatch):
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload(
+            [{"name": "test", "command": "pytest", "provenance": "invented"}],
+            builder="opus",
+            reviewer="haiku",
+        ),
+    )
+    result = _invoke_init(input="y\na\nn\n")
+    assert result.exit_code == 0
+    cfg = load_repo_config(tmp_path)
+    assert cfg.builder == "opus"
+    assert cfg.reviewer == "haiku"
+
+
+def test_init_accepts_codex_native_reviewer(tmp_path, monkeypatch):
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["codex"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload(
+            [{"name": "test", "command": "pytest", "provenance": "invented"}],
+            builder="o3",
+            reviewer="gpt-5-codex",
+        ),
+    )
+    result = _invoke_init(input="y\na\nn\n")
+    assert result.exit_code == 0
+    cfg = load_repo_config(tmp_path)
+    assert cfg.builder == "o3"
+    assert cfg.reviewer == "gpt-5-codex"
+
+
 def test_agent_draft_accept_all_writes_manifest(tmp_path, monkeypatch):
     _git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)

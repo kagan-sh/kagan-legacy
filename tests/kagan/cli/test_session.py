@@ -345,6 +345,31 @@ def test_comprehension_walk_resumes_with_prior_answers(tmp_path, monkeypatch):
     assert seen == ["Rounds half-up so totals never drift on retries.", ""]
 
 
+def test_comprehension_walk_uses_generated_prompts_at_floor(tmp_path, monkeypatch):
+    generated = [
+        ("postcondition", "How does billing retry after this diff?"),
+        ("what_breaks", "What race could still lose a charge?"),
+    ]
+    task = Task(
+        id="task-gen",
+        title="t",
+        state=TaskState.REVIEW,
+        risk="medium",
+        comprehension_prompts=generated,
+    )
+    session, core = _session(task, tmp_path)
+    note = "Retries are idempotent; a race on the webhook could still double-charge."
+
+    async def _note(render, **_k):
+        return note
+
+    monkeypatch.setattr(_interactive, "prompt_in_frame", _note)
+
+    run_async(session._walk_comprehension(task))
+
+    assert core._task.comprehension == {"postcondition": note, "what_breaks": note}
+
+
 def test_review_approve_does_not_offer_retro_at_approve_time(tmp_path, monkeypatch):
     # Phase 12c ship §1: the retro NO LONGER fires at approve-time (the transient
     # prompt the user blew past) — it lives on the ship screen now. Approving still

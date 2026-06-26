@@ -1,9 +1,10 @@
 """kagan.mcp.server — the report-channel MCP server factory.
 
-Registers the five v2 report tools (``report_intake_decisions``,
-``report_needs_you``, ``report_smoke_tests``, ``report_drift``, ``report_done``)
-on a FastMCP stdio server. The server holds no state of its own — each tool is
-scoped to a task and mutates the ledger only through ``Harness`` (P7).
+Registers the seven v2 report tools (``report_intake_decisions``,
+``report_needs_you``, ``report_smoke_tests``, ``report_drift``, ``report_findings``,
+``report_comprehension_prompts``, ``report_done``) on a FastMCP stdio server. The
+server holds no state of its own — each tool is scoped to a task and mutates the
+ledger only through ``Harness`` (P7).
 """
 
 import functools
@@ -31,6 +32,11 @@ class FindingReport(BaseModel):
     message: str  # must state a concrete failure path — no speculative findings (lever 2)
     confidence: int | None = None  # validator self-rating 0-10
     status: str | None = None  # "VERIFIED" | "UNVERIFIED" | "TENTATIVE"
+
+
+class ComprehensionPromptReport(BaseModel):
+    key: str
+    question: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,11 +98,12 @@ def _deref_tool_schemas(mcp: FastMCP) -> None:
 
 
 def create_server(opts: ServerOptions) -> FastMCP:
-    """Create the kagan MCP server with the five v2 report-channel tools."""
+    """Create the kagan MCP server with the seven v2 report-channel tools."""
     instructions = (
         "Kagan — supervision-layer MCP server. Use the report tools to send intake "
         "decisions, the one needs-you interrupt, smoke tests, drift concerns, review "
-        "findings, and a completion hint. Each report is scoped to a single task."
+        "findings, comprehension prompts, and a completion hint. Each report is scoped "
+        "to a single task."
     )
     mcp = FastMCP(
         name="kagan", instructions=instructions, lifespan=functools.partial(_lifespan, opts)
@@ -172,6 +179,23 @@ def create_server(opts: ServerOptions) -> FastMCP:
                 status=f.status,
             )
         return {"task_id": task_id, "findings_recorded": len(findings), "findings_before": before}
+
+    @mcp.tool()
+    async def report_comprehension_prompts(
+        task_id: str, prompts: list[ComprehensionPromptReport], ctx: Context
+    ) -> dict[str, Any]:
+        """Report diff-specific comprehension questions the human must answer (lever 2)."""
+        sc = _scope(ctx, task_id)
+        task = sc.client.get_task(task_id)
+        before = len(task.comprehension_prompts) if task is not None else 0
+        task = sc.client.record_comprehension_prompts(
+            task_id, prompts=[p.model_dump() for p in prompts]
+        )
+        return {
+            "task_id": task_id,
+            "prompts_recorded": len(task.comprehension_prompts),
+            "prompts_before": before,
+        }
 
     @mcp.tool()
     async def report_done(task_id: str, ctx: Context) -> dict[str, Any]:

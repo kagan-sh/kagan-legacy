@@ -14,7 +14,7 @@ unadjudicated findings are omitted, and the empty-placeholder per section keeps
 
 from typing import TYPE_CHECKING
 
-from kagan.core.comprehension import prompts_for_risk
+from kagan.core.comprehension import prompts_for_task
 
 if TYPE_CHECKING:
     from kagan.core.models import CheckResult, Decision, Finding, SmokeTest, Task
@@ -87,7 +87,7 @@ def _comprehension_lines(task: Task) -> list[str]:
     # in prompt order for the task's risk tier. Stay honest (TUI/CLI-RECEIPT) — an
     # absent answer set is not dressed up as done.
     lines: list[str] = []
-    for key, question in prompts_for_risk(task.risk):
+    for key, question in prompts_for_task(task):
         answer = task.comprehension.get(key, "").strip()
         if answer:
             lines.append(f"**{question}**")

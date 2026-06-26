@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, Field
 
-from kagan.core.comprehension import required_keys
+from kagan.core.comprehension import required_keys_for_task
 from kagan.core.debt import cumulative_scope_debt
 from kagan.core.enums import TaskState
 from kagan.core.models import Task  # noqa: TC001 — used at runtime in compute_scorecard
@@ -125,7 +125,7 @@ def _comprehension(tasks: list[Task], events_by_task: dict[str, list[dict]]) -> 
         asked += 1
         keys = [e.get("key") for e in events]
         distinct = set(keys)
-        required = set(required_keys(task.risk))
+        required = set(required_keys_for_task(task))
         if required <= distinct and len(events) == len(distinct) == len(required):
             first_try += 1
     return first_try, asked

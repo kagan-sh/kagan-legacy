@@ -7,6 +7,7 @@ import subprocess
 from kagan.core.agent import (
     _agent_env,
     _run_prompt,
+    _validate_prompt,
     launch_intake,
     launch_manifest_draft,
     launch_run,
@@ -77,6 +78,18 @@ def _install(bin_dir, name, body):
     s = bin_dir / name
     s.write_text(body)
     s.chmod(0o755)
+
+
+def test_validate_prompt_includes_comprehension_instruction_for_medium_risk():
+    prompt = _validate_prompt(Task(id="t", title="Billing retry", risk="medium"))
+    assert "report_comprehension_prompts" in prompt
+    assert "exactly 2 own-words comprehension questions" in prompt
+    assert "postcondition, what_breaks" in prompt
+
+
+def test_validate_prompt_omits_comprehension_instruction_for_low_risk():
+    prompt = _validate_prompt(Task(id="t", title="Docs tweak", risk="low"))
+    assert "report_comprehension_prompts" not in prompt
 
 
 async def test_intake_reports_and_cannot_write_repo(tmp_path, monkeypatch):

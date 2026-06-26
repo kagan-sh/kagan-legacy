@@ -886,9 +886,9 @@ class Session:
         """Lever 1: walk the risk-scaled prompt set one prompt at a time, recording
         each answer as we go (partial-save — quitting mid-walk leaves answered
         prompts recorded). An empty set (low risk) is a no-op with a note."""
-        from kagan.core.comprehension import prompts_for_risk
+        from kagan.core.comprehension import prompts_for_task
 
-        prompts = prompts_for_risk(task.risk)
+        prompts = prompts_for_task(task)
         if not prompts:
             _print("No comprehension prompts at low risk.")
             return

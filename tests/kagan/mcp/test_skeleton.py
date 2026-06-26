@@ -20,5 +20,6 @@ async def test_server_registers_exactly_the_report_tools(tmp_path) -> None:
         "report_smoke_tests",
         "report_drift",
         "report_findings",
+        "report_comprehension_prompts",
         "report_done",
     }

@@ -83,6 +83,28 @@ def test_receipt_is_honest_when_empty():
     assert "_No intake understanding recorded._" in md
 
 
+def test_receipt_renders_generated_comprehension_questions():
+    task = Task(
+        id="t-1",
+        title="Add feature",
+        risk="medium",
+        comprehension_prompts=[
+            ("postcondition", "How does the billing retry path behave after this diff?"),
+            ("what_breaks", "What race could still lose a charge?"),
+        ],
+        comprehension={
+            "postcondition": "Retries three times with exponential backoff.",
+            "what_breaks": "Concurrent charges could double-bill.",
+        },
+    )
+    md = render_receipt(task)
+    assert "## Decision · author comprehension" in md
+    assert "**How does the billing retry path behave after this diff?**" in md
+    assert "Retries three times with exponential backoff." in md
+    assert "**What race could still lose a charge?**" in md
+    assert "**What does this change do, end to end?**" not in md
+
+
 def test_receipt_renders_author_comprehension_section():
     # Lever 1: the author's own-words rationale travels in the receipt as provenance,
     # plus any per-finding resolution note.

@@ -141,8 +141,9 @@ requirements:
 - **DESIGN-INV-15** The harness **MUST** treat agent completion as process-exit
   plus git-diff harvest and **MUST NOT** parse the agent's natural-language
   stream for lifecycle signals.
-- **DESIGN-INV-16** The agent's only structured channel **MUST** be the five MCP
-  report tools (or the `.kagan/ask` JSONL fallback).
+- **DESIGN-INV-16** The agent's only structured channel **MUST** be the seven MCP
+  report tools (intake / needs-you / smoke / drift / findings /
+  comprehension-prompts / done) — or the `.kagan/ask` JSONL fallback.
 - **DESIGN-INV-17** **IF** a malformed `.kagan/ask` report or one bad finding
   is received during harvest, **THEN** the harness **MUST** log and skip it and
   **MUST NOT** abort the harvest (hardening **F3**, `_watch_agent`/`_apply_report`).
@@ -383,7 +384,9 @@ kipp is a mature Claude-skills library covering kagan's domain (`/review`,
   then greps for sibling instances of a verified pattern.
 - **5-section comprehension scaffold** (`/build explain`): postcondition /
   delta / dependencies / security implications / gotchas — the *structure* of
-  comprehension prompts, but **human-authored** (kipp's is agent-generated).
+  the static risk-tier prompts. The validator generates diff-specific prompts on
+  the riskiest hunks (`report_comprehension_prompts`); this static set is the
+  fallback when the validator is absent, failed, or returns too few (lever 2).
 - **Hard-gate whitelist + soft-gate-auto + transparency banner** (`/git`,
   `/maintain`): irreversible/high-risk confirmations risk routing **MUST NOT**
   auto-resolve; soft gates **MAY** auto-advance with a logged note. The receipt
@@ -430,6 +433,13 @@ keeps levers 1–3 *proportionate*. Normative CLI/harness implementation lives i
   sections (postcondition / delta / dependencies / security / gotchas).
 - **DESIGN-LVR1-04** The comprehension rationale **MUST** travel in the receipt
   (lever 6).
+- **DESIGN-LVR1-05** The prompt set itself is diff-specific: the validator
+  generates prompts on the riskiest hunks (lever 2, `report_comprehension_prompts`),
+  resolved through the single `prompts_for_task` / `required_keys_for_task`
+  chokepoint (`core/comprehension.py`). The static risk-tier set is the fallback
+  when the validator is absent, failed, or returns fewer than the tier requires;
+  a degraded validator **MUST NOT** shrink the gate below the static count (the
+  rule-8 floor guard in `record_comprehension_prompts`).
 
 **Seam:** `core/models.py`, `core/tasks.py:142`, `core/receipt.py`,
 `cli/review.py`, `format/gate.py`.
@@ -467,9 +477,19 @@ self-review. `VALIDATING` is declared but never assigned.
   through verbatim. **IF** a tier alias is used on codex or kimi (vendor-locked
   with no claude-tier equivalent), **THEN** `resolve_model` **MUST** raise
   `ConfigurationError` — distinct from the F2 soft-degrade.
+- **DESIGN-LVR2-09** The validator also generates lever-1's comprehension prompts
+  on the riskiest hunks, reported via `report_comprehension_prompts`
+  (`Harness.record_comprehension_prompts` → `core/tasks.py`) and stored capped to
+  the risk floor. A short or empty generated set **MUST** fall back to the static
+  count (the rule-8 floor guard) — a degraded validator can never shrink the gate.
+- **DESIGN-LVR2-10** Builder/reviewer model compatibility is gated at the seam
+  (`validate_model_for_cli`, `core/recipes.py`): a builder or reviewer model the
+  task CLI cannot run **MUST** fail at init / doctor / harness, never as a silent
+  review-time degrade of the validator.
 
 **Seam:** `core/enums.py`, `core/harness.py:222`, `core/gate.py`, `core/config.py`,
-`core/agent.py`, `core/recipes.py`, `format/workspaces.py`. **Breaking?** Real
+`core/agent.py`, `core/recipes.py`, `mcp/server.py`, `format/workspaces.py`.
+**Breaking?** Real
 state-machine change + a second agent invocation. Medium; gated by risk tier so
 low-risk skips it.
 
@@ -646,8 +666,8 @@ interaction.
   Approve is locked: adjudicate the open blocking finding(s) first.
   Approve is locked: answer 2 comprehension prompt(s) first (press c).
   ───────────────────────────────────────────────────────────────────────────
-  ↑↓ / j k move · enter open · a approve · c comprehension · s send back
-  f findings · v smoke · r re-validate · q back
+  ↑↓ / j k move · enter open · a approve · c comprehension · D view diff
+  s send back · f findings · v smoke · r re-validate · q back
 ```
 
 ### Review → Findings `[prompt]`
@@ -699,6 +719,11 @@ location and severity.
   ───────────────────────────────────────────────────────────────────────────
   enter submit · ctrl-o editor · (skip at med risk · no skip at high)
 ```
+
+The prompts are diff-specific when the validator generated them (lever 2),
+otherwise the static risk-tier set; a quiet provenance line marks which. `D` from
+the review checklist opens the full change in an in-frame, scrollable diff viewer
+(syntax-highlighted, virtualized across files; no external pager).
 
 ### Review → high risk `[prompt]`
 

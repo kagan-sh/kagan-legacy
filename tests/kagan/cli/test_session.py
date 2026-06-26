@@ -1084,7 +1084,7 @@ def test_keymap_covers_every_loop_handled_key():
     from kagan.cli.session import _VIEW_KEYS
 
     review_hints = _VIEW_KEYS["Review"]
-    for key in ("j", "k", "enter", "a", "c", "s", "f", "v", "r", "q"):
+    for key in ("j", "k", "enter", "a", "c", "D", "s", "f", "v", "r", "q"):
         assert any(key in h.key for h in review_hints), (
             f"Review loop handles {key!r} but the keymap omits it"
         )
@@ -1106,8 +1106,82 @@ def test_no_in_session_prompt_escapes_the_frame():
         "_interactive.multiline(",
         "_interactive.confirm(",
         "_interactive.choose(",
+        ".pager(",
     ):
         assert pattern not in src, f"in-session prompt escapes the frame: {pattern}"
+
+
+def test_review_d_opens_in_frame_diff_viewer(tmp_path, monkeypatch):
+    task = Task(
+        id="task-diff",
+        title="t",
+        state=TaskState.REVIEW,
+        changed_files=["a.py"],
+        worktree_path=str(tmp_path),
+    )
+    (tmp_path / "a.py").write_text("new\n", encoding="utf-8")
+    session, _core = _session(task, tmp_path)
+    navigated: list[str] = []
+
+    review_verbs = iter(["diff", "back"])
+
+    async def _review_frame(*_a, **_k):
+        return next(review_verbs)
+
+    async def _view_diff(_task):
+        navigated.append("diff")
+
+    monkeypatch.setattr(session, "_review_frame", _review_frame)
+    monkeypatch.setattr(session, "_view_diff", _view_diff)
+
+    run_async(session.view_review("task-diff"))
+
+    assert navigated == ["diff"]
+
+
+def test_findings_disagree_d_does_not_collide_with_review_capital_d(tmp_path):
+    from kagan.cli.session import _VIEW_KEYS
+
+    review_keys = {hint.key for hint in _VIEW_KEYS["Review"]}
+    findings_keys = {hint.key for hint in _VIEW_KEYS["Findings"]}
+    assert "D" in review_keys
+    assert "d" in findings_keys
+    assert "D" not in findings_keys
+    assert "d" not in review_keys
+
+
+def test_view_diff_stays_in_frame_via_navigate(tmp_path, monkeypatch):
+    task = Task(
+        id="task-diff2",
+        title="t",
+        state=TaskState.REVIEW,
+        changed_files=["a.py"],
+        worktree_path=str(tmp_path),
+    )
+    (tmp_path / "a.py").write_text("line\n", encoding="utf-8")
+    session, _core = _session(task, tmp_path)
+    calls: list[str] = []
+
+    class _FakeViewport:
+        async def window(self, offset: int, height: int, width: int):
+            return (["diff body"], offset, 1)
+
+    async def _fake_open(_task):
+        return _FakeViewport()
+
+    async def _fake_navigate(_render, _handlers, **_k):
+        calls.append("navigate")
+        geometry = __import__("kagan.format.shell", fromlist=["frame_geometry"]).frame_geometry(
+            100, 40
+        )
+        _render(geometry)
+
+    monkeypatch.setattr("kagan.core.diff.open_diff_viewport", _fake_open)
+    monkeypatch.setattr(_interactive, "navigate", _fake_navigate)
+
+    run_async(session._view_diff(task))
+
+    assert calls == ["navigate"]
 
 
 def test_inbox_footer_only_advertises_actions_available_in_context():
@@ -1154,7 +1228,7 @@ def test_review_and_workspace_footers_hide_unavailable_actions():
     assert "a" not in review_keys
     assert "c" not in review_keys
     assert "v" not in review_keys
-    assert review_keys == ["s", "r", "q"]
+    assert review_keys == ["s", "D", "r", "q"]
 
     assert [hint.key for hint in _workspace_footer(False)] == ["w", "q"]
     assert [hint.key for hint in _workspace_footer(True)] == ["t", "w", "q"]

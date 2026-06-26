@@ -302,6 +302,11 @@ async def diff(
     return stdout
 
 
+async def resolve_base_ref(cwd: Path, base_branch: str) -> str:
+    """Resolve the git ref used for ``git diff base..HEAD`` in a worktree."""
+    return await _resolve_base_ref(cwd, base_branch)
+
+
 async def _resolve_base_ref(cwd: Path, base_branch: str) -> str:
     # Prefer the local base when it is ahead of origin, else origin, else local.
     local_exists = await _has_local_branch(cwd, base_branch)
@@ -481,6 +486,7 @@ __all__ = [
     "parse_diff_changed_files",
     "remote_has_branch",
     "repo_root",
+    "resolve_base_ref",
     "run_git",
     "user_identity",
     "validate_ref_name",

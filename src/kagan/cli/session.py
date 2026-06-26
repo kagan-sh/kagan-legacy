@@ -63,10 +63,16 @@ _VIEW_KEYS: dict[str, tuple[KeyHint, ...]] = {
         KeyHint("enter", "open"),
         KeyHint("a", "approve"),
         KeyHint("c", "comprehension"),
+        KeyHint("D", "view diff"),
         KeyHint("s", "send back"),
         KeyHint("f", "findings"),
         KeyHint("v", "smoke"),
         KeyHint("r", "re-validate"),
+        KeyHint("q", "back"),
+    ),
+    "Diff": (
+        KeyHint("↑↓ / j k", "scroll"),
+        KeyHint("pgup / pgdn", "page"),
         KeyHint("q", "back"),
     ),
     "Findings": (
@@ -627,6 +633,8 @@ class Session:
                 await self._smoke_walk(task_id)
             elif verb == "comprehension":
                 await self._walk_comprehension(task)
+            elif verb == "diff":
+                await self._view_diff(task)
 
     async def _review_frame(
         self,
@@ -700,6 +708,7 @@ class Session:
             "enter": _open_focused,
             "a": _emit("approve"),
             "c": _emit("comprehension"),
+            "D": _emit("diff"),
             "s": _emit("send-back"),
             "f": _emit("findings"),
             "v": _emit("smoke"),
@@ -882,6 +891,115 @@ class Session:
                 return f"Approve is locked: high-risk needs {bar} distinct approvers."
         return "Approve is locked."
 
+    async def _view_diff(self, task: Task) -> None:
+        """Scrollable in-frame diff for the task's harvested changed files."""
+        import asyncio
+
+        from prompt_toolkit.application import get_app
+        from rich.console import Group
+        from rich.text import Text
+
+        from kagan.core.diff import open_diff_viewport
+        from kagan.format._console import render_to_str
+
+        viewport = await open_diff_viewport(task)
+        if viewport is None:
+            _print(self._ansi(_dim("No diff to show.")))
+            return
+
+        offset: dict[str, int] = {"line": 0}
+        visible_rows = 1
+        frame_lines: list[str] = ["Loading diff…"]
+        frame_total = 1
+        frame_width = 80
+        frame_visible = 20
+        frame_dirty = True
+        frame_inflight = False
+
+        async def _refresh() -> None:
+            nonlocal frame_lines, frame_total, frame_dirty, frame_inflight
+            lines, off, total = await viewport.window(
+                offset["line"],
+                frame_visible,
+                frame_width,
+            )
+            offset["line"] = off
+            frame_lines = lines
+            frame_total = total
+            frame_dirty = False
+            frame_inflight = False
+
+        async def _refresh_then_repaint() -> None:
+            await _refresh()
+            get_app().invalidate()
+
+        def _schedule_refresh() -> None:
+            nonlocal frame_inflight, frame_dirty
+            if frame_inflight:
+                return
+            frame_inflight = True
+            frame_dirty = True
+            asyncio.create_task(_refresh_then_repaint())
+
+        await _refresh()
+
+        def _render(geometry: FrameGeometry) -> RenderedFrame:
+            nonlocal visible_rows, frame_width, frame_visible, frame_dirty
+
+            footer = render_footer(_DIFF_FOOTER)
+            footer_h = len(
+                render_to_str(footer, width=geometry.content_width, no_color=True).splitlines()
+            )
+            visible = max(1, geometry.content_height - footer_h - 2)
+            visible_rows = visible
+            frame_width = geometry.content_width
+            frame_visible = visible
+            if frame_dirty:
+                _schedule_refresh()
+
+            window = "\n".join(frame_lines)
+            end_line = offset["line"] + len(frame_lines)
+            position = Text(
+                f"{offset['line'] + 1}-{end_line} of {frame_total} lines",
+                style="secondary",
+            )
+            content = Group(Text.from_ansi(window), position)
+            return self._frame(content, geometry, footer=footer)
+
+        def _scroll(step: int):
+            def _handler(_event) -> None:
+                nonlocal frame_dirty
+                offset["line"] += step
+                frame_dirty = True
+                _schedule_refresh()
+
+            return _handler
+
+        def _page(step: int):
+            def _handler(_event) -> None:
+                nonlocal frame_dirty
+                offset["line"] += step * visible_rows
+                frame_dirty = True
+                _schedule_refresh()
+
+            return _handler
+
+        def _back(event) -> None:
+            event.app.exit()
+
+        handlers = {
+            "down": _scroll(1),
+            "j": _scroll(1),
+            "up": _scroll(-1),
+            "k": _scroll(-1),
+            "page-down": _page(1),
+            "pageup": _page(-1),
+            "q": _back,
+            "escape": _back,
+            "c-c": _back,
+        }
+        await _interactive.navigate(_render, handlers, input=self._input, output=self._output)
+
     async def _walk_comprehension(self, task: Task) -> None:
         """Lever 1: walk the risk-scaled prompt set one prompt at a time, recording
         each answer as we go (partial-save — quitting mid-walk leaves answered
@@ -906,8 +1024,7 @@ class Session:
                 self.core.record_comprehension(task.id, key, answer.strip())
 
     def _comprehension_context(self, task: Task):
-        """The changed-file list drawn above the comprehension questions (1b). None
-        when nothing was harvested (older tasks) so the prompt shows just the question."""
+        """Changed-file context above comprehension questions; D opens the diff viewer."""
         from rich.text import Text
 
         if not task.changed_files:
@@ -917,6 +1034,7 @@ class Session:
             body.append(f"  · {f}\n")
         if len(task.changed_files) > 10:
             body.append(f"  … and {len(task.changed_files) - 10} more\n", style="secondary")
+        body.append("\nPress D in review to view the full diff.\n", style="secondary")
         return body
 
     async def _adjudicate_finding(self, task_id: str, finding_id: str, verdict: str) -> None:
@@ -1300,6 +1418,7 @@ class Session:
 # footer constants that can drift from the `?` keymap.
 _FINDINGS_FOOTER = _VIEW_KEYS["Findings"]
 _SMOKE_FOOTER = _VIEW_KEYS["Smoke"]
+_DIFF_FOOTER = _VIEW_KEYS["Diff"]
 _NEEDS_YOU_FOOTER = _VIEW_KEYS["needs-you"]
 
 
@@ -1367,6 +1486,7 @@ def _review_footer(
         hints.append(by_key["f"])
     if any(not smoke.verified for smoke in task.smoke_tests):
         hints.append(by_key["v"])
+    hints.append(by_key["D"])
     hints.extend((by_key["r"], by_key["q"]))
     return tuple(hints)
 

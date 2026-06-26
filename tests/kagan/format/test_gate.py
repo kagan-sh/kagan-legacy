@@ -194,6 +194,84 @@ def test_render_comprehension_uses_generated_prompts_at_floor():
     assert "What does this change do, end to end?" not in out
 
 
+def _style_of(group, plain: str) -> str:
+    """The whole-text style of the comprehension/findings row whose text is ``plain``."""
+    row = next(r for r in group.renderables if getattr(r, "plain", None) == plain)
+    return str(row.style)
+
+
+def test_render_comprehension_question_answer_context_carry_distinct_styles():
+    # The diff-comprehension surface must not read as one flat grey: question at
+    # default weight, recorded answer emphasised, pending dim — three distinct styles.
+    group = gate.render_comprehension(
+        _task(
+            risk="medium",
+            comprehension_prompts=[
+                ("postcondition", "How does billing retry after this diff?"),
+                ("what_breaks", "What race could still lose a charge?"),
+            ],
+            comprehension={"postcondition": "Retries idempotently keyed on the charge id."},
+        )
+    )
+    question = _style_of(group, "How does billing retry after this diff?")
+    answer = _style_of(group, "Retries idempotently keyed on the charge id.")
+    pending = _style_of(group, "pending")
+    assert question == ""  # default weight, no longer dim
+    assert answer == "bold"  # the recorded answer is emphasised
+    assert pending == "secondary"  # unanswered stays quiet
+    assert question != answer != pending
+
+
+def test_render_comprehension_marks_generated_vs_static_prompts():
+    generated = to_str(
+        gate.render_comprehension(
+            _task(
+                risk="medium",
+                comprehension_prompts=[
+                    ("postcondition", "How does billing retry after this diff?"),
+                    ("what_breaks", "What race could still lose a charge?"),
+                ],
+            )
+        )
+    )
+    static = to_str(gate.render_comprehension(_task(risk="medium")))
+    assert "generated for this diff" in generated
+    assert "generated for this diff" not in static
+    assert "standard prompts for the tier" in static
+
+
+def test_render_comprehension_too_short_generated_set_reads_as_static():
+    # A generated set below the tier floor falls back to static prompts, so the
+    # marker must say static — the human is reading the static set.
+    out = to_str(
+        gate.render_comprehension(
+            _task(risk="high", comprehension_prompts=[("postcondition", "one only?")])
+        )
+    )
+    assert "standard prompts for the tier" in out
+    assert "generated for this diff" not in out
+
+
+def test_findings_message_reads_above_dim_metadata():
+    # The unfocused finding row: metadata (severity/location/source) dim, the message
+    # itself at default weight (no span emitted) so it carries the eye against the
+    # dim tag. The focused row (f1) stays bold and is not asserted here.
+    group = gate.render_findings(
+        [
+            Finding(id="f1", severity="blocking", location="a.py:1", message="first"),
+            Finding(id="f2", severity="nit", location="parser.py:88", message="no depth bound"),
+        ],
+        cursor=0,
+    )
+    line = next(r for r in group.renderables if "no depth bound" in getattr(r, "plain", ""))
+    spans = {line.plain[s.start : s.end]: str(s.style) for s in line.spans}
+    tag_span = next(text for text in spans if "parser.py:88" in text)
+    assert spans[tag_span] == "secondary"  # metadata dim
+    # The message carries the default weight: Rich emits no span for an empty style,
+    # so the message text is distinct from the dim tag.
+    assert not any("no depth bound" in text for text in spans)
+
+
 def test_readiness_counts_generated_prompts_at_floor():
     generated = [
         ("postcondition", "How does billing retry after this diff?"),

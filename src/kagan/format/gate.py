@@ -13,7 +13,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 from kagan.core.api import humanize_task_state
-from kagan.core.comprehension import prompts_for_task
+from kagan.core.comprehension import prompts_for_risk, prompts_for_task
 from kagan.core.tasks import _is_substantive
 from kagan.format import _symbols as sym
 from kagan.format._risk import risk_label, risk_style
@@ -58,10 +58,11 @@ def _finding_line(f: Finding, *, focused: bool) -> Text:
     cursor_prefix = f"{sym.CURSOR} " if focused else "  "
     indent = "    "
     line = Text(cursor_prefix, style="bold" if focused else "")
-    # Severity once, then location + provenance (lever 2).
+    # Severity / location / provenance (lever 2) ride dim so the message — the thing
+    # being read — carries the default weight; the focused row stays bold throughout.
     tag = f"{f.severity}  ·  {f.location}  ·  [{f.source}]"
-    line.append(tag, style="bold" if focused else "")
-    line.append(f"\n{indent}{f.message}", style="")
+    line.append(tag, style="bold" if focused else "secondary")
+    line.append(f"\n{indent}{f.message}", style="bold" if focused else "")
     verdict = f.verdict or "open"
     footer_text = verdict if not f.reply else f"{verdict} — {f.reply}"
     line.append(f"\n{indent}({footer_text})", style="secondary")
@@ -134,17 +135,24 @@ def render_comprehension(task: Task) -> RenderableType:
     """Lever 1: the risk-scaled prompt set — each prompt's question and the recorded
     answer, or 'pending' when unanswered. Low risk requires no prompts.
 
+    Reads as a diff-comprehension surface: the question carries default weight, the
+    recorded answer is emphasised (it's what you're checking), 'pending' stays dim.
+    A quiet provenance line marks whether the set was generated for this diff or is
+    the static risk-tier fallback.
+
     Pure — ``task.comprehension`` is the recorded fact; the lock decision is the
     caller's (``can_approve``)."""
     heading = Text("Comprehension", style="bold")
     prompts = prompts_for_task(task)
     if not prompts:
         return Group(heading, Text("Not required at low risk.", style="secondary"))
-    rows: list[RenderableType] = [heading]
+    generated = prompts != prompts_for_risk(task.risk)
+    provenance = "generated for this diff" if generated else "standard prompts for the tier"
+    rows: list[RenderableType] = [heading, Text(provenance, style="secondary")]
     for key, question in prompts:
-        rows.append(Text(question, style="secondary"))
+        rows.append(Text(question))
         answer = (task.comprehension.get(key) or "").strip()
-        rows.append(Text(answer) if answer else Text("pending", style="secondary"))
+        rows.append(Text(answer, style="bold") if answer else Text("pending", style="secondary"))
     return Group(*rows)
 
 

@@ -13,14 +13,37 @@ Theme style names must be lowercase and contain only letters / ``.`` / ``-`` / `
 (Rich constraint), so the risk tiers are ``risk.low`` / ``risk.med`` / ``risk.high``.
 """
 
+from dataclasses import dataclass
 from io import StringIO
 from typing import TYPE_CHECKING
 
 from rich.console import Console
+from rich.style import Style as RichStyle
 from rich.theme import Theme
 
 if TYPE_CHECKING:
     from rich.console import RenderableType
+
+
+@dataclass(frozen=True, slots=True)
+class DiffColors:
+    add_bg: RichStyle
+    del_bg: RichStyle
+    add_hl: RichStyle
+    del_hl: RichStyle
+
+
+_DIFF_COLORS = DiffColors(
+    add_bg=RichStyle(bgcolor="#12261e"),
+    del_bg=RichStyle(bgcolor="#2d1214"),
+    add_hl=RichStyle(bgcolor="#1a4a2e"),
+    del_hl=RichStyle(bgcolor="#5c1a1d"),
+)
+
+
+def get_diff_colors() -> DiffColors:
+    return _DIFF_COLORS
+
 
 # The semantic palette: one name per meaning, the gate severity ramp defined once.
 KAGAN_THEME = Theme(
@@ -87,4 +110,11 @@ def print_themed(renderable: RenderableType) -> None:
     Console(highlight=False, theme=KAGAN_THEME).print(renderable)
 
 
-__all__ = ["KAGAN_THEME", "make_console", "print_themed", "render_to_str"]
+__all__ = [
+    "KAGAN_THEME",
+    "DiffColors",
+    "get_diff_colors",
+    "make_console",
+    "print_themed",
+    "render_to_str",
+]

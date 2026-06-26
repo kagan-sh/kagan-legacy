@@ -501,6 +501,114 @@ async def test_low_confidence_ai_finding_stays_blocking_on_high_risk(tmp_path, m
     assert ai[0].severity == "blocking"
 
 
+# Validator phase reports a finding AND two diff-specific comprehension prompts
+# (medium tier floor is 2), so the gate's prompt set becomes the generated one.
+GEN_PROMPTS_AGENT = """#!/bin/sh
+if [ -n "$KAGAN_VALIDATE" ]; then
+  mkdir -p .kagan
+  printf '%s\\n' '{"type":"findings","payload":{"findings":[{"severity":"blocking","location":"src/new.py","message":"unbounded recursion: input of depth>1000 stack-overflows","confidence":8,"status":"VERIFIED"}]}}' >> .kagan/ask
+  printf '%s\\n' '{"type":"comprehension_prompts","payload":{"prompts":[{"key":"recursion_bound","question":"What bounds the new recursive descent on deep input?"},{"key":"empty_input","question":"How does src/new.py behave on empty input?"}]}}' >> .kagan/ask
+else
+  mkdir -p src
+  echo "edit" >> src/new.py
+fi
+"""
+
+
+async def test_generated_prompts_surface_through_review_into_receipt(tmp_path, monkeypatch):
+    # Lever 1+2 end-to-end: the validator GENERATES diff-specific comprehension
+    # prompts; they replace the static tier set on the gate, gate approval on the
+    # human's own-words answers, and the answered GENERATED questions appear in the
+    # receipt. This fails if generation is not wired, if the static set still gates,
+    # or if the receipt renders the static questions instead of the generated ones.
+    from kagan.core.comprehension import prompts_for_risk, required_keys_for_task
+
+    repo = await _repo(
+        tmp_path / "repo", "checks:\n  lint: 'true'\nbuilder: codex\nreviewer: claude-opus\n"
+    )
+    bin_dir = tmp_path / "bin"
+    _install(bin_dir, "fakeagent", GEN_PROMPTS_AGENT)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("add feature")
+    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    await core.start_task(task.id)
+    await core.await_agent(task.id)
+
+    task = core.get_task(task.id)
+    assert task.state is TaskState.REVIEW
+    assert task.validator_outcome == "ran"
+
+    # The gate now keys off the GENERATED prompts, not the static medium tier set.
+    static_keys = {k for k, _ in prompts_for_risk(task.risk)}
+    keys = required_keys_for_task(task)
+    assert keys == ["recursion_bound", "empty_input"]
+    assert not static_keys.intersection(keys)
+
+    # Adjudicate the validator finding and answer ONLY the static keys: approve must
+    # stay locked, proving the generated keys (not the static ones) are what gate.
+    ai = [f for f in task.findings if f.source == "ai-review"]
+    assert len(ai) == 1
+    core.set_verdict(task.id, ai[0].id, verdict="agree")
+    for k in static_keys:
+        core.record_comprehension(task.id, k, "a generic note that is plenty long enough")
+    assert core.can_approve(task.id) is False
+
+    # Answering the generated keys in the author's own words unlocks approve.
+    core.record_comprehension(
+        task.id, "recursion_bound", "A depth counter caps recursion at 1000 before it overflows."
+    )
+    core.record_comprehension(
+        task.id, "empty_input", "On empty input the parser returns the zero value, no crash."
+    )
+    assert core.can_approve(task.id) is True
+
+    # The receipt carries the GENERATED questions with their answers, not the static set.
+    receipt = core.render_receipt(task.id)
+    assert "What bounds the new recursive descent on deep input?" in receipt
+    assert "A depth counter caps recursion at 1000" in receipt
+    assert "What does this change do, end to end?" not in receipt  # the static medium prompt
+
+
+async def test_validator_failure_falls_back_to_static_prompts_with_honest_provenance(
+    tmp_path, monkeypatch
+):
+    # Rule-8 floor: a degraded validator can never shrink the gate. When the validator
+    # crashes it generates NO prompts, so the gate falls back to the static medium tier
+    # set, and the receipt admits "validator unavailable" rather than faking provenance.
+    from kagan.core.comprehension import prompts_for_risk, required_keys_for_task
+
+    repo = await _repo(tmp_path / "repo", "builder: codex\nreviewer: claude-opus\n")
+    bin_dir = tmp_path / "bin"
+    _install(bin_dir, "fakeagent", GEN_PROMPTS_AGENT)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+
+    async def _boom(task, *, model, timeout=None):
+        raise RuntimeError("validator process exploded")
+
+    monkeypatch.setattr("kagan.core.harness.launch_validate", _boom)
+
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("add feature")
+    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    await core.start_task(task.id)
+    await core.await_agent(task.id)
+
+    task = core.get_task(task.id)
+    assert task.state is TaskState.REVIEW
+    assert task.validator_outcome == "failed"
+    assert not task.comprehension_prompts  # nothing generated — the validator crashed
+
+    # The gate falls back to the full static medium tier set (the floor holds).
+    static_keys = [k for k, _ in prompts_for_risk(task.risk)]
+    assert required_keys_for_task(task) == static_keys
+    assert static_keys == ["postcondition", "what_breaks"]
+
+    # The receipt's ceremony banner is honest about the missing validator.
+    assert "validator unavailable" in core.render_receipt(task.id)
+
+
 def test_build_cmd_appends_model_flag_only_when_model_supplied(tmp_path):
     # The model override is wired through _build_cmd: a recipe with a model_flag gets
     # the flag + name appended when a model is supplied, and nothing when it is None.

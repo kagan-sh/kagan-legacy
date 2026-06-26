@@ -257,6 +257,37 @@ async def _verify(
     return all(r.passed for r in results), {r.name for r in results if not r.passed}
 
 
+def _model_runnable(field: str, value: str, cli: str) -> bool:
+    """True if ``cli`` can run model ``value``; else print a notice and return False.
+
+    builder/reviewer are OPTIONAL refinements — an incompatible one is dropped (the CLI's
+    default), never a dead-end. The notice mirrors `_print_unwalked_suggestions`: drop +
+    explain, don't gate. Normalizing the parsed draft up front (see `_normalize_models`)
+    means this rarely fires; it stays as the backstop so the write can never abort."""
+    from kagan.core.errors import ConfigurationError
+    from kagan.core.recipes import validate_model_for_cli
+
+    try:
+        validate_model_for_cli(cli, value)
+    except ConfigurationError as exc:
+        click.echo(
+            f"  {field} {value!r} isn't runnable by {cli} — left unset ({cli}'s default). "
+            f"{exc.detail}"
+        )
+        return False
+    return True
+
+
+def _normalize_models(draft: ManifestDraft, cli: str) -> None:
+    """Drop an incompatible builder/reviewer from the PARSED draft before the human reviews
+    it, so the summary shows the corrected manifest (unset → CLI default), not one doomed
+    to fail at the write step."""
+    if draft.builder and not _model_runnable("builder", draft.builder, cli):
+        draft.builder = None
+    if draft.reviewer and not _model_runnable("reviewer", draft.reviewer, cli):
+        draft.reviewer = None
+
+
 def _draft_to_config(
     draft: ManifestDraft, approved: dict[str, str], project_name: str, *, agent_cli: str
 ) -> dict:
@@ -270,13 +301,13 @@ def _draft_to_config(
         cfg["checks"] = approved
     if draft.risk_tiers:
         cfg["risk_tiers"] = draft.risk_tiers
-    from kagan.core.recipes import validate_model_for_cli
-
-    if draft.builder:
-        validate_model_for_cli(agent_cli, draft.builder)
+    # An incompatible model is dropped (CLI default), never an abort — the manifest must
+    # always write so the human's verified checks/risk tiers are never discarded over an
+    # optional field. _normalize_models already filtered the parsed draft; this is the
+    # backstop for an edited/odd value.
+    if draft.builder and _model_runnable("builder", draft.builder, agent_cli):
         cfg["builder"] = draft.builder
-    if draft.reviewer:
-        validate_model_for_cli(agent_cli, draft.reviewer)
+    if draft.reviewer and _model_runnable("reviewer", draft.reviewer, agent_cli):
         cfg["reviewer"] = draft.reviewer
     return cfg
 
@@ -393,6 +424,8 @@ async def run_init(repo_root: Path | None) -> Path | None:
             reports = await _draft_with_progress(draft_cli, repo_root)
             if reports is not None:
                 draft = parse_manifest_report(reports)
+                if draft is not None:
+                    _normalize_models(draft, draft_cli)
 
         if draft is None or not draft.checks:
             # Deterministic floor: a valid, mostly-commented skeleton to fill in by hand.
@@ -419,18 +452,8 @@ async def run_init(repo_root: Path | None) -> Path | None:
             ):
                 approved = {n: c for n, c in approved.items() if n not in failed}
 
-        from kagan.core.errors import ConfigurationError
-
-        try:
-            assert draft_cli is not None
-            cfg = _draft_to_config(
-                draft, approved, project_name=repo_root.name, agent_cli=draft_cli
-            )
-        except ConfigurationError as exc:
-            click.echo(f"Invalid model in manifest draft: {exc.detail}")
-            click.echo("Fix the draft or re-run `kagan init` and edit builder/reviewer.")
-            return None
-
+        assert draft_cli is not None
+        cfg = _draft_to_config(draft, approved, project_name=repo_root.name, agent_cli=draft_cli)
         manifest_path = _write_files(repo_root, render_manifest_yaml(cfg))
     finally:
         core.close()

@@ -91,7 +91,30 @@ def _validate_prompt(task: Task) -> str:
     return prompt
 
 
-def _init_prompt() -> str:
+def _model_vocab_directive(cli: str) -> str:
+    """Tell the drafting agent the model vocabulary THIS cli can actually run, so it never
+    proposes a builder/reviewer the cli can't spawn (e.g. a Claude tier on codex).
+
+    claude/opencode resolve the canonical tier aliases; codex/kimi are vendor-locked and a
+    tier alias would fail there, so they must use a cli-native id or null."""
+    from kagan.core.recipes import CANONICAL_TIERS
+
+    aliases = "/".join(CANONICAL_TIERS)
+    if cli in ("claude", "opencode"):
+        return (
+            f"This repo runs the {cli} CLI. For builder and reviewer use a canonical tier "
+            f"alias ({aliases}) — NOT a native model id like claude-opus-4-8 — or null. "
+            f"NEVER propose another vendor's model.\n"
+        )
+    return (
+        f"This repo runs the {cli} CLI, which is vendor-locked: a canonical tier alias "
+        f"({aliases}) does NOT map to it and would fail. For builder and reviewer use a "
+        f"{cli}-native model id, or null if you cannot name one. NEVER propose a Claude "
+        f"tier alias or any other vendor's model.\n"
+    )
+
+
+def _init_prompt(cli: str) -> str:
     return (
         "Mode: init. Do NOT modify the repository — only read it and report.\n"
         "Investigate this repository thoroughly and propose a kagan review manifest for it.\n"
@@ -107,12 +130,10 @@ def _init_prompt() -> str:
         "  base_branch (str), checks (list of {name, command, provenance, source}),\n"
         "  risk_tiers ({low|medium|high: [globs]}), services ({name: {command, port_env}}),\n"
         "  security (SAST command or null), builder (model or null), reviewer (model or null).\n"
-        "For builder and reviewer, emit a canonical tier alias (opus/sonnet/haiku) or null — "
-        "NOT a native model id like claude-opus-4-8. The reviewer must be runnable by the "
-        "same agent CLI the repo will use (the validator spawns that CLI with the reviewer "
-        "model). Prefer a model DIFFERENT from builder (a different size of the same vendor "
-        "is fine) so the adversarial validator is a fresh second opinion; leave null only "
-        "if no second model is available.\n"
+        + _model_vocab_directive(cli)
+        + "The reviewer is spawned with that same CLI. Prefer a model DIFFERENT from builder "
+        "(a different size of the same vendor is fine) so the adversarial validator is a "
+        "fresh second opinion; leave null only if no second model is available.\n"
         "provenance is one of ci|precommit|scripts|makefile|pyproject|lockfile|instructions|"
         "invented; source names the file it was lifted from (empty when invented).\n"
     )
@@ -407,7 +428,7 @@ async def launch_manifest_draft(cli: str, repo_root: Path) -> list:
         repo_root,
         phase="init",
         prompt_name="init-prompt.txt",
-        prompt_text=_init_prompt(),
+        prompt_text=_init_prompt(cli),
         env_flag="KAGAN_INIT",
     )
     return reports

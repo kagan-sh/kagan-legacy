@@ -74,7 +74,10 @@ def test_skeleton_floor_when_no_agent(tmp_path, monkeypatch):
     assert (tmp_path / ".kagan" / "review.md").exists()
 
 
-def test_init_rejects_incompatible_reviewer_for_codex_builder(tmp_path, monkeypatch):
+def test_init_drops_incompatible_models_for_codex_but_writes(tmp_path, monkeypatch):
+    # An incompatible builder/reviewer (Claude tiers a codex drafter can't run) must NOT
+    # abort onboarding: the manifest IS written, the verified checks/risk tiers survive,
+    # the bad models are dropped to the CLI default, and a notice explains why.
     _git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(Harness, "available_clis", lambda self: ["codex"])
@@ -82,14 +85,22 @@ def test_init_rejects_incompatible_reviewer_for_codex_builder(tmp_path, monkeypa
         monkeypatch,
         _manifest_payload(
             [{"name": "test", "command": "pytest", "provenance": "invented"}],
-            reviewer="claude-opus",
+            risk_tiers={"high": ["src/**"]},
+            builder="sonnet",
+            reviewer="opus",
         ),
     )
     result = _invoke_init(input="y\na\nn\n")
     assert result.exit_code == 0
-    assert not (tmp_path / ".kagan" / "repo.yaml").exists()
-    assert "claude-opus" in result.output
+    path = tmp_path / ".kagan" / "repo.yaml"
+    assert path.exists()  # never dead-ended over an optional field
+    cfg = load_repo_config(tmp_path)
+    assert cfg.checks == {"test": "pytest"}  # verified check survived
+    assert cfg.risk_tiers == {"high": ["src/**"]}  # risk tiers survived
+    assert cfg.builder is None and cfg.reviewer is None  # dropped to CLI default
     assert "codex" in result.output
+    assert "isn't runnable" in result.output
+    assert "Fix the draft" not in result.output  # the old abort path is gone
 
 
 def test_init_accepts_opus_tier_for_claude_builder(tmp_path, monkeypatch):

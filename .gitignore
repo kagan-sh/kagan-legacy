@@ -1,113 +1,41 @@
 # Generated requirements (Snyk CI)
 requirements.txt
 
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-node_modules/
-lib/
-!packages/web/src/lib/
-!packages/vscode/src/lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
+sdist/
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
+# Tests & coverage
 htmlcov/
-.tox/
-.nox/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
+.cov.*
 coverage.xml
+coverage.json
 *.cover
 *.py,cover
-.hypothesis/
+.cache
 .pytest_cache/
 
-# Translations
-*.mo
-*.pot
+# Tooling (uv, ruff, import-linter, pyrefly uses no cache dir)
+.uv/
+.ruff_cache/
+.import_linter_cache/
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
+# Docs (mkdocs)
+/site
 docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-Pipfile.lock
-
-# poetry
-poetry.lock
-
-# pdm
-.pdm.toml
-.pdm-python
-.pdm-build/
-
-# PEP 582
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
 
 # Environments
 .env
@@ -119,36 +47,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.python-version
 
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# UV specific
-.uv/
-
-# Ruff
-.ruff_cache/
+# Logs
+*.log
 
 # IDE
 .idea/
@@ -166,101 +68,48 @@ cython_debug/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
+# Kagan runtime (per-repo state, worktrees, MCP configs)
 .kagan/
+.kagan_worktrees/
+.worktrees/
+.mcp.json
+opencode.json
+kagan*.mcp.json
+*kagan.json
 
-# Fork lives in separate repo (kagan-sh/textual-terminal); do not vendor
+# Local scratch
+.plans/
+.scratchpad/
+.tmp/
+/experiment/
+kimi-export-*.md
+
+# Reference trees (not vendored into the package)
 textual-terminal/
-
 references/
+hai_coding/
 
-snapshot_report.html
-
-# Private keys and certificates
+# Private keys, credentials, cloud config
 *.pem
 *.key
 *.p12
 *.pfx
 *.crt
 *.cer
-
-# Credential files
 credentials*
 secrets*
 *_credentials*
 *_secrets*
-
-# Cloud provider configs
 .aws/
 .gcloud/
 .azure/
 
-.scratchpad/
-.tmp/
-.worktrees/
-.kagan_worktrees/
-
-# Kagan-generated files (local state + MCP configs)
-.mcp.json
-opencode.json
-kagan*.mcp.json
-*kagan.json
-
-coverage.json
-
+# Local agent session dirs
 .claude/
-tasks/
-
-:memory:-shm
-
-:memory:
-
-:memory:-wal
-
-kagan.db
-
 .serena/
-
 .initiatives/
-
 .sisyphus/
-
-# ── Node / TypeScript / SvelteKit web packages (packages/*) ────────
-node_modules/
-packages/*/dist/
-packages/*/coverage/
-packages/*/playwright-report/
-packages/*/test-results/
-packages/*/package/
-packages/*/.svelte-kit/
-packages/*/.vite/
-packages/*/.vercel/
-packages/*/.netlify/
-packages/*/.output/
-packages/*/vite.config.js.timestamp-*
-packages/*/vite.config.ts.timestamp-*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-*.tsbuildinfo
-package-lock.json
-yarn.lock
-
-# ── Bundled web UI (build artifact, included in wheel via force-include) ──
-src/kagan/server/_web_static/*
-!src/kagan/server/_web_static/.gitkeep
-
-packages/web/.svelte-kit/
-
 .results/
 
-# Local debug artifacts (playwright snapshots, ad-hoc dumps)
-.playwright-mcp/
-/board.yml
-/board-deep.yml
-/board-full.yml
-/diff-in-board.png
-
-# Playwright E2E coverage raw data
-.nyc_output/
+# CLI repro probes & ad-hoc debug dumps
+probe_ask

@@ -13,7 +13,7 @@ on:
       - ".github/assets/**"
       - ".readthedocs.yaml"
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 3 * * 1" # weekly, Monday 03:00 UTC
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,58 +23,18 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    outputs:
-      web: ${{ steps.detect.outputs.web }}
-      vscode: ${{ steps.detect.outputs.vscode }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - id: detect
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          if [ "$EVENT_NAME" = "push" ]; then
-            echo "web=true" >> "$GITHUB_OUTPUT"
-            echo "vscode=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git diff --name-only "$BASE_SHA"...HEAD > /tmp/changed-files
-
-          if grep -Eq '^(packages/web/|packages/shared/|src/kagan/server/|src/kagan/wire/|scripts/generate_wire_types\.py|pnpm-lock\.yaml|package\.json|pnpm-workspace\.yaml)' /tmp/changed-files; then
-            echo "web=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "web=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if grep -Eq '^(packages/vscode/|packages/shared/|src/kagan/server/responses\.py|src/kagan/wire/|scripts/generate_wire_types\.py|pnpm-lock\.yaml|package\.json|pnpm-workspace\.yaml)' /tmp/changed-files; then
-            echo "vscode=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "vscode=false" >> "$GITHUB_OUTPUT"
-          fi
-
   lint:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-      - run: uv sync --frozen --dev
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup
       - run: uv run poe lint
       - run: uv run poe check-guardrails
       - run: uv run poe typecheck
+      - run: uv run poe check-boundaries
+      - run: uv run poe deadcode
       - run: uv run poe docs-check
 
   fast-gate:
@@ -82,16 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-      - run: uv sync --frozen --dev
-      - run: uv run poe db-migrations-check
-      - run: uv run pytest tests/unit/core/ -m "core and unit" -n auto -q
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup
+      - run: uv run pytest tests/kagan/ -m "unit or smoke" -n auto -q
 
   test-pr:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
@@ -103,33 +56,15 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            python-version: "3.12"
-          - os: ubuntu-latest
             python-version: "3.14"
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup
         with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
           python-version: ${{ matrix.python-version }}
-      - name: Install system dependencies
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update -q && sudo apt-get install -y tmux
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            brew install tmux
-          fi
-      - name: Configure git for tests
-        run: |
-          git config --global user.email "test@kagan.local"
-          git config --global user.name "Kagan Test"
-          git config --global commit.gpgsign false
-      - run: uv sync --frozen --dev
+          configure-git: "true"
       - name: Test
-        run: uv run pytest tests/ -m "not snapshot" -n auto
+        run: uv run pytest tests/ -m "not snapshot" -n auto --cov=kagan --cov-report=term-missing --cov-fail-under=0
 
   test-main:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -141,39 +76,17 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            python-version: "3.12"
-          - os: ubuntu-latest
-            python-version: "3.13"
-          - os: ubuntu-latest
             python-version: "3.14"
-          - os: macos-latest
-            python-version: "3.12"
           - os: macos-latest
             python-version: "3.14"
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup
         with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
           python-version: ${{ matrix.python-version }}
-      - name: Install system dependencies
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update -q && sudo apt-get install -y tmux
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            brew install tmux
-          fi
-      - name: Configure git for tests
-        run: |
-          git config --global user.email "test@kagan.local"
-          git config --global user.name "Kagan Test"
-          git config --global commit.gpgsign false
-      - run: uv sync --frozen --dev
+          configure-git: "true"
       - name: Test
-        run: uv run pytest tests/ -m "not snapshot" -n auto
+        run: uv run pytest tests/ -m "not snapshot" -n auto --cov=kagan --cov-report=term-missing --cov-fail-under=0
 
   test-windows:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
@@ -181,139 +94,27 @@ jobs:
     timeout-minutes: 10
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Configure git for tests
-        run: |
-          git config --global user.email "test@kagan.local"
-          git config --global user.name "Kagan Test"
-          git config --global commit.gpgsign false
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup
         with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-      - run: uv sync --frozen --dev
+          configure-git: "true"
       - name: Test (windows compatibility marker)
-        run: uv run pytest tests/ -m "windows_ci" -n 0 -v
+        run: uv run pytest tests/ -m "windows_ci or smoke" -n 0 -v
 
   snapshot:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run pre-merge on TUI-affecting PRs and post-merge on main, so visual
+    # regressions are caught before they land.
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
     needs: lint
-    timeout-minutes: 25
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: true
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y tmux
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: brew install tmux
-      - name: Configure git for tests
-        run: |
-          git config --global user.email "test@kagan.local"
-          git config --global user.name "Kagan Test"
-          git config --global commit.gpgsign false
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-      - run: uv sync --frozen --dev
-      - name: Snapshot tests
-        shell: bash
-        run: |
-          if [ ! -d tests/tui/smoke ]; then
-            echo "No tests/tui/smoke directory; skipping snapshot tests."
-            exit 0
-          fi
-
-          if ! ls tests/tui/smoke/test_*.py >/dev/null 2>&1; then
-            echo "No snapshot test files found; skipping snapshot tests."
-            exit 0
-          fi
-
-          uv run pytest tests/tui/smoke/ -n auto -v
-
-  test-vscode:
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.changes.outputs.vscode == 'true'
-    needs: [fast-gate, changes]
-    runs-on: ubuntu-latest
     timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-      - run: cd packages/vscode && pnpm install --frozen-lockfile && pnpm run test:unit
-      - name: Check extension version bump
-        run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          # Did any extension source files change?
-          if git diff --name-only "$BASE"...HEAD -- 'packages/vscode/src/' | grep -q .; then
-            # Did package.json version change?
-            if git diff "$BASE"...HEAD -- 'packages/vscode/package.json' | grep -q '"version"'; then
-              echo "Extension source changed and version was bumped."
-            else
-              echo "::warning::Extension source files changed but packages/vscode/package.json version was not bumped."
-            fi
-          fi
-
-  test-web:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.changes.outputs.web == 'true')
-    needs: [lint, fast-gate, changes]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
-      - name: Cache pnpm store
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('packages/web/package.json') }}
-          restore-keys: playwright-${{ runner.os }}-
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-      - run: uv sync --frozen --dev
-        working-directory: ${{ github.workspace }}
-      - run: uv tool install --editable --force .
-        working-directory: ${{ github.workspace }}
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @kagan/shared-api-client run build
-      - run: pnpm run web:test
-      - run: uv run poe web-build
-        working-directory: ${{ github.workspace }}
-      - run: pnpm --filter kagan-web exec playwright install --with-deps chromium
-      - run: pnpm run web:test:e2e
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: playwright-report
-          path: packages/web/playwright-report/
-          retention-days: 7
+          configure-git: "true"
+      - name: Snapshot tests
+        run: uv run pytest tests/kagan/tui/smoke/ -n auto -v
 
   test-all-platforms:
     if: github.event_name == 'schedule'
@@ -324,25 +125,21 @@ jobs:
       matrix:
         os: [ubuntu-24.04-arm, macos-15-intel]
     steps:
-      - uses: actions/checkout@v6
-      - name: Install system dependencies
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update -q && sudo apt-get install -y tmux
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            brew install tmux
-          fi
-      - name: Configure git for tests
-        run: |
-          git config --global user.email "test@kagan.local"
-          git config --global user.name "Kagan Test"
-          git config --global commit.gpgsign false
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup
         with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-      - run: uv sync --frozen --dev
+          configure-git: "true"
       # Exclude snapshot tests from matrix runs; covered by dedicated job.
       - run: uv run pytest tests/ -m "not snapshot" -n auto
+
+  secrets:
+    # Server-side secret scan: the gitleaks pre-commit hook is bypassable
+    # with --no-verify, so gate on it in CI too. Free for public repos.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2

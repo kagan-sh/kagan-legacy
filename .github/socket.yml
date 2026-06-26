@@ -19,9 +19,6 @@ licensePolicy:
     - "MPL-2.0"
     - "LGPL-3.0"
     - "LGPL-2.1"
-    # Microsoft/W3C licenses (TypeScript 6.0+)
-    - "W3C-Community-Final-Specification-Agreement"
-    - "LicenseRef-W3C-Community-Final-Specification-Agreement"
 
   warn:
     # Strong copyleft - review required
@@ -40,22 +37,8 @@ licensePolicy:
     - "Commercial"
     - "UNLICENSED"
 
-# Security policy overrides
-curation:
-  # Auto-approve specific trusted packages with license warnings
-  - package: "typescript"
-    license: "W3C-Community-Final-Specification-Agreement"
-    reason: "Official Microsoft TypeScript - W3C license is OSI-compliant"
-
-  - packagePattern: "lightningcss*"
-    license: "MPL-2.0"
-    reason: "Tailwind CSS v4 dependency - MPL-2.0 is weak copyleft, safe for deps"
-
 # Disable specific alert types for this repo
 ignore:
-  # We trust GitHub Actions and major ecosystem packages
+  # We trust GitHub Actions packages
   - alertType: "license"
     packagePattern: "actions/*"
-
-  - alertType: "license"
-    packagePattern: "@types/*"

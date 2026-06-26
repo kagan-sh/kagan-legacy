@@ -8,8 +8,6 @@ Tests that use ``pytest.raises`` / ``pytest.warns`` as context managers or
 that have no asserts at all (valid "does not crash" tests) are not flagged.
 """
 
-from __future__ import annotations
-
 import ast
 from pathlib import Path
 

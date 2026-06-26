@@ -22,15 +22,17 @@ permissions:
 jobs:
   snyk-deps:
     name: Dependency Scan
-    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
+    # Skip on fork PRs (no access to SNYK_TOKEN -> would fail closed) and on
+    # Dependabot PRs. Always runs on push and schedule.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v7
-      - uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # snyk/actions/setup@master
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # v1
 
       - name: Export requirements for Snyk
         run: |
@@ -47,7 +49,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
       - name: Upload dependency scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
         if: always() && hashFiles('snyk-deps.sarif') != ''
         with:
           sarif_file: snyk-deps.sarif
@@ -61,11 +63,13 @@ jobs:
 
   snyk-code:
     name: Code Analysis (SAST)
-    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
+    # Skip on fork PRs (no access to SNYK_TOKEN -> would fail closed) and on
+    # Dependabot PRs. Always runs on push and schedule.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # snyk/actions/setup@master
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # v1
 
       - name: Snyk code scan
         run: snyk code test --severity-threshold=high --sarif-file-output=snyk-code.sarif
@@ -73,7 +77,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
       - name: Upload code scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
         if: always() && hashFiles('snyk-code.sarif') != ''
         with:
           sarif_file: snyk-code.sarif

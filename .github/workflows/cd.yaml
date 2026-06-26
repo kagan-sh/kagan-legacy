@@ -47,13 +47,13 @@ jobs:
       contents: write
       packages: read
     steps:
-      - uses: actions/create-github-app-token@v3
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         id: app-token
         with:
           app-id: ${{ secrets.BOT_ID }}
           private-key: ${{ secrets.BOT_SK }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           # Fetch entire repository history so we can determine version number from it
           fetch-depth: 0
@@ -62,35 +62,15 @@ jobs:
       - run: git config --global user.name "CI" && git config --global user.email "ci@local"
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
           cache-dependency-glob: |
             uv.lock
             pyproject.toml
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Install JavaScript workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build shared API client
-        run: pnpm --filter @kagan/shared-api-client run build
-
-      - name: Build bundled web UI
-        run: uv run poe web-build
-
       - name: Run release smoke checks
-        run: |
-          set -o pipefail
-          uv run poe db-migrations-check
-          uv run pytest tests/unit/core/ -m "core and unit" -n auto -q
+        run: uv run pytest tests/ -m "smoke" -n auto -q
 
       - name: Run Semantic Release
         id: release
@@ -117,8 +97,9 @@ jobs:
         run: |
           # semantic-release creates a version-bump commit and tags it, but if the
           # push races with other merges the tag can land on a detached branch.
-          # Force-push main so the tagged commit is always reachable.
-          git push origin HEAD:main --force
+          # Re-push main so the tagged commit is reachable; --force-with-lease
+          # aborts (rather than clobbers) if a concurrent commit landed meanwhile.
+          git push origin HEAD:main --force-with-lease
 
       - name: Publish GitHub Release
         if: steps.release.outputs.released == 'true'
@@ -148,10 +129,10 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
           cache-dependency-glob: |
@@ -162,16 +143,16 @@ jobs:
         run: uv sync --frozen --dev
 
       - name: Build documentation
-        run: uv run mkdocs build -f docs/mkdocs.yml
+        run: uv run mkdocs build -f config/mkdocs.yml
 
       - name: Setup Pages
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

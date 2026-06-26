@@ -14,8 +14,7 @@ class NotFoundError(KaganError):
 
 class InvalidTransitionError(KaganError):
     def __init__(self, from_status: str, to_status: str) -> None:
-        # `to_status` may also be a Trigger name when raised from the
-        # trigger-keyed state machine; both are StrEnum / str.
+        # to_status may be Trigger name from state machine (both are StrEnum/str).
         self.from_status = str(from_status)
         self.to_status = str(to_status)
         super().__init__(f"Cannot transition from {self.from_status!r} to {self.to_status!r}")
@@ -23,18 +22,6 @@ class InvalidTransitionError(KaganError):
 
 class WorktreeError(KaganError):
     pass
-
-
-class MultiRepoUnsupportedError(WorktreeError):
-    code = "MULTI_REPO_UNSUPPORTED"
-    hint = "Specify repo_id on the task, or link exactly one repository to the project."
-
-    def __init__(self, repo_count: int) -> None:
-        self.repo_count = repo_count
-        super().__init__(
-            f"{self.code}: task execution currently supports exactly one linked repo; "
-            f"found {repo_count}"
-        )
 
 
 class MergeConflictError(WorktreeError):
@@ -49,18 +36,6 @@ class AgentError(KaganError):
     pass
 
 
-class AgentTimeoutError(AgentError):
-    hint = "The agent took too long. Try a simpler prompt or check agent connectivity."
-
-
-class AgentRepetitionError(AgentError):
-    pass
-
-
-class AgentRateLimitError(AgentError):
-    hint = "Wait a moment and retry, or switch to a different agent backend."
-
-
 class PreflightError(KaganError):
     hint = "Run 'kagan doctor' for details."
 
@@ -72,31 +47,19 @@ class ValidationError(KaganError):
         super().__init__(f"{field}: {message}" if field else message)
 
 
+class AgentCapError(KaganError):
+    """Lever 5: refused starting a run because the concurrent-agent cap is hit."""
+
+    def __init__(self, running: int, cap: int) -> None:
+        self.running = running
+        self.cap = cap
+        self.hint = "Finish a review first, then start the next one."
+        super().__init__(f"{running} agents already working (cap {cap})")
+
+
 class ConfigurationError(KaganError):
     def __init__(self, context: str, detail: str) -> None:
         self.context = context
         self.detail = detail
         self.hint = "Run 'kagan doctor' to diagnose configuration issues."
         super().__init__(f"{context}: {detail}" if detail else context)
-
-
-class SessionError(KaganError):
-    def __init__(self, session_id: str | None, message: str) -> None:
-        self.session_id = session_id
-        super().__init__(f"Session {session_id}: {message}" if session_id else message)
-
-
-class VerificationError(KaganError):
-    def __init__(self, task_id: str, message: str) -> None:
-        self.task_id = task_id
-        super().__init__(f"Verification failed for task {task_id!r}: {message}")
-
-
-class RewindError(WorktreeError):
-    def __init__(self, task_id: str, message: str) -> None:
-        self.task_id = task_id
-        super().__init__(f"Rewind failed for task {task_id!r}: {message}")
-
-
-class InsightError(KaganError):
-    pass

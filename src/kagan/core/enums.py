@@ -1,88 +1,28 @@
-"""Core enums for kagan.core — task lifecycle and event types."""
+"""Core enums for kagan.core — v2 task lifecycle.
 
-from enum import IntEnum, StrEnum
+The Inbox urgency order and gate/drift conditions (TUI-INBOX-01) are added during
+the rebuild; this holds only the lifecycle states a task moves through
+(TUI-SHELL-03).
+"""
 
-
-class TaskStatus(StrEnum):
-    BACKLOG = "BACKLOG"
-    IN_PROGRESS = "IN_PROGRESS"
-    REVIEW = "REVIEW"
-    DONE = "DONE"
+from enum import StrEnum
 
 
-class SessionStatus(StrEnum):
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    CANCELLED = "CANCELLED"
+class TaskState(StrEnum):
+    # Listed in lifecycle order: local work, then the local review gate, then
+    # ship, then the remote PR (pr_open), then merged.
+    INTAKE = "intake"
+    RUNNING = "running"
+    VALIDATING = "validating"
+    REVIEW = "review"  # local review gate (pre-ship) -> Gate surface
+    READY = "ready"
+    PR_OPEN = "pr_open"  # PR open on the remote, CI watching (post-ship) -> Workspaces
+    DONE = "done"
 
 
-class Priority(IntEnum):
-    LOW = 0
-    MEDIUM = 1
-    HIGH = 2
-    CRITICAL = 3
+def humanize_task_state(state: TaskState) -> str:
+    """Return the title-cased display label for a task state (e.g. ``Validating``)."""
+    return state.value.replace("_", " ").title()
 
 
-class AgentRole(StrEnum):
-    WORKER = "WORKER"
-    REVIEWER = "REVIEWER"
-    ORCHESTRATOR = "ORCHESTRATOR"
-
-
-class BranchRefStrategy(StrEnum):
-    LOCAL = "local"
-    REMOTE = "remote"
-    LOCAL_IF_AHEAD = "local_if_ahead"
-
-
-class SessionKind(StrEnum):
-    """Kind of chat session in the TUI."""
-
-    ORCHESTRATOR = "orchestrator"
-    DETACHED = "detached"
-    REVIEW = "review"
-    ATTACHED = "attached"
-
-
-class ChatMode(StrEnum):
-    """Chat panel mode."""
-
-    ORCHESTRATOR = "orchestrator"
-    TASK = "task"
-
-
-class StreamSource(StrEnum):
-    """Source of agent output stream."""
-
-    WORKER = "worker"
-    REVIEWER = "reviewer"
-
-
-class TaskType(StrEnum):
-    """Task classification types for analytics and intelligent routing."""
-
-    CODE_IMPLEMENTATION = "code_implementation"
-    BUG_FIX = "bug_fix"
-    REFACTORING = "refactoring"
-    DOCUMENTATION = "documentation"
-    ARCHITECTURE = "architecture"
-    DESIGN = "design"
-    ANALYSIS = "analysis"
-    TESTING = "testing"
-    DEPLOYMENT = "deployment"
-    INVESTIGATION = "investigation"
-    OPTIMIZATION = "optimization"
-    UNKNOWN = "unknown"  # Fallback for unclassified tasks
-
-
-def parse_priority(value: str | int | None) -> Priority:
-    """Parse a string, int, or None into a Priority enum value."""
-    if value is None:
-        return Priority.MEDIUM
-    if isinstance(value, int):
-        return Priority(value)
-    if value.isdigit():
-        return Priority(int(value))
-    return Priority[value]
+__all__ = ["TaskState", "humanize_task_state"]

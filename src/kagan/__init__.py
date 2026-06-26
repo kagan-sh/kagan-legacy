@@ -1,1 +1,1 @@
-"""Kagan — AI-powered Kanban TUI for autonomous development workflows."""
+"""Kagan — an interactive CLI supervision layer for AI coding agents."""

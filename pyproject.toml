@@ -1,19 +1,18 @@
 [project]
 name = "kagan"
 version = "0.19.0-beta.38"
-description = "Kanban TUI for AI coding agents with a structural human review gate"
+description = "Supervision layer for AI coding agents — isolate work, verify it before review, ship on your terms"
 license = "MIT"
 authors = [
   { name = "Altynbek Orumbayev", email = "altynbek.orumbayev@makerx.com.au" },
 ]
 keywords = [
-  "kanban",
   "tui",
   "terminal",
   "ai",
-  "textual",
-  "project-management",
-  "autonomous",
+  "agents",
+  "mcp",
+  "supervision",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -22,44 +21,27 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development",
-  "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: Terminals",
   "Topic :: Utilities",
   "Typing :: Typed",
 ]
-requires-python = ">=3.12,<3.15"
+requires-python = ">=3.14,<3.15"
 readme = "README.md"
 dependencies = [
-  "agent-client-protocol>=0.8.0,<1.0.0",
-  "alembic>=1.16.0",
   "click>=8.1.0",
-  "cryptography>=46.0",
   # Pinned explicitly despite being a transitive dep of mcp - prevents pre-release breakage (see v0.14.1)
   "httpx>=0.27.0,<1.0.0",
   "loguru>=0.7.0",
   "mcp>=1.26.0,<2.0.0",
-  "mslex>=1.3.0",
   "packaging>=24.0",
   "pathspec>=0.12.0",
   "platformdirs>=4.3.0",
   "pydantic>=2.0.0",
   "prompt-toolkit>=3.0.0",
-  # Direct constraint to pin past Snyk advisory SNYK-PYTHON-PYTHONMULTIPART-16438952
-  # (resource-allocation DoS); mcp 1.26.x pulls 0.0.22 transitively.
-  "python-multipart>=0.0.27",
-  "qrcode>=8.2",
+  "pyyaml>=6.0",
   "rich>=14.0.0",
-  # Explicit dependency - imported directly in 11+ files, not just via sqlmodel
-  "sqlalchemy>=2.0.0",
-  "sqlmodel>=0.0.22",
-  "textual>=7.0.0,<8.0.0",
-  "tomlkit>=0.13.0",
-  "uvicorn>=0.34.0",
-  "websockets>=15.0",
 ]
 
 [project.scripts]
@@ -79,10 +61,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kagan"]
-exclude = ["src/kagan/server/_web_static/**"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/kagan/server/_web_static" = "kagan/server/_web_static"
 [dependency-groups]
 dev = [
   "import-linter>=2.11",
@@ -102,84 +81,63 @@ dev = [
   # Transitive via python-semantic-release; pin past SNYK-PYTHON-GITPYTHON-16624542 (high)
   "gitpython>=3.1.50",
   "pytest-sugar>=1.1.1",
-  "playwright>=1.58.0",
-  "pytest-playwright>=0.7.2",
   "pillow>=12.2.0",
   "inline-snapshot>=0.20.0",
 ]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 src = ["src", "tests"]
-extend-exclude = ["src/kagan/core/adapters/db/migrations/versions/*.py"]
+extend-exclude = []
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"__future__.annotations".msg = "PEP 649: annotations are deferred by default on 3.14+; the import is never needed."
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "TCH", "RUF"]
+select = ["E", "F", "I", "UP", "B", "SIM", "TC", "TID", "RUF"]
 ignore = [
-  "RUF012", # Textual class attributes (BINDINGS, etc.) don't need ClassVar
   "RUF006", # Allow fire-and-forget asyncio.create_task (intentional pattern)
   "SIM102", # Allow nested if statements for readability
-  "SIM117", # Allow nested with statements for Textual compose patterns
 ]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 20
 
 [tool.ruff.lint.per-file-ignores]
-"tests/property/*.py" = [
-  "E402",
-] # Hypothesis settings must be configured before imports
-"src/kagan/server/mcp/**/*.py" = [
+"src/kagan/core/__init__.py" = [
+  "F401",
+] # Public re-export hub; bound names intentionally exceed __all__ for internal/test imports
+"src/kagan/mcp/**/*.py" = [
   "TC001", "TC002", "TC003",
 ] # MCP framework evaluates annotations at runtime via inspect.signature(eval_str=True)
-"src/kagan/server/_task_routes.py" = [
-  "C901",
-] # Route registration nests all handlers inside one function
-"src/kagan/server/_system_routes.py" = [
-  "C901",
-] # Route registration nests all handlers inside one function
-"src/kagan/cli/chat/_approval_batch.py" = [
-  "C901",
-] # Interactive prompt_toolkit dispatch over j/k/space/y/n/a/r/Esc/? + feedback mode
-"src/kagan/core/chat/engine.py" = [
-  "C901",
-] # ChatEngine._run_stream interleaves ACP streaming, event_log patches, permissions, cancel paths
-"src/kagan/tui/screens/workspace.py" = [
-  "C901",
-] # Grouped session rendering (Active/Idle/Archived) with filter + prefer-key + per-row badges
-"tests/helpers/echo_agent.py" = [
+"tests/**" = [
+  "F811",
+  "RUF059",
+  "TC001",
   "TC002",
-] # Vendored ACP example script run as subprocess — imports must resolve at runtime
-"tests/e2e_chat/**/*.py" = [
-  "TC001", "TC002", "TC003",
-] # Pytest fixture injection requires runtime Path annotations; FakeCue used in value position
+  "TC003",
+  "SIM105",
+  "F841",
+  "B905",
+  "E501",
+] # Test fixtures and async harnesses
 
 [tool.ruff.format]
 docstring-code-format = true
 
 [tool.pyrefly]
 project_includes = ["src", "tests"]
-project_excludes = ["src/kagan/core/adapters/db/migrations/versions"]
 search_path = ["src", "."]
 permissive-ignores = true
 
-# Pyrefly does not fully resolve cross-module imports in large projects.
-# Each suppression documented with the root cause. Re-evaluate on pyrefly updates.
-[tool.pyrefly.errors]
-missing-import = false          # False positives on conditional/lazy imports
-missing-attribute = false        # Cannot track None-guards or SQLModel column access
-missing-module-attribute = false # Cross-module re-export resolution failures
-bad-argument-type = false        # Misreads 3rd-party stubs (tomlkit, acp, textual)
-no-matching-overload = false     # Textual push_screen overloads too complex for Pyrefly
-bad-assignment = false           # kagan.core.models.Task vs asyncio.Task name collision
-missing-argument = false         # Misreads asyncio.to_thread, acp.schema constructors
-bad-override = false             # ACP client session_update signature mismatch (parent type too broad)
+# All checks enabled; genuine 3rd-party stub misreads are suppressed inline with a justification.
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+pythonpath = ["src"]
 norecursedirs = [
   "references",
   "scripts",
@@ -199,17 +157,12 @@ markers = [
   "smoke: critical user-path and transport checks",
   "snapshot: visual regression tests",
   "property: property-based tests with hypothesis",
-  "e2e: end-to-end tests requiring real agent binaries (set KAGAN_INTEGRATION_TESTS=1)",
+  "integration: tests scoped to real SDK stdio integration (see tests/integration/)",
   "windows_ci: windows compatibility tests that must run in the Windows CI job",
-  "core: tests scoped to kagan-core behaviors",
+  "accept: real Harness + ledger + git acceptance (tests/kagan/core/)",
   "mcp: tests scoped to kagan-mcp protocol boundary",
-  "tui: tests scoped to textual UI flows and rendering",
-  "integrations: tests scoped to native integration implementations",
-  "integration: tests scoped to real agent binary integration",
+  "integration_github: native GitHub integration (tests/integration/github/)",
   "mock_platform_system(name): override platform.system() for the test",
-  "smoke_e2e: Playwright + subprocess CLI smoke (optional nightly job; wired via poe web-e2e)",
-  "e2e_chat: surface-aware chat-flow tests against scripted FakeAgentDirector",
-  "e2e_tui: surface-aware TUI-flow tests via KaganDriver + Pilot",
 ]
 addopts = "-p no:anyio -x -n auto --dist=loadgroup"
 
@@ -227,35 +180,22 @@ exclude_lines = [
 ]
 
 [tool.poe.tasks]
-dev = "python -m textual run --dev src/kagan/tui/app.py"
+dev = "kagan"
 test = "pytest tests/"
-e2e-chat = "pytest tests/e2e_chat -v -n0"
-e2e-chat-update = "pytest tests/e2e_chat -v -n0 --inline-snapshot=create"
-e2e-tui = "pytest tests/e2e_tui -v -n0"
-e2e-tui-update = "pytest tests/e2e_tui -v -n0 --inline-snapshot=create"
-lint = "ruff check src/"
+lint = "ruff check src/ tests/"
 check-loc = "python scripts/check_python_loc_budget.py --max-lines 2500"
 check-complexity = "ruff check src/ --select C90"
-check-wire-drift = "python scripts/check_wire_drift.py"
 check-test-quality = { help = "Lint test files for tautological patterns", cmd = "python scripts/check_test_quality.py" }
 check-boundaries = { cmd = "lint-imports", help = "Verify package boundaries (no cross-package _* imports)" }
-check-guardrails = ["check-loc", "check-complexity", "check-wire-drift", "check-test-quality"]
+check-syntax = { cmd = "python -m compileall -q -f src/", help = "Byte-compile src/ so a Py2-shaped except in the prompt_toolkit module can't land (§1.1)" }
+check-guardrails = ["check-loc", "check-complexity", "check-test-quality"]
 format = "ruff format src/ tests/"
-typecheck = "pyrefly check --project-excludes src/kagan/core/adapters/db/migrations/versions src/"
+typecheck = "pyrefly check src/"
 deadcode = "vulture"
-check = ["lint", "typecheck", "deadcode", "check-boundaries", "test"]
-db-migrations-check = "pytest tests/core/test_db_migrations.py -n 0 -v"
-prompt-tokens = "python evals/tokens/measure.py"
-docs-dev = "mkdocs serve -f mkdocs.local.yml"
-docs-build = "mkdocs build"
-docs-check = "mkdocs build"
-
-[tool.poe.tasks.db-migration-generate]
-help = "Generate an Alembic revision from SQLModel metadata"
-cmd = "alembic -c src/kagan/core/adapters/db/alembic.ini revision --autogenerate -m \"${message}\""
-args = [
-  { name = "message", positional = true, required = true, help = "Migration message" },
-]
+check = ["check-syntax", "lint", "typecheck", "deadcode", "check-boundaries", "test"]
+docs-dev = "mkdocs serve -f config/mkdocs.local.yml"
+docs-build = "mkdocs build -f config/mkdocs.yml"
+docs-check = "mkdocs build -f config/mkdocs.yml"
 
 [tool.poe.tasks.install-local]
 help = "Install kagan as a local CLI tool (replaces any existing install)"
@@ -263,7 +203,7 @@ cmd = "uv tool install --editable --force --reinstall ."
 
 [tool.poe.tasks.dev-setup]
 help = "Install local CLI, reset DB, and stop core daemon"
-sequence = [{ ref = "web-build" }, { ref = "install-local" }, { cmd = "kagan reset --force" }]
+sequence = [{ ref = "install-local" }, { cmd = "kagan reset --force" }]
 
 [tool.poe.tasks.fix]
 help = "Fix linting issues and format code"
@@ -282,105 +222,6 @@ help = "Preview current and next prerelease version"
 [tool.poe.tasks.release-dry-run-beta]
 shell = "uv run semantic-release --noop -vv version --as-prerelease --prerelease-token beta --print-tag"
 help = "Dry-run beta release (no changes made)"
-
-[tool.poe.tasks.snapshot-update]
-help = "Update TUI snapshot tests (run sequentially)"
-cmd = "pytest tests/tui/smoke/ -n 0 -v --snapshot-update"
-
-[tool.poe.tasks.web-build]
-help = "Build React web bundle and copy into the Python package for 'kagan web'"
-sequence = [
-  { shell = "pnpm run web:build" },
-  { shell = "rm -rf src/kagan/server/_web_static/* && cp -R packages/web/dist/* src/kagan/server/_web_static/ && touch src/kagan/server/_web_static/.gitkeep" },
-]
-
-[tool.poe.tasks.dev-web]
-help = "Rebuild latest web frontend and start the web server"
-sequence = [
-  { ref = "web-build" },
-  { cmd = "uv run kg web" },
-]
-
-[tool.poe.tasks.dev-web-hot]
-help = "Start backend + Vite dev server with hot reload (no bundle rebuild)"
-shell = """
-echo "Starting Kagan dev servers..."
-echo "  Frontend: http://localhost:5173 (Vite with hot reload)"
-echo "  Backend:  http://127.0.0.1:8765 (API server)"
-echo ""
-cd packages/web && pnpm exec concurrently \\
-  --names "VITE,API" \\
-  --prefix-colors "cyan,magenta" \\
-  --kill-others \\
-  "pnpm exec vite" \\
-  "sleep 2 && cd ../.. && uv run kg web --dev --no-open"
-"""
-
-[tool.poe.tasks.web-typecheck]
-help = "Run TypeScript type checking on the web package"
-shell = "pnpm run web:typecheck"
-
-[tool.poe.tasks.web-test]
-help = "Run Vitest unit tests on the web package"
-shell = "pnpm run web:test"
-
-[tool.poe.tasks.web-a11y]
-help = "Run accessibility checks (axe-core/playwright against real surfaces)"
-shell = "cd packages/web && pnpm exec playwright test e2e/a11y.spec.ts"
-
-[tool.poe.tasks.web-check]
-help = "Run all web package checks (typecheck + test)"
-sequence = ["web-typecheck", "web-test"]
-
-[tool.poe.tasks.web-e2e]
-help = "Build web bundle and run Playwright E2E tests (requires kagan web server; started by playwright.config.ts webServer)"
-sequence = [{ ref = "web-build" }, { shell = "cd packages/web && pnpm exec playwright test" }]
-
-[tool.poe.tasks.vscode-typecheck]
-help = "Run TypeScript type checking on the VS Code extension package"
-shell = "pnpm run vscode:typecheck"
-
-[tool.poe.tasks.vscode-test-unit]
-help = "Run Vitest unit tests on the VS Code extension package"
-shell = "pnpm run vscode:test:unit"
-
-[tool.poe.tasks.vscode-test-integration]
-help = "Run extension-host integration tests on the VS Code extension package"
-shell = "pnpm run vscode:test:integration"
-
-[tool.poe.tasks.vscode-test-e2e]
-help = "Run WDIO smoke tests against a real VS Code instance"
-shell = "pnpm run vscode:test:e2e"
-
-[tool.poe.tasks.vscode-check]
-help = "Run typecheck and fast tests on the VS Code extension package"
-sequence = ["vscode-typecheck", "vscode-test-unit"]
-
-[tool.poe.tasks.test-all]
-help = "Run all tests across the monorepo (Python + web)"
-sequence = ["test", "web-test", "vscode-test-unit"]
-
-[tool.poe.tasks.check-all]
-help = "Run all checks across the monorepo (Python lint/typecheck/deadcode/test + web typecheck/test)"
-sequence = ["lint", "typecheck", "deadcode", "test", "web-check", "vscode-check"]
-
-[tool.poe.tasks.eval-generate]
-help = "Export resolved prompts for the eval suite"
-sequence = [
-  { shell = "bash evals/generate-prompts.sh" },
-  { shell = "python evals/resolve_promptfoo_config.py" },
-]
-
-[tool.poe.tasks.eval]
-help = "Run promptfoo prompt evaluation (requires GITHUB_TOKEN with models:read)"
-sequence = [
-  { ref = "eval-generate" },
-  { shell = "npx promptfoo@latest eval -c evals/promptfooconfig.resolved.yaml --no-progress-bar --max-concurrency 1 --delay 6500" },
-]
-
-[tool.poe.tasks.eval-view]
-help = "Open promptfoo results in the browser"
-shell = "npx promptfoo@latest view"
 
 [tool.poe.tasks.workflows-check]
 help = "Validate GitHub Actions workflows using act (requires act installed)"
@@ -401,10 +242,7 @@ allow_zero_version = true
 
 [tool.semantic_release.changelog]
 template_dir = ".github/semantic-release"
-exclude_commit_patterns = [
-  '''chore\(vscode\): [Bb]ump to \d.+''',
-  '''[Uu]pdate pnpm-lock\.yaml .+''',
-]
+exclude_commit_patterns = []
 
 [tool.semantic_release.branches.main]
 match = "main"
@@ -437,205 +275,39 @@ env = "GITHUB_TOKEN"
 [tool.importlinter]
 root_package = "kagan"
 
-# --- kagan.core private modules (kagan.core._*) ---
-# Nothing outside kagan.core may import from a private submodule directly.
-# Consumers must go through kagan.core (the public __init__) or a public
-# subpackage like kagan.core.chat, kagan.core.git, kagan.core.models, etc.
-# Each _*.py file is listed explicitly because import-linter's wildcard syntax
-# (mypackage.*) cannot filter by name prefix.
+# Surfaces may import the kagan.core facade (api) and documented stable submodules
+# (models, doctor_checks) only — not internal engine/persistence modules.
 [[tool.importlinter.contracts]]
-name = "kagan.tui must not import kagan.core private modules"
+name = "Surfaces must not import kagan.core internal modules"
 type = "forbidden"
-source_modules = ["kagan.tui"]
+source_modules = ["kagan.cli", "kagan.mcp", "kagan.format"]
 allow_indirect_imports = true
 forbidden_modules = [
-    "kagan.core._acp",
-    "kagan.core._agent",
-    "kagan.core._agent_monitor",
-    "kagan.core._analytics",
-    "kagan.core._asyncio_compat",
-    "kagan.core._attached_backends",
-    "kagan.core._audit",
-    "kagan.core._backend_selector",
-    "kagan.core._checkpoints",
-    "kagan.core._compaction",
-    "kagan.core._config",
-    "kagan.core._db",
-    "kagan.core._db_helpers",
-    "kagan.core._environment_checks",
-    "kagan.core._event_rendering",
-    "kagan.core._events",
-    "kagan.core._formatting",
-    "kagan.core._hooks",
-    "kagan.core._insights",
-    "kagan.core._io",
-    "kagan.core._launchers",
-    "kagan.core._logging",
-    "kagan.core._orphan_reap",
-    "kagan.core._persona",
-    "kagan.core._preflight",
-    "kagan.core._projects",
-    "kagan.core._prompt_export",
-    "kagan.core._prompts",
-    "kagan.core._reviews",
-    "kagan.core._security",
-    "kagan.core._session_helpers",
-    "kagan.core._sessions",
-    "kagan.core._settings",
-    "kagan.core._subprocess",
-    "kagan.core._task_classification",
-    "kagan.core._tasks",
-    "kagan.core._transitions",
-    "kagan.core._utils",
-    "kagan.core._verification",
-    "kagan.core._watcher",
-    "kagan.core._worktrees",
+    "kagan.core.harness",
 ]
 
+# kagan.cli private modules must not be imported from kagan.mcp or kagan.format.
 [[tool.importlinter.contracts]]
-name = "kagan.cli must not import kagan.core private modules"
+name = "kagan.mcp and kagan.format must not import kagan.cli private modules"
 type = "forbidden"
-source_modules = ["kagan.cli"]
-allow_indirect_imports = true
-forbidden_modules = [
-    "kagan.core._acp",
-    "kagan.core._agent",
-    "kagan.core._agent_monitor",
-    "kagan.core._analytics",
-    "kagan.core._asyncio_compat",
-    "kagan.core._attached_backends",
-    "kagan.core._audit",
-    "kagan.core._backend_selector",
-    "kagan.core._checkpoints",
-    "kagan.core._compaction",
-    "kagan.core._config",
-    "kagan.core._db",
-    "kagan.core._db_helpers",
-    "kagan.core._environment_checks",
-    "kagan.core._event_rendering",
-    "kagan.core._events",
-    "kagan.core._formatting",
-    "kagan.core._hooks",
-    "kagan.core._insights",
-    "kagan.core._io",
-    "kagan.core._launchers",
-    "kagan.core._logging",
-    "kagan.core._orphan_reap",
-    "kagan.core._persona",
-    "kagan.core._preflight",
-    "kagan.core._projects",
-    "kagan.core._prompt_export",
-    "kagan.core._prompts",
-    "kagan.core._reviews",
-    "kagan.core._security",
-    "kagan.core._session_helpers",
-    "kagan.core._sessions",
-    "kagan.core._settings",
-    "kagan.core._subprocess",
-    "kagan.core._task_classification",
-    "kagan.core._tasks",
-    "kagan.core._transitions",
-    "kagan.core._utils",
-    "kagan.core._verification",
-    "kagan.core._watcher",
-    "kagan.core._worktrees",
-]
-
-[[tool.importlinter.contracts]]
-name = "kagan.server must not import kagan.core private modules"
-type = "forbidden"
-source_modules = ["kagan.server"]
-allow_indirect_imports = true
-forbidden_modules = [
-    "kagan.core._acp",
-    "kagan.core._agent",
-    "kagan.core._agent_monitor",
-    "kagan.core._analytics",
-    "kagan.core._asyncio_compat",
-    "kagan.core._attached_backends",
-    "kagan.core._audit",
-    "kagan.core._backend_selector",
-    "kagan.core._checkpoints",
-    "kagan.core._compaction",
-    "kagan.core._config",
-    "kagan.core._db",
-    "kagan.core._db_helpers",
-    "kagan.core._environment_checks",
-    "kagan.core._event_rendering",
-    "kagan.core._events",
-    "kagan.core._formatting",
-    "kagan.core._hooks",
-    "kagan.core._insights",
-    "kagan.core._io",
-    "kagan.core._launchers",
-    "kagan.core._logging",
-    "kagan.core._orphan_reap",
-    "kagan.core._persona",
-    "kagan.core._preflight",
-    "kagan.core._projects",
-    "kagan.core._prompt_export",
-    "kagan.core._prompts",
-    "kagan.core._reviews",
-    "kagan.core._security",
-    "kagan.core._session_helpers",
-    "kagan.core._sessions",
-    "kagan.core._settings",
-    "kagan.core._subprocess",
-    "kagan.core._task_classification",
-    "kagan.core._tasks",
-    "kagan.core._transitions",
-    "kagan.core._utils",
-    "kagan.core._verification",
-    "kagan.core._watcher",
-    "kagan.core._worktrees",
-]
-
-# --- Cross-package private module imports ---
-# kagan.server._* must not be imported from kagan.tui or kagan.cli.
-[[tool.importlinter.contracts]]
-name = "kagan.tui and kagan.cli must not import kagan.server private modules"
-type = "forbidden"
-source_modules = ["kagan.tui", "kagan.cli"]
-allow_indirect_imports = true
-forbidden_modules = [
-    "kagan.server._access",
-    "kagan.server._analytics_routes",
-    "kagan.server._chat_routes",
-    "kagan.server._envelope",
-    "kagan.server._helpers",
-    "kagan.server._integration_routes",
-    "kagan.server._middleware",
-    "kagan.server._presence",
-    "kagan.server._project_routes",
-    "kagan.server._sse",
-    "kagan.server._system_routes",
-    "kagan.server._task_routes",
-    "kagan.server._web_ui",
-    "kagan.server.mcp._policy",
-]
-
-# kagan.cli._* must not be imported from kagan.server or kagan.tui.
-# Note: kagan.cli.chat (public package) is allowed; only kagan.cli.chat._* is forbidden.
-[[tool.importlinter.contracts]]
-name = "kagan.server and kagan.tui must not import kagan.cli private modules"
-type = "forbidden"
-source_modules = ["kagan.server", "kagan.tui"]
+source_modules = ["kagan.mcp", "kagan.format"]
 allow_indirect_imports = true
 forbidden_modules = [
     "kagan.cli._bootstrap",
-    "kagan.cli._doctor_output",
-    "kagan.cli._env",
-    "kagan.cli.chat._approval_batch",
-    "kagan.cli.chat._approval_panel",
-    "kagan.cli.chat._chat_ui",
-    "kagan.cli.chat._handshake",
-    "kagan.cli.chat._permission_ui",
-    "kagan.cli.chat._renderer",
-    "kagan.cli.chat._session_picker",
-    "kagan.cli.chat._signals",
-    "kagan.cli.chat._streaming",
-    "kagan.cli.chat._theme",
-    "kagan.cli.chat._title",
+    "kagan.cli.doctor_emit",
+]
+
+# --- kagan.runtime_env is a startup leaf primitive ---
+[[tool.importlinter.contracts]]
+name = "kagan.runtime_env must not import other kagan packages"
+type = "forbidden"
+source_modules = ["kagan.runtime_env"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "kagan.core",
+    "kagan.cli",
+    "kagan.mcp",
+    "kagan.format",
 ]
 
 [tool.vulture]

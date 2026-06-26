@@ -1,62 +1,25 @@
-"""TUI command with startup doctor gate.
-
-The doctor gate now runs inside the TUI via DoctorModal for FAIL cases.
-WARN-only doctor results continue startup without degraded-performance
-messaging. The CLI-level hard exit has been replaced with an in-TUI modal path
-so users get a guided remediation flow for blocking failures.
-"""
-
-from __future__ import annotations
+"""`kagan tui` — alias for the interactive session (kept for the documented command name)."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import click
-from loguru import logger
 
-if TYPE_CHECKING:
-    from kagan.cli.doctor import DoctorCheck
+from kagan.cli._bootstrap import run_async
 
 
-def _collect_startup_checks(*, skip_preflight: bool) -> list[DoctorCheck]:
-    """Run doctor checks and return them for in-TUI routing.
+def _resolve_data_dir(explicit: Path | None) -> Path:
+    """An explicit --data-dir wins (tests/embedding); otherwise defer to the one
+    shared resolver so tui/new/mcp/reset all agree on the ledger root."""
+    if explicit is not None:
+        return explicit
+    from kagan.core import default_data_dir
 
-    Returns an empty list when ``skip_preflight`` is True so the app
-    starts without displaying any doctor UI.
-    """
-    if skip_preflight:
-        return []
-
-    from kagan.cli.doctor import run_doctor_checks
-
-    return run_doctor_checks()
-
-
-def _launch_tui(
-    *,
-    db_path: str | Path | None = None,
-    startup_chat_session_id: str | None = None,
-    startup_checks: list[DoctorCheck] | None = None,
-) -> None:
-    from kagan.tui.app import KaganApp
-
-    app = KaganApp(
-        db_path=db_path,
-        startup_chat_session_id=startup_chat_session_id,
-        startup_checks=startup_checks,
-    )
-    app.run()
+    return default_data_dir()
 
 
 @click.command(name="tui")
-@click.option("--db", default=None, help="Path to SQLite database")
 @click.option(
-    "-s",
-    "--session-id",
-    "session_id",
-    type=str,
-    default=None,
-    help="Pre-attach orchestrator chat to a persisted session.",
+    "--data-dir", "data_dir", default=None, help="Path to the kagan data directory (ledger root)"
 )
 @click.option(
     "--skip-preflight",
@@ -64,26 +27,30 @@ def _launch_tui(
     envvar="KAGAN_SKIP_PREFLIGHT",
     help="Skip startup doctor checks",
 )
-def tui(db: str | None, session_id: str | None, skip_preflight: bool) -> None:
-    """Run the Kanban TUI (default command)."""
-    from kagan.core import install_asyncio_subprocess_exception_filter
+def tui(data_dir: str | None, skip_preflight: bool) -> None:
+    """Run the supervision session (same as bare `kagan`)."""
+    from kagan.cli.doctor import run_doctor_checks
+    from kagan.cli.session import run as session_run
+    from kagan.core import git, install_asyncio_subprocess_exception_filter
+    from kagan.format.doctor import render_preflight
 
     install_asyncio_subprocess_exception_filter()
-    startup_checks = _collect_startup_checks(skip_preflight=skip_preflight)
 
-    db_path: str | Path | None = None
-    if db:
-        db_path = Path(db).expanduser().resolve(strict=False)
+    if not skip_preflight:
+        checks = run_doctor_checks()
+        if any(c.status == "fail" for c in checks):
+            from kagan.format._console import print_themed
 
-    try:
-        _launch_tui(
-            db_path=db_path,
-            startup_chat_session_id=session_id,
-            startup_checks=startup_checks,
-        )
-    except ImportError as exc:
-        logger.exception("TUI module import failed")
-        raise click.ClickException(
-            "TUI module is unavailable in this build. "
-            "Run `kagan doctor` to diagnose missing dependencies."
-        ) from exc
+            print_themed(render_preflight(checks))
+            if not click.confirm("Continue anyway?", default=False):
+                return
+
+    explicit: Path | None = None
+    if data_dir:
+        explicit = Path(data_dir).expanduser().resolve(strict=False)
+    resolved = _resolve_data_dir(explicit)
+    # repo_root is the git toplevel (where worktrees go), NOT the manifest finder —
+    # so kagan works in any git repo, with or without a .kagan/repo.yaml yet.
+    repo_root = git.repo_root(Path.cwd())
+
+    run_async(session_run(data_dir=resolved, repo_root=repo_root))

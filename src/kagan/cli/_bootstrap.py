@@ -6,8 +6,9 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from packaging.version import InvalidVersion, Version
@@ -15,12 +16,28 @@ from platformdirs import user_cache_path
 
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
 
-def make_client(db_path: str | Path | None = None):
-    from kagan.core import KaganCore
+    from kagan.core import Harness
+
+
+def make_client(data_dir: str | Path | None = None) -> Harness:
+    from kagan.core import Harness
 
     logger.debug("Client created")
-    return KaganCore(db_path=db_path)
+    return Harness(data_dir=data_dir)
+
+
+@asynccontextmanager
+async def client_session(data_dir: str | Path | None = None) -> AsyncIterator[Harness]:
+    """Yield Harness client, closing on exit."""
+    client = make_client(data_dir)
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 def run_async(coro):
@@ -31,6 +48,9 @@ def run_async(coro):
         return await coro
 
     return asyncio.run(_run_with_shutdown_guards())
+
+
+_INSTALL_TIMEOUT_SECONDS = 300  # `kagan update` install must not hang on a wedged installer
 
 
 def _current_version() -> str:
@@ -49,7 +69,7 @@ def _read_cache() -> dict | None:
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return None
 
 
@@ -62,10 +82,16 @@ def _write_cache(data: dict) -> None:
 
 
 def _fetch_pypi_version(timeout_seconds: float = 2.0) -> str | None:
+    import socket
     import urllib.error
     import urllib.request
 
     url = "https://pypi.org/pypi/kagan/json"
+    # urlopen(timeout=) bounds socket connect/read but NOT DNS (getaddrinfo). On a
+    # blocked/captive network name resolution can hang for the OS resolver's own
+    # timeout, so bound it too via the process default and restore it after.
+    prev = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(timeout_seconds)
     try:
         with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -73,8 +99,10 @@ def _fetch_pypi_version(timeout_seconds: float = 2.0) -> str | None:
             latest = info.get("version")
             if isinstance(latest, str) and latest.strip():
                 return latest.strip()
-    except (OSError, ValueError, urllib.error.URLError):
+    except OSError, ValueError, urllib.error.URLError:
         return None
+    finally:
+        socket.setdefaulttimeout(prev)
     return None
 
 
@@ -117,7 +145,7 @@ def maybe_check_for_updates(skip: bool = False) -> str | None:
         thread = threading.Thread(target=_refresh_cache, kwargs={"prerelease": False}, daemon=True)
         thread.start()
         return latest_hint
-    except (OSError, RuntimeError, ValueError, PackageNotFoundError):
+    except OSError, RuntimeError, ValueError, PackageNotFoundError:
         return None
 
 
@@ -175,12 +203,17 @@ def check_and_install_update(
     command = _build_install_command(method, prerelease)
 
     logger.info("Installing update via {}", method)
-    process = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        env=build_sanitized_subprocess_environment(),
-    )
+    try:
+        process = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            env=build_sanitized_subprocess_environment(),
+            timeout=_INSTALL_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("Update timed out via {}", method)
+        return False, f"Update timed out via {method} after {_INSTALL_TIMEOUT_SECONDS}s."
     if process.returncode != 0:
         output = process.stderr.strip() or process.stdout.strip() or "unknown error"
         logger.error("Update failed: {}", output.splitlines()[0])

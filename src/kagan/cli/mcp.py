@@ -8,67 +8,29 @@ from kagan.cli._bootstrap import run_async
     name="mcp",
     help=(
         "Run MCP server on STDIO.\n\n"
-        "Agent roles:\n"
-        "  WORKER: own-task ops + board awareness (default for agents)\n"
-        "  REVIEWER: read + verdict tools\n"
-        "  ORCHESTRATOR: full project control (default when no role)\n\n"
+        "\b\n"
         "Common usage:\n"
-        "  kagan mcp --role WORKER --session-id <id>\n"
-        "  kagan mcp --role ORCHESTRATOR\n"
-        "  kagan mcp --enable-internal-instrumentation"
+        "  kagan mcp --task-id <id>\n"
+        "  kagan mcp --readonly"
     ),
 )
-@click.option("--readonly", is_flag=True, help="Read-only tier")
-@click.option(
-    "--admin",
-    is_flag=True,
-    help="Admin tier (alias for default tier; prefer --role ORCHESTRATOR)",
-)
-@click.option("--session-id", type=str, help="Bind server context to a session")
-@click.option("--db", "db_path", type=str, hidden=True)
+@click.option("--readonly", is_flag=True, help="Read-only access mode")
+@click.option("--task-id", "task_id", type=str, help="Scope the server's reports to this task")
+@click.option("--data-dir", "data_dir", type=str, hidden=True)
 @click.option("--project-id", "project_id", type=str, hidden=True)
-@click.option(
-    "--enable-internal-instrumentation",
-    is_flag=True,
-    help="Expose diagnostics instrumentation tool",
-)
-@click.option(
-    "--role",
-    type=str,
-    default=None,
-    help="Agent role (WORKER, REVIEWER, ORCHESTRATOR). Controls which MCP tools are available.",
-)
 def mcp(
     readonly: bool,
-    admin: bool,
-    session_id: str | None,
-    db_path: str | None,
+    task_id: str | None,
+    data_dir: str | None,
     project_id: str | None,
-    enable_internal_instrumentation: bool,
-    role: str | None,
 ) -> None:
     logger.debug("MCP server starting")
-    if readonly and admin:
-        raise click.UsageError("--readonly and --admin are mutually exclusive")
-
-    from kagan.core.enums import AgentRole
-    from kagan.server.mcp.server import ServerOptions, serve
-
-    resolved_role: AgentRole | None = None
-    if role is not None:
-        try:
-            resolved_role = AgentRole(role)
-        except ValueError:
-            valid = ", ".join(r.value for r in AgentRole)
-            raise click.UsageError(f"Invalid role {role!r}. Must be one of: {valid}") from None
+    from kagan.mcp.server import ServerOptions, serve
 
     opts = ServerOptions(
         readonly=readonly,
-        admin=admin,
-        session_id=session_id,
-        enable_instrumentation=enable_internal_instrumentation,
-        db_path=db_path,
+        task_id=task_id,
+        data_dir=data_dir,
         project_id=project_id,
-        role=resolved_role,
     )
     run_async(serve(opts))

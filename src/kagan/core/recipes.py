@@ -2,7 +2,6 @@ import shutil
 from dataclasses import dataclass, field
 
 from kagan.core.doctor_checks import _AGENT_CLIS
-from kagan.core.errors import ConfigurationError
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,130 +72,14 @@ def recipe_for(cli: str) -> LaunchRecipe:
     return RECIPES.get(cli) or LaunchRecipe([cli], prompt_flag=None)
 
 
-# Canonical capability tiers — the portable vocabulary a user writes in repo.yaml
-# (builder:/reviewer:) instead of a CLI-specific model id. top / mid / fast.
-CANONICAL_TIERS: tuple[str, ...] = ("opus", "sonnet", "haiku")
-
-# alias -> that CLI's native --model string. The ONLY model-namespace knowledge kagan
-# carries; keep it MINIMAL. A `None` row means the tier has no faithful, VERIFIABLE
-# model for that CLI (a cross-vendor "nearest tier" would be a guess) → resolve_model
-# fails LOUD rather than silently running the wrong vendor (R-003).
-#
-# claude  -> the bare tier alias; claude --help documents opus/sonnet/haiku/fable as
-#            native aliases it resolves to the latest model itself, so DO NOT pin a
-#            drifting full id here — the alias is the stable value.
-# opencode-> provider-qualified `opencode/<full-id>` (run --help: "format of
-#            provider/model"). A FRESH opencode install has NO literal `anthropic`
-#            provider — its claude models ship under opencode's own gateway provider
-#            `opencode/`, with NO `-latest` alias, so these are FULL VERSIONED IDS that
-#            DRIFT. Refresh from `opencode models` (filter `opencode/claude-*`) when a
-#            newer tier model ships.
-# codex/kimi -> NO row: OpenAI-/Moonshot-locked, no verifiable claude-tier equivalent.
-#            A canonical tier alias on codex/kimi → loud fail; a native id passes through.
-_ALIAS_MAP: dict[str, dict[str, str | None]] = {
-    "claude": {"opus": "opus", "sonnet": "sonnet", "haiku": "haiku"},
-    "opencode": {
-        "opus": "opencode/claude-opus-4-8",
-        "sonnet": "opencode/claude-sonnet-4-6",
-        "haiku": "opencode/claude-haiku-4-5",
-    },
-}
-
-
-_CLAUDE_TIERS: frozenset[str] = frozenset((*CANONICAL_TIERS, "fable"))
-
-
-def _model_vendor_family(value: str) -> str | None:
-    """Best-effort vendor family for a repo.yaml model string.
-
-    Returns None when the id is not recognizably cross-vendor — unknown native ids
-    pass through to the CLI unchanged."""
-    low = value.lower()
-    if value in _CLAUDE_TIERS or low.startswith("claude") or "/claude-" in low:
-        return "claude"
-    if low.startswith("anthropic/"):
-        return "claude"
-    if low.startswith(("kimi", "moonshot/")):
-        return "moonshot"
-    if low.startswith(("gpt-", "openai/")):
-        return "openai"
-    if len(low) >= 2 and low[0] == "o" and low[1].isdigit():
-        return "openai"
-    return None
-
-
-def _cli_accepts_family(cli: str, value: str, family: str) -> bool:
-    if cli in ("claude", "opencode"):
-        if family == "claude":
-            return True
-        if cli == "opencode" and family == "openai":
-            low = value.lower()
-            return low.startswith(("openai/", "opencode/"))
-        return False
-    if cli == "codex":
-        return family == "openai"
-    if cli == "kimi":
-        return family == "moonshot"
-    return True
-
-
-def validate_model_for_cli(cli: str, value: str | None) -> None:
-    """Reject a builder/reviewer model the task CLI cannot run.
-
-    Canonical tier aliases go through ``resolve_model`` (vendor-locked CLIs fail loud).
-    Detectable cross-vendor native ids (e.g. ``claude-opus`` on codex) fail here;
-    genuinely unknown ids pass through."""
-    if value is None:
-        return
-    if value in CANONICAL_TIERS:
-        resolve_model(cli, value)
-        return
-    family = _model_vendor_family(value)
-    if family is None:
-        return
-    if not _cli_accepts_family(cli, value, family):
-        cli_vendor = {
-            "claude": "Claude",
-            "opencode": "Claude",
-            "codex": "OpenAI",
-            "kimi": "Moonshot",
-        }.get(cli, cli)
-        model_vendor = {"claude": "Claude", "openai": "OpenAI", "moonshot": "Moonshot"}[family]
-        raise ConfigurationError(
-            context="model",
-            detail=(
-                f"model {value!r} is a {model_vendor} model but CLI {cli!r} runs "
-                f"{cli_vendor} models; use a {cli}-native id, a canonical tier alias "
-                f"({'/'.join(CANONICAL_TIERS)}), or unset for the CLI default"
-            ),
-        )
-
-
-def resolve_model(cli: str, value: str | None) -> str | None:
-    """Map a repo.yaml builder/reviewer value to the model string the CLI's --model
-    flag actually accepts.
-
-    - ``None`` -> ``None`` (omit the flag; the CLI's own default — unchanged behaviour).
-    - a value that is NOT a canonical tier alias -> passed through verbatim (a power-user
-      native id like ``claude-opus-4-8``, ``o3``, ``opencode/gpt-5``).
-    - a canonical tier alias (opus/sonnet/haiku) -> that CLI's native string from the map.
-    - a canonical tier alias with NO mapping for this CLI (codex/kimi) -> raises
-      ``ConfigurationError`` so the caller fails LOUD. NEVER silently picks a wrong vendor."""
-    if value is None:
-        return None
-    if value not in CANONICAL_TIERS:
-        return value
-    native = _ALIAS_MAP.get(cli, {}).get(value)
-    if native is None:
-        raise ConfigurationError(
-            context="model",
-            detail=(
-                f"model alias {value!r} has no mapping for CLI {cli!r} "
-                f"(it is OpenAI-/Moonshot-locked, with no verifiable {value} tier); "
-                f"set a {cli}-native model id, or unset to use the CLI default"
-            ),
-        )
-    return native
+# A repo.yaml builder/reviewer model is written under its CLI's `agents.<cli>` section
+# (RepoConfig.agents) and passed VERBATIM to that CLI's --model flag — kagan does no
+# model-name translation or vendor inference. Because the model lives under its CLI's
+# key, a cross-vendor mismatch (a Claude id reaching codex) is unrepresentable by
+# construction, so the former tier-alias resolver and vendor guard are gone (R-003 is
+# now enforced by the config shape, not a runtime check). A model the CLI can't run
+# surfaces as that CLI's own spawn failure — for the validator that degrades honestly to
+# a receipt-visible "reviewed unaided", never a silent wrong-vendor run.
 
 
 def available_clis(path: str | None = None) -> list[str]:
@@ -204,11 +87,8 @@ def available_clis(path: str | None = None) -> list[str]:
 
 
 __all__ = [
-    "CANONICAL_TIERS",
     "RECIPES",
     "LaunchRecipe",
     "available_clis",
     "recipe_for",
-    "resolve_model",
-    "validate_model_for_cli",
 ]

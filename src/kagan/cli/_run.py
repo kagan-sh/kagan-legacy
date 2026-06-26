@@ -45,7 +45,16 @@ async def _run_task(task_id: str, *, data_dir: Path | None, repo_root: Path | No
         # start_task launches the agent; the background watcher harvests the diff on
         # process exit, runs the lever-2 validator (RUNNING -> VALIDATING, merges
         # ai-review findings), then the gate (mirror checks + rubric) into REVIEW.
-        await core.start_task(task_id)
+        try:
+            await core.start_task(task_id)
+        except Exception as exc:
+            # This child is detached with stdout/stderr -> /dev/null, so a start
+            # failure (bad base_branch ref, worktree conflict, model misconfig) would
+            # otherwise vanish and leave the task silently stranded in INTAKE — the
+            # session reports "Agent run started" regardless. Record it so the failure
+            # is auditable in the ledger instead of invisible (rule 12).
+            core.record_run_failed(task_id, str(exc))
+            raise
         await core.await_agent(task_id)
 
         # DEFER (Phase 3 / lever 4): per-finding independent verify sub-agents, the

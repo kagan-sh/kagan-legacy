@@ -35,7 +35,7 @@ from kagan.core.models import CheckResult, Finding, NeedsYou, ReportMessage, Tas
 from kagan.core.notifications import NotificationEvent, Notifier
 from kagan.core.paths import ensure_gitignore_line, is_run_artifact
 from kagan.core.receipt import render_pr_body, render_receipt
-from kagan.core.recipes import available_clis, recipe_for, validate_model_for_cli
+from kagan.core.recipes import available_clis, recipe_for
 from kagan.core.remote_ci import RemoteCi
 from kagan.core.reports import detect_drift, read_ask, summarize_learnings
 from kagan.core.retro import append_learning
@@ -139,8 +139,23 @@ class Harness:
     def save_task(self, task: Task) -> None:
         self._ledger.save_task(task)
 
-    def create_task(self, title: str, base_branch: str = "main") -> Task:
+    def create_task(self, title: str, base_branch: str | None = None) -> Task:
+        # Honor the manifest's base_branch: a repo on `master` (or any non-`main`
+        # default) would otherwise get a task pinned to `main`, and start_task's
+        # `git worktree add … main` fails with "invalid reference" — stranding the
+        # task in INTAKE. None means "resolve from the manifest" (falls back to
+        # "main" only when there is no config).
+        if base_branch is None:
+            base_branch = self._manifest_base_branch()
         return self._tasks.create(title, base_branch=base_branch)
+
+    def _manifest_base_branch(self) -> str:
+        # load_repo_config raises when there is no manifest (and config caches that);
+        # fall back to "main" so task creation never depends on an existing manifest.
+        with suppress(ConfigurationError):
+            if self.config is not None:
+                return self.config.base_branch
+        return "main"
 
     def transition_task(self, task_id: str, new_state: TaskState) -> Task:
         return self._tasks.transition(task_id, new_state)
@@ -270,6 +285,15 @@ class Harness:
             )
             reaped.append(task.id)
         return reaped
+
+    def record_run_failed(self, task_id: str, reason: str) -> None:
+        """Record that a detached `kagan _run` failed to start the agent (rule 12).
+
+        The detached runner discards its output, so without this a start failure
+        (e.g. a base_branch that is not a valid ref) leaves the task silently in
+        INTAKE while the session already reported "Agent run started". Append an
+        auditable event so the failure is recoverable from the ledger."""
+        self._ledger.append_event(task_id, {"type": "run_failed", "reason": reason})
 
     def approve_cooldown_remaining(self, task_id: str, now: datetime | None = None) -> int:
         """Lever 5: seconds left on the gen->approve cooldown; 0 once elapsed.
@@ -507,19 +531,16 @@ class Harness:
         adjudicates every finding — nothing is auto-resolved. The VALIDATING -> REVIEW
         transition is left to run_gate (no double-hop). Skips gracefully when no
         reviewer model is configured or the task has no worktree to read."""
-        reviewer = self._reviewer_model()
         task = self._require(task_id)
+        reviewer = self._reviewer_model(task.agent_cli or "claude")
         # Lever 4 x lever 2: low risk is machine checks only — skip the validator
         # (DESIGN L175). Medium/high run it when a reviewer model is configured.
         if task.risk == "low" or reviewer is None or task.worktree_path is None:
             return task  # validator not applicable — outcome stays None
-        # R-003: a misconfigured reviewer model (a canonical alias with no mapping for
-        # this task's CLI) must fail LOUD, not soft-degrade. Resolve it up front, before
-        # the VALIDATING transition, so a config error reads as a config error — never as
-        # "reviewed unaided" (which would tell the user opus reviewed when nothing did).
-        # Distinct from a genuine validator RUNTIME crash below, which legitimately keeps
-        # the F2 fallback.
-        validate_model_for_cli(task.agent_cli or "claude", reviewer)
+        # The reviewer model lives under `agents.<cli>` so it is already this CLI's own
+        # id — no vendor mismatch is representable. A model the CLI can't actually run
+        # surfaces below as an honest, receipt-visible "reviewed unaided" (F2), never a
+        # silent wrong-vendor run.
         self.transition_task(task_id, TaskState.VALIDATING)
         # F2: the validator is an enhancement, not the floor. If it crashes (raises)
         # OR exits unclean / times out (ok=False), do NOT strand the task in
@@ -559,18 +580,21 @@ class Harness:
         )
         self.update_task(task_id, validator_outcome="failed")
 
-    def _reviewer_model(self) -> str | None:
-        """The validator's model, from repo.yaml `reviewer:`. None disables the stage."""
+    def _reviewer_model(self, cli: str) -> str | None:
+        """The validator's model, from repo.yaml `agents.<cli>.reviewer`. None disables
+        the stage."""
         config = self._gate_config()
-        return config.reviewer if config is not None else None
+        return config.agents.for_cli(cli).reviewer if config is not None else None
 
-    def _builder_model(self) -> str | None:
-        """The builder's model, from repo.yaml `builder:`. None = the CLI default.
+    def _builder_model(self, cli: str) -> str | None:
+        """The builder's model, from repo.yaml `agents.<cli>.builder`. None = the CLI
+        default.
 
         Honouring this is what makes the lever-2 'different models' guarantee real:
-        the builder runs on `builder:` and the validator on `reviewer:`."""
+        the builder runs on `agents.<cli>.builder` and the validator on
+        `agents.<cli>.reviewer`."""
         config = self._gate_config()
-        return config.builder if config is not None else None
+        return config.agents.for_cli(cli).builder if config is not None else None
 
     async def run_gate(self, task_id: str) -> Task:
         # Mirror runs build/types/tests; the engine adds the rest (TUI-GATE-01/02).
@@ -715,11 +739,7 @@ class Harness:
         if not self.can_start_agent(exclude=task_id):
             raise AgentCapError(self.running_count(exclude=task_id), self._agent_cap())
         task = self._require(task_id)
-        # R-003: fail LOUD on a misconfigured builder model (a canonical alias with no
-        # mapping for this task's CLI) BEFORE any worktree/transition side effect, so a
-        # config error never strands a task in RUNNING. validate_model_for_cli raises
-        # ConfigurationError the surface shows; None and native ids are no-ops here.
-        validate_model_for_cli(task.agent_cli or "claude", self._builder_model())
+        cli = task.agent_cli or "claude"
         # Idempotent: send-back reuses the existing worktree (TUI-GATE-07).
         task = await self._tasks.prepare_worktree(task, self.repo_root)
         assert task.worktree_path is not None
@@ -739,7 +759,7 @@ class Harness:
         with suppress(ConfigurationError):
             await self.start_services(task_id)
         self._write_mcp_config(task)
-        proc = await launch_run(task, model=self._builder_model())
+        proc = await launch_run(task, model=self._builder_model(cli))
         self._agent_procs[task_id] = proc
         self._agent_tasks[task_id] = asyncio.create_task(self._watch_agent(task_id, proc))
         return task

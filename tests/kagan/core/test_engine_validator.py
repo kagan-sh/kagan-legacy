@@ -11,8 +11,6 @@ from the builder, read from repo.yaml.
 import os
 from pathlib import Path
 
-import pytest
-
 from kagan.core import Harness, git
 from kagan.core.agent import _build_cmd
 from kagan.core.enums import TaskState
@@ -48,22 +46,34 @@ async def _repo(path: Path, manifest: str) -> Path:
     return path
 
 
+# Tasks run under a real, recipe-backed CLI; the fake agent script is installed under
+# this name and builder/reviewer models live in repo.yaml under `agents.<CLI>`.
+CLI = "claude"
+
+
+def _agents(builder: str | None = None, reviewer: str | None = None) -> str:
+    lines = ["agents:", f"  {CLI}:"]
+    if builder:
+        lines.append(f"    builder: {builder}")
+    if reviewer:
+        lines.append(f"    reviewer: {reviewer}")
+    return "\n".join(lines) + "\n"
+
+
 async def test_harvest_runs_validator_through_validating_into_review(tmp_path, monkeypatch):
     # Lever 2: a reviewer is configured, so harvest goes RUNNING -> VALIDATING ->
     # REVIEW (not the old direct RUNNING -> REVIEW), the validator's finding lands
     # source="ai-review" MERGED with the gate's machine findings, and approve stays
     # LOCKED until the human adjudicates it. This fails if the validator never runs,
     # if VALIDATING is skipped, or if ai-review findings auto-resolve.
-    repo = await _repo(
-        tmp_path / "repo", "checks:\n  lint: 'true'\nbuilder: codex\nreviewer: claude-opus\n"
-    )
+    repo = await _repo(tmp_path / "repo", "checks:\n  lint: 'true'\n" + _agents("sonnet", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
 
     await core.start_task(task.id)
     await core.await_agent(task.id)
@@ -112,9 +122,9 @@ async def test_validator_uses_reviewer_model_not_builder_model(tmp_path, monkeyp
     # DIFFERENT model from the builder (single-agent self-review is the thing this
     # avoids). Capture the model handed to launch_validate and assert it is the
     # reviewer, not the builder. Fails if the harness picks the builder or auto-picks.
-    repo = await _repo(tmp_path / "repo", "builder: codex\nreviewer: claude-opus\n")
+    repo = await _repo(tmp_path / "repo", _agents("sonnet", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     captured: dict[str, str] = {}
@@ -127,23 +137,23 @@ async def test_validator_uses_reviewer_model_not_builder_model(tmp_path, monkeyp
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 
-    cfg = core._gate_config()
-    assert captured["model"] == "claude-opus"
-    assert captured["model"] == cfg.reviewer
-    assert captured["model"] != cfg.builder  # reviewer differs from builder
+    models = core._gate_config().agents.for_cli(CLI)
+    assert captured["model"] == "opus"
+    assert captured["model"] == models.reviewer
+    assert captured["model"] != models.builder  # reviewer differs from builder
 
 
 async def test_builder_runs_on_builder_model(tmp_path, monkeypatch):
     # The "different models" guarantee is two-sided: the BUILDER must run on repo.yaml
     # `builder:`, not the CLI default. Capture the model handed to launch_run and assert
     # it is the builder. Fails if launch_run ignores builder: (single-model self-review).
-    repo = await _repo(tmp_path / "repo", "builder: codex\nreviewer: claude-opus\n")
+    repo = await _repo(tmp_path / "repo", _agents("sonnet", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     captured: dict[str, str | None] = {}
@@ -156,24 +166,24 @@ async def test_builder_runs_on_builder_model(tmp_path, monkeypatch):
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
-    cfg = core._gate_config()
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     try:
         await core.start_task(task.id)
     except RuntimeError:
         pass
-    assert captured["model"] == "codex"
-    assert captured["model"] == cfg.builder
-    assert captured["model"] != cfg.reviewer  # builder differs from reviewer
+    models = core._gate_config().agents.for_cli(CLI)
+    assert captured["model"] == "sonnet"
+    assert captured["model"] == models.builder
+    assert captured["model"] != models.reviewer  # builder differs from reviewer
 
 
 async def test_validator_runs_when_reviewer_equals_builder(tmp_path, monkeypatch):
     # Fix 6: reviewer == builder is a valid one-vendor setup (the anti-bias guarantee
     # is the fresh SEPARATE spawn, not vendor identity). The validator stage must STILL
     # run — nothing refuses on model equality. Fails if equality disables the stage.
-    repo = await _repo(tmp_path / "repo", "builder: claude-opus\nreviewer: claude-opus\n")
+    repo = await _repo(tmp_path / "repo", _agents("opus", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     captured: dict[str, str] = {}
@@ -186,13 +196,13 @@ async def test_validator_runs_when_reviewer_equals_builder(tmp_path, monkeypatch
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 
-    cfg = core._gate_config()
-    assert captured["model"] == "claude-opus"  # the validator ran, on the reviewer model
-    assert cfg.reviewer == cfg.builder  # even though it equals the builder
+    models = core._gate_config().agents.for_cli(CLI)
+    assert captured["model"] == "opus"  # the validator ran, on the reviewer model
+    assert models.reviewer == models.builder  # even though it equals the builder
     transitions = [
         (e["from"], e["to"])
         for e in core._ledger.read_events(task.id)
@@ -206,9 +216,9 @@ async def test_validator_failure_degrades_to_unaided_review(tmp_path, monkeypatc
     # the task must NOT strand in VALIDATING — it reaches REVIEW with a visible
     # (non-blocking) finding, validator_outcome=="failed", and the receipt banner
     # admits the gap honestly (no false "validated" provenance — the trust spiral).
-    repo = await _repo(tmp_path / "repo", "builder: codex\nreviewer: claude-opus\n")
+    repo = await _repo(tmp_path / "repo", _agents("sonnet", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     async def _boom(task, *, model, timeout=None):
@@ -218,7 +228,7 @@ async def test_validator_failure_degrades_to_unaided_review(tmp_path, monkeypatc
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 
@@ -236,9 +246,9 @@ async def test_validator_timeout_degrades_to_unaided_review(tmp_path, monkeypatc
     # must NOT read as a clean "ran". Otherwise a hung validator (the prime F1 failure
     # mode) would falsely show as validated. Pins the ok=False degrade path distinctly
     # from the crash (raise) path above.
-    repo = await _repo(tmp_path / "repo", "builder: codex\nreviewer: claude-opus\n")
+    repo = await _repo(tmp_path / "repo", _agents("sonnet", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     async def _timed_out(task, *, model, timeout=None):
@@ -248,7 +258,7 @@ async def test_validator_timeout_degrades_to_unaided_review(tmp_path, monkeypatc
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 
@@ -258,103 +268,33 @@ async def test_validator_timeout_degrades_to_unaided_review(tmp_path, monkeypatc
     assert "validator unavailable" in core.render_receipt(task.id)
 
 
-async def test_cross_vendor_reviewer_model_fails_loud_not_soft_degrade(tmp_path, monkeypatch):
-    # Rule 8: claude-opus on codex is a config error (not a validator crash). run_validation
-    # must raise ConfigurationError BEFORE VALIDATING — never soft-degrade to unaided review.
-    from kagan.core.errors import ConfigurationError
-
-    repo = await _repo(tmp_path / "repo", "builder: o3\nreviewer: claude-opus\n")
+async def test_model_under_agents_section_reaches_the_validator_verbatim(tmp_path, monkeypatch):
+    # The new model contract: a reviewer id written under `agents.<cli>` is passed
+    # VERBATIM to the validator — kagan does no translation and no pre-spawn vendor
+    # check (a cross-vendor mismatch is unrepresentable, since the model lives under its
+    # CLI's own key). A model the CLI can't run would surface as an honest F2 degrade,
+    # never a silent wrong-vendor run.
+    repo = await _repo(tmp_path / "repo", _agents("sonnet", "opencode/claude-opus-4-8"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
-    called = {"v": False}
+    captured: dict[str, str] = {}
 
-    async def _must_not_run(task, *, model, timeout=None):
-        called["v"] = True
+    async def _spy_validate(task, *, model, timeout=None):
+        captured["model"] = model
         return [], True
 
-    monkeypatch.setattr("kagan.core.harness.launch_validate", _must_not_run)
+    monkeypatch.setattr("kagan.core.harness.launch_validate", _spy_validate)
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("feature")
-    core.update_task(task.id, agent_cli="codex", worktree_path=repo, risk="medium")
-    core.transition_task(task.id, TaskState.RUNNING)
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
+    core.update_task(task.id, risk="medium")
+    await core.start_task(task.id)
+    await core.await_agent(task.id)
 
-    with pytest.raises(ConfigurationError) as exc:
-        await core.run_validation(task.id)
-    assert "claude-opus" in str(exc.value) and "codex" in str(exc.value)
-    assert called["v"] is False
-    assert core.get_task(task.id).state is TaskState.RUNNING
-
-
-async def test_unresolvable_reviewer_model_fails_loud_not_soft_degrade(tmp_path, monkeypatch):
-    # R-003: a canonical tier alias the task's CLI can't map (codex/kimi are
-    # vendor-locked) is a CONFIG error, not a validator crash. run_validation must raise
-    # ConfigurationError BEFORE the VALIDATING transition — it must NOT spawn the
-    # validator and must NOT soft-degrade to "reviewed unaided" (which would tell the
-    # user opus reviewed when nothing did). Distinct from the F2 crash path above.
-    from kagan.core.errors import ConfigurationError
-
-    repo = await _repo(tmp_path / "repo", "builder: o3\nreviewer: opus\n")
-    bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
-
-    # codex is vendor-locked: the canonical alias `opus` has no mapping for it.
-    called = {"v": False}
-
-    async def _must_not_run(task, *, model, timeout=None):
-        called["v"] = True
-        return [], True
-
-    monkeypatch.setattr("kagan.core.harness.launch_validate", _must_not_run)
-
-    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
-    task = core.create_task("feature")
-    # set a worktree + medium risk so run_validation reaches the resolve step.
-    core.update_task(task.id, agent_cli="codex", worktree_path=repo, risk="medium")
-    core.transition_task(task.id, TaskState.RUNNING)
-
-    with pytest.raises(ConfigurationError) as exc:
-        await core.run_validation(task.id)
-    assert "opus" in str(exc.value) and "codex" in str(exc.value)
-    assert called["v"] is False  # the validator was never spawned
-
-    task = core.get_task(task.id)
-    assert task.state is TaskState.RUNNING  # NOT transitioned into VALIDATING
-    assert task.validator_outcome != "failed"  # NOT the F2 "reviewed unaided" degrade
-    assert not any("reviewed unaided" in f.message for f in task.findings)
-
-
-async def test_unresolvable_builder_model_fails_loud_before_side_effects(tmp_path, monkeypatch):
-    # R-003: start_task resolves the builder model up front. A tier alias on a
-    # vendor-locked CLI fails LOUD before any worktree/transition side effect, so a
-    # misconfiguration never strands a task in RUNNING.
-    from kagan.core.errors import ConfigurationError
-
-    repo = await _repo(tmp_path / "repo", "builder: opus\nreviewer: o3\n")
-    bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
-
-    launched = {"v": False}
-
-    async def _must_not_run(task, *, model=None):
-        launched["v"] = True
-        raise AssertionError("launch_run should never be reached on a config error")
-
-    monkeypatch.setattr("kagan.core.harness.launch_run", _must_not_run)
-
-    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
-    task = core.create_task("feature")
-    core.configure_task(task.id, agent_cli="codex", scope=["src/**"])
-
-    with pytest.raises(ConfigurationError) as exc:
-        await core.start_task(task.id)
-    assert "opus" in str(exc.value) and "codex" in str(exc.value)
-    assert launched["v"] is False
-    assert core.get_task(task.id).state is not TaskState.RUNNING  # no stranded run
+    assert captured["model"] == "opencode/claude-opus-4-8"  # verbatim, no resolution
 
 
 async def test_validator_stage_skipped_when_no_reviewer_configured(tmp_path, monkeypatch):
@@ -363,12 +303,12 @@ async def test_validator_stage_skipped_when_no_reviewer_configured(tmp_path, mon
     # behave as before. Fails if a missing reviewer raises or strands the task.
     repo = await _repo(tmp_path / "repo", "checks:\n  lint: 'true'\n")
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 
@@ -392,15 +332,15 @@ async def test_low_risk_scope_skips_the_validator_even_with_reviewer_configured(
     # Fails if low risk runs the validator (it would transition through VALIDATING).
     repo = await _repo(
         tmp_path / "repo",
-        "builder: codex\nreviewer: claude-opus\nrisk_tiers:\n  low:\n    - 'src/**'\n",
+        _agents("sonnet", "opus") + "risk_tiers:\n  low:\n    - 'src/**'\n",
     )
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("tweak")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     assert core.get_task(task.id).risk == "low"  # classified at configure time
 
     await core.start_task(task.id)
@@ -423,15 +363,15 @@ async def test_medium_risk_scope_runs_the_validator(tmp_path, monkeypatch):
     # always-off. Goes RUNNING -> VALIDATING -> REVIEW with an ai-review finding.
     repo = await _repo(
         tmp_path / "repo",
-        "builder: codex\nreviewer: claude-opus\nrisk_tiers:\n  high:\n    - 'src/auth/**'\n",
+        _agents("sonnet", "opus") + "risk_tiers:\n  high:\n    - 'src/auth/**'\n",
     )
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     assert core.get_task(task.id).risk == "medium"
 
     await core.start_task(task.id)
@@ -464,12 +404,12 @@ async def test_low_confidence_ai_finding_downgraded_to_advisory_on_low_risk(tmp_
     # It is KEPT (still in findings, still adjudicable) but no longer locks approve.
     repo = await _repo(tmp_path / "repo", "risk_tiers:\n  low:\n    - 'src/**'\n")
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", LOW_CONF_REPORTER)
+    _install(bin_dir, CLI, LOW_CONF_REPORTER)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("tweak")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 
@@ -485,12 +425,12 @@ async def test_low_confidence_ai_finding_stays_blocking_on_high_risk(tmp_path, m
     # this is the assertion that fails if the threshold direction is wrong (Rule 9).
     repo = await _repo(tmp_path / "repo", "risk_tiers:\n  high:\n    - 'src/**'\n")
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", LOW_CONF_REPORTER)
+    _install(bin_dir, CLI, LOW_CONF_REPORTER)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("auth change")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     assert core.get_task(task.id).risk == "high"
     await core.start_task(task.id)
     await core.await_agent(task.id)
@@ -523,16 +463,14 @@ async def test_generated_prompts_surface_through_review_into_receipt(tmp_path, m
     # or if the receipt renders the static questions instead of the generated ones.
     from kagan.core.comprehension import prompts_for_risk, required_keys_for_task
 
-    repo = await _repo(
-        tmp_path / "repo", "checks:\n  lint: 'true'\nbuilder: codex\nreviewer: claude-opus\n"
-    )
+    repo = await _repo(tmp_path / "repo", "checks:\n  lint: 'true'\n" + _agents("sonnet", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", GEN_PROMPTS_AGENT)
+    _install(bin_dir, CLI, GEN_PROMPTS_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 
@@ -579,9 +517,9 @@ async def test_validator_failure_falls_back_to_static_prompts_with_honest_proven
     # set, and the receipt admits "validator unavailable" rather than faking provenance.
     from kagan.core.comprehension import prompts_for_risk, required_keys_for_task
 
-    repo = await _repo(tmp_path / "repo", "builder: codex\nreviewer: claude-opus\n")
+    repo = await _repo(tmp_path / "repo", _agents("sonnet", "opus"))
     bin_dir = tmp_path / "bin"
-    _install(bin_dir, "fakeagent", GEN_PROMPTS_AGENT)
+    _install(bin_dir, CLI, GEN_PROMPTS_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     async def _boom(task, *, model, timeout=None):
@@ -591,7 +529,7 @@ async def test_validator_failure_falls_back_to_static_prompts_with_honest_proven
 
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("add feature")
-    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
     await core.start_task(task.id)
     await core.await_agent(task.id)
 

@@ -169,8 +169,32 @@ def test_risk_tiers_valid_keys_load():
 def test_reviewer_equal_to_builder_loads():
     # Fix 6: the anti-bias guarantee is the fresh separate spawn, not vendor identity,
     # so reviewer == builder is a valid one-vendor setup and must load cleanly.
-    cfg = RepoConfig.model_validate({"builder": "claude-opus", "reviewer": "claude-opus"})
-    assert cfg.reviewer == cfg.builder == "claude-opus"
+    cfg = RepoConfig.model_validate({"agents": {"claude": {"builder": "opus", "reviewer": "opus"}}})
+    models = cfg.agents.for_cli("claude")
+    assert models.reviewer == models.builder == "opus"
+
+
+def test_models_are_isolated_per_cli_and_unknown_cli_key_is_rejected():
+    # The new contract: models live under their CLI's own key, so a cross-vendor mismatch
+    # is unrepresentable — a value set under `codex` is never read for a `claude` task.
+    cfg = RepoConfig.model_validate(
+        {"agents": {"codex": {"builder": "gpt-5-codex"}, "claude": {"reviewer": "opus"}}}
+    )
+    assert cfg.agents.for_cli("codex").builder == "gpt-5-codex"
+    assert cfg.agents.for_cli("codex").reviewer is None
+    assert cfg.agents.for_cli("claude").builder is None
+    # An unknown/typo'd CLI key is rejected at load (extra="forbid"), not silently ignored.
+    with pytest.raises(ValidationError):
+        RepoConfig.model_validate({"agents": {"opnecode": {"builder": "x"}}})
+
+
+def test_agents_config_keys_match_the_supported_recipes():
+    # Structural guard: the per-CLI agent sections must be exactly the recipe-backed CLIs,
+    # so a new supported CLI can't be configurable without a launch recipe (or vice versa).
+    from kagan.core.config import AgentsConfig
+    from kagan.core.recipes import RECIPES
+
+    assert set(AgentsConfig.model_fields) == set(RECIPES)
 
 
 def test_load_repo_config_bad_yaml_raises(tmp_path: Path):

@@ -36,30 +36,31 @@ def test_doctor_fails_when_manifest_invalid(tmp_path: Path, monkeypatch):
     assert "services" in check.message
 
 
-def test_doctor_fails_on_cross_vendor_reviewer_when_only_codex(tmp_path: Path, monkeypatch):
+def test_doctor_warns_when_a_models_configured_cli_is_not_on_path(tmp_path: Path, monkeypatch):
+    # Models live under their CLI's key; if that CLI isn't installed, those tasks would
+    # silently fall back to the CLI default — doctor warns (not fails: it's degradeable).
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".kagan").mkdir()
     (tmp_path / ".kagan" / "repo.yaml").write_text(
-        yaml.safe_dump({"project_name": "demo", "reviewer": "claude-opus"})
+        yaml.safe_dump({"project_name": "demo", "agents": {"kimi": {"reviewer": "kimi-x"}}})
     )
     monkeypatch.setattr(
         "kagan.core.doctor_checks.shutil.which",
         lambda name: "/usr/bin/codex" if name == "codex" else None,
     )
     check = next(c for c in run_doctor_checks() if c.name == "manifest models")
-    assert check.status == "fail"
-    assert "claude-opus" in check.message
-    assert "codex" in check.message
+    assert check.status == "warn"
+    assert "kimi" in check.message
 
 
-def test_doctor_models_ok_when_runnable_on_any_path_cli(tmp_path: Path, monkeypatch):
+def test_doctor_models_ok_when_configured_cli_is_on_path(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".kagan").mkdir()
     (tmp_path / ".kagan" / "repo.yaml").write_text(
-        yaml.safe_dump({"project_name": "demo", "reviewer": "claude-opus"})
+        yaml.safe_dump({"project_name": "demo", "agents": {"codex": {"reviewer": "o3"}}})
     )
     monkeypatch.setattr(
         "kagan.core.doctor_checks.shutil.which",
-        lambda name: "/usr/bin/x" if name in ("claude", "codex") else None,
+        lambda name: "/usr/bin/x" if name == "codex" else None,
     )
     assert _check_manifest_models() is None

@@ -190,19 +190,11 @@ def _check_branch_protection() -> DoctorCheck | None:
     )
 
 
-def _model_runnable(cli: str, value: str) -> bool:
-    from kagan.core.recipes import validate_model_for_cli
-
-    try:
-        validate_model_for_cli(cli, value)
-        return True
-    except ConfigurationError:
-        return False
-
-
 def _check_manifest_models() -> DoctorCheck | None:
-    from kagan.core.recipes import validate_model_for_cli
-
+    """Warn when a CLI configured with builder/reviewer models in `agents.<cli>` isn't on
+    PATH — those tasks would silently fall back to the CLI default. The model id itself is
+    passed verbatim to the CLI, so kagan does not (and cannot) validate it; that is the
+    CLI's own job at spawn."""
     repo_root = find_repo_root()
     if repo_root is None:
         return None
@@ -210,31 +202,22 @@ def _check_manifest_models() -> DoctorCheck | None:
         cfg = load_repo_config(repo_root)
     except ConfigurationError:
         return None
-    found = [cli for cli in _AGENT_CLIS if shutil.which(cli)]
-    if not found:
-        return None
 
-    problems: list[str] = []
-    for field in ("builder", "reviewer"):
-        value = getattr(cfg, field)
-        if not value:
-            continue
-        if any(_model_runnable(cli, value) for cli in found):
-            continue
-        try:
-            validate_model_for_cli(found[0], value)
-        except ConfigurationError as exc:
-            problems.append(f"{field}: {exc.detail}")
-    if not problems:
+    missing: list[str] = []
+    for cli in _AGENT_CLIS:
+        models = cfg.agents.for_cli(cli)
+        if (models.builder or models.reviewer) and not shutil.which(cli):
+            missing.append(cli)
+    if not missing:
         return None
     return DoctorCheck(
         name="manifest models",
-        status="fail",
-        message="; ".join(problems),
-        fix_hint=(
-            "Set builder/reviewer to a canonical tier alias (opus/sonnet/haiku) or a "
-            "model id native to an agent CLI on your PATH."
+        status="warn",
+        message=(
+            f"models configured for {', '.join(missing)} but that CLI isn't on PATH — "
+            "those tasks use the CLI default"
         ),
+        fix_hint="Install the CLI, or move the models under an agent CLI on your PATH.",
         category="configuration",
     )
 

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from kagan.core.errors import ConfigurationError
-from kagan.core.recipes import recipe_for, resolve_model
+from kagan.core.recipes import recipe_for
 from kagan.core.reports import read_ask
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
@@ -92,25 +92,13 @@ def _validate_prompt(task: Task) -> str:
 
 
 def _model_vocab_directive(cli: str) -> str:
-    """Tell the drafting agent the model vocabulary THIS cli can actually run, so it never
-    proposes a builder/reviewer the cli can't spawn (e.g. a Claude tier on codex).
-
-    claude/opencode resolve the canonical tier aliases; codex/kimi are vendor-locked and a
-    tier alias would fail there, so they must use a cli-native id or null."""
-    from kagan.core.recipes import CANONICAL_TIERS
-
-    aliases = "/".join(CANONICAL_TIERS)
-    if cli in ("claude", "opencode"):
-        return (
-            f"This repo runs the {cli} CLI. For builder and reviewer use a canonical tier "
-            f"alias ({aliases}) — NOT a native model id like claude-opus-4-8 — or null. "
-            f"NEVER propose another vendor's model.\n"
-        )
+    """Tell the drafting agent to propose builder/reviewer as ids the THIS cli can run
+    itself — passed verbatim to its --model flag, with no translation by kagan."""
     return (
-        f"This repo runs the {cli} CLI, which is vendor-locked: a canonical tier alias "
-        f"({aliases}) does NOT map to it and would fail. For builder and reviewer use a "
-        f"{cli}-native model id, or null if you cannot name one. NEVER propose a Claude "
-        f"tier alias or any other vendor's model.\n"
+        f"This repo runs the {cli} CLI. For builder and reviewer, propose a model id that "
+        f"{cli} itself accepts on its --model flag (e.g. claude takes opus/sonnet/haiku; "
+        f"opencode takes opencode/claude-*; codex/kimi take their vendor-native ids), or "
+        f"null if you cannot name one. NEVER propose another CLI's model id.\n"
     )
 
 
@@ -182,14 +170,11 @@ def _run_prompt(task: Task) -> str:
 def _build_cmd(cli: str, prompt_path: Path, *, cwd: Path, model: str | None = None) -> list[str]:
     r = recipe_for(cli)
     cmd = list(r.command)
-    # R-003: a repo.yaml builder/reviewer value is per-CLI — a canonical tier alias
-    # (opus/sonnet/haiku) maps to THIS cli's native --model string; a native id passes
-    # through; an alias with no mapping for this cli raises ConfigurationError (loud
-    # fail, surfaced to the user — never a silent wrong-vendor run). This is the seam
-    # where the CLI and the model meet, so resolution happens here.
-    resolved = resolve_model(cli, model)
-    if resolved and r.model_flag:
-        cmd += [r.model_flag, resolved]
+    # The model comes from repo.yaml `agents.<cli>` (RepoConfig.agents), so it is already
+    # this CLI's own model id — passed verbatim, no translation. None omits the flag (the
+    # CLI's default).
+    if model and r.model_flag:
+        cmd += [r.model_flag, model]
     if r.workdir_flag:
         # A CLI that ignores cwd (opencode walks up to a project root) must be pinned to
         # the worktree/sandbox, or it operates on the WRONG tree.

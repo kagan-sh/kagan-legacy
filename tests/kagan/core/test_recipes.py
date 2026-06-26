@@ -3,13 +3,10 @@ from pathlib import Path
 import pytest
 
 from kagan.core.agent import _build_cmd
-from kagan.core.errors import ConfigurationError
 from kagan.core.recipes import (
     RECIPES,
     available_clis,
     recipe_for,
-    resolve_model,
-    validate_model_for_cli,
 )
 
 SUPPORTED_CLIS = ("claude", "codex", "kimi", "opencode")
@@ -80,106 +77,36 @@ def test_build_cmd_pins_opencode_to_the_workdir(tmp_path: Path):
     assert "--dir" not in _build_cmd("claude", prompt, cwd=tmp_path)
 
 
-def test_resolve_model_none_omits_the_flag():
-    # R-003 STEP 3: an unset builder/reviewer must stay None so _build_cmd omits --model
-    # and the CLI's own default is used — unchanged behaviour for the common case.
+def test_build_cmd_omits_the_flag_when_model_is_none(tmp_path: Path):
+    # An unset builder/reviewer (None) must omit --model so the CLI's own default is used —
+    # unchanged behaviour for the common case.
+    prompt = tmp_path / ".kagan" / "p.txt"
+    prompt.parent.mkdir()
+    prompt.write_text("x")
     for cli in SUPPORTED_CLIS:
-        assert resolve_model(cli, None) is None
+        assert "--model" not in _build_cmd(cli, prompt, cwd=tmp_path, model=None)
 
 
-def test_resolve_model_claude_alias_stays_a_bare_alias():
-    # claude --help documents opus/sonnet/haiku as native aliases it resolves itself, so
-    # the resolver hands claude the BARE alias (never a drifting full id).
-    assert resolve_model("claude", "opus") == "opus"
-    assert resolve_model("claude", "sonnet") == "sonnet"
-    assert resolve_model("claude", "haiku") == "haiku"
-
-
-def test_resolve_model_opencode_alias_is_provider_qualified():
-    # opencode `run --model` needs `provider/model`; a fresh install carries the claude
-    # models under its own `opencode/` gateway provider. The alias must become that id,
-    # never the bare tier (opencode rejects a bare alias).
-    assert resolve_model("opencode", "opus") == "opencode/claude-opus-4-8"
-    assert resolve_model("opencode", "sonnet") == "opencode/claude-sonnet-4-6"
-    assert resolve_model("opencode", "haiku") == "opencode/claude-haiku-4-5"
-    assert "/" in resolve_model("opencode", "opus")
-
-
-def test_resolve_model_passes_native_ids_through_verbatim():
-    # A power-user native id (NOT a canonical alias) is passed through unchanged for any
-    # CLI — kagan never second-guesses an explicit vendor model string.
-    assert resolve_model("claude", "claude-opus-4-8") == "claude-opus-4-8"
-    assert resolve_model("codex", "o3") == "o3"
-    assert resolve_model("codex", "gpt-5-codex") == "gpt-5-codex"
-    assert resolve_model("kimi", "kimi-code/kimi-for-coding") == "kimi-code/kimi-for-coding"
-    assert resolve_model("opencode", "openai/gpt-5") == "openai/gpt-5"
-
-
-@pytest.mark.parametrize("cli", ["codex", "kimi"])
-@pytest.mark.parametrize("alias", ["opus", "sonnet", "haiku"])
-def test_resolve_model_alias_on_vendor_locked_cli_fails_loud(cli: str, alias: str):
-    # codex/kimi are OpenAI-/Moonshot-locked with no verifiable claude-tier equivalent.
-    # A canonical tier alias there MUST raise (loud fail), never silently pick a
-    # wrong-vendor model — the message names the model and the CLI so the user can fix it.
-    with pytest.raises(ConfigurationError) as exc:
-        resolve_model(cli, alias)
-    assert alias in str(exc.value)
-    assert cli in str(exc.value)
-
-
-def test_build_cmd_uses_the_resolved_model_for_the_flag(tmp_path: Path):
-    # The (cli, alias) pair must reach --model RESOLVED: claude gets the bare alias,
-    # opencode gets the provider-qualified id. Pins that _build_cmd resolves at the seam.
+@pytest.mark.parametrize(
+    ("cli", "model"),
+    [
+        ("claude", "opus"),
+        ("claude", "claude-opus-4-8"),
+        ("opencode", "opencode/claude-opus-4-8"),
+        ("codex", "o3"),
+        ("codex", "gpt-5-codex"),
+        ("kimi", "kimi-code/kimi-for-coding"),
+    ],
+)
+def test_build_cmd_passes_the_model_verbatim(cli: str, model: str, tmp_path: Path):
+    # The model comes from repo.yaml `agents.<cli>` so it is already this CLI's own id —
+    # kagan does NO translation. Whatever is configured reaches --model unchanged; a value
+    # the CLI can't run is the CLI's own spawn error, not kagan's to second-guess.
     prompt = tmp_path / ".kagan" / "p.txt"
     prompt.parent.mkdir()
     prompt.write_text("x")
-
-    claude_cmd = _build_cmd("claude", prompt, cwd=tmp_path, model="opus")
-    assert claude_cmd[claude_cmd.index("--model") + 1] == "opus"
-
-    oc_cmd = _build_cmd("opencode", prompt, cwd=tmp_path, model="opus")
-    assert oc_cmd[oc_cmd.index("--model") + 1] == "opencode/claude-opus-4-8"
-
-    # a native id passes through to the flag unchanged.
-    native = _build_cmd("codex", prompt, cwd=tmp_path, model="o3")
-    assert native[native.index("--model") + 1] == "o3"
-
-
-def test_build_cmd_raises_on_an_unresolvable_alias(tmp_path: Path):
-    # _build_cmd is the seam: a canonical alias with no mapping for the CLI fails LOUD
-    # there (rule 8 — the gate must be able to reject the violation), not silently.
-    prompt = tmp_path / ".kagan" / "p.txt"
-    prompt.parent.mkdir()
-    prompt.write_text("x")
-    with pytest.raises(ConfigurationError):
-        _build_cmd("codex", prompt, cwd=tmp_path, model="opus")
-
-
-def test_validate_model_rejects_claude_native_on_codex():
-    # Rule 8: claude-opus is NOT a canonical tier alias, so resolve_model passes it
-    # through — validate_model_for_cli must catch the cross-vendor mismatch loud.
-    with pytest.raises(ConfigurationError) as exc:
-        validate_model_for_cli("codex", "claude-opus")
-    assert "claude-opus" in str(exc.value)
-    assert "codex" in str(exc.value)
-
-
-def test_validate_model_accepts_claude_native_on_claude():
-    validate_model_for_cli("claude", "claude-opus")
-
-
-def test_validate_model_accepts_codex_native_on_codex():
-    validate_model_for_cli("codex", "o3")
-    validate_model_for_cli("codex", "gpt-5-codex")
-
-
-@pytest.mark.parametrize("cli", ["codex", "kimi"])
-@pytest.mark.parametrize("alias", ["opus", "sonnet", "haiku"])
-def test_validate_model_alias_on_vendor_locked_cli_fails_loud(cli: str, alias: str):
-    with pytest.raises(ConfigurationError) as exc:
-        validate_model_for_cli(cli, alias)
-    assert alias in str(exc.value)
-    assert cli in str(exc.value)
+    cmd = _build_cmd(cli, prompt, cwd=tmp_path, model=model)
+    assert cmd[cmd.index("--model") + 1] == model
 
 
 def test_available_clis_filters_to_path(tmp_path: Path):

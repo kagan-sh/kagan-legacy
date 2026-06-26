@@ -257,37 +257,6 @@ async def _verify(
     return all(r.passed for r in results), {r.name for r in results if not r.passed}
 
 
-def _model_runnable(field: str, value: str, cli: str) -> bool:
-    """True if ``cli`` can run model ``value``; else print a notice and return False.
-
-    builder/reviewer are OPTIONAL refinements — an incompatible one is dropped (the CLI's
-    default), never a dead-end. The notice mirrors `_print_unwalked_suggestions`: drop +
-    explain, don't gate. Normalizing the parsed draft up front (see `_normalize_models`)
-    means this rarely fires; it stays as the backstop so the write can never abort."""
-    from kagan.core.errors import ConfigurationError
-    from kagan.core.recipes import validate_model_for_cli
-
-    try:
-        validate_model_for_cli(cli, value)
-    except ConfigurationError as exc:
-        click.echo(
-            f"  {field} {value!r} isn't runnable by {cli} — left unset ({cli}'s default). "
-            f"{exc.detail}"
-        )
-        return False
-    return True
-
-
-def _normalize_models(draft: ManifestDraft, cli: str) -> None:
-    """Drop an incompatible builder/reviewer from the PARSED draft before the human reviews
-    it, so the summary shows the corrected manifest (unset → CLI default), not one doomed
-    to fail at the write step."""
-    if draft.builder and not _model_runnable("builder", draft.builder, cli):
-        draft.builder = None
-    if draft.reviewer and not _model_runnable("reviewer", draft.reviewer, cli):
-        draft.reviewer = None
-
-
 def _draft_to_config(
     draft: ManifestDraft, approved: dict[str, str], project_name: str, *, agent_cli: str
 ) -> dict:
@@ -301,14 +270,12 @@ def _draft_to_config(
         cfg["checks"] = approved
     if draft.risk_tiers:
         cfg["risk_tiers"] = draft.risk_tiers
-    # An incompatible model is dropped (CLI default), never an abort — the manifest must
-    # always write so the human's verified checks/risk tiers are never discarded over an
-    # optional field. _normalize_models already filtered the parsed draft; this is the
-    # backstop for an edited/odd value.
-    if draft.builder and _model_runnable("builder", draft.builder, agent_cli):
-        cfg["builder"] = draft.builder
-    if draft.reviewer and _model_runnable("reviewer", draft.reviewer, agent_cli):
-        cfg["reviewer"] = draft.reviewer
+    # The agent drafted for THIS cli, so its builder/reviewer are this cli's own model
+    # ids — written under `agents.<cli>` and passed verbatim (no validation; the CLI
+    # rejects a bad id at spawn). Unset fields are dropped by render_manifest_yaml.
+    section = {k: v for k, v in (("builder", draft.builder), ("reviewer", draft.reviewer)) if v}
+    if section:
+        cfg["agents"] = {agent_cli: section}
     return cfg
 
 
@@ -401,6 +368,13 @@ async def run_init(repo_root: Path | None) -> Path | None:
     if repo_root is None:
         return None
 
+    # Record the repo's REAL default branch so a `master` (or any non-`main`) repo
+    # does not get `base_branch: main` — every task's `git worktree add … main`
+    # would fail on a missing ref and strand the task in INTAKE.
+    from kagan.core import git as _git
+
+    base_branch = _git.current_branch(repo_root) or "main"
+
     manifest_path = repo_root / ".kagan" / "repo.yaml"
     if manifest_path.exists() and not click.confirm(
         ".kagan/repo.yaml already exists — overwrite it?",
@@ -424,12 +398,10 @@ async def run_init(repo_root: Path | None) -> Path | None:
             reports = await _draft_with_progress(draft_cli, repo_root)
             if reports is not None:
                 draft = parse_manifest_report(reports)
-                if draft is not None:
-                    _normalize_models(draft, draft_cli)
 
         if draft is None or not draft.checks:
             # Deterministic floor: a valid, mostly-commented skeleton to fill in by hand.
-            manifest_path = _write_files(repo_root, skeleton_manifest())
+            manifest_path = _write_files(repo_root, skeleton_manifest(base_branch))
             click.echo(f"Wrote a starter {manifest_path} — fill in your build/lint/test commands.")
             click.echo("Run `kagan doctor` to confirm. Edit the file by hand anytime.")
             return manifest_path
@@ -453,6 +425,9 @@ async def run_init(repo_root: Path | None) -> Path | None:
                 approved = {n: c for n, c in approved.items() if n not in failed}
 
         assert draft_cli is not None
+        # The agent may guess base_branch wrong (it defaults to `main`); the checked-out
+        # branch is ground truth, so override the draft's value with it.
+        draft.base_branch = base_branch
         cfg = _draft_to_config(draft, approved, project_name=repo_root.name, agent_cli=draft_cli)
         manifest_path = _write_files(repo_root, render_manifest_yaml(cfg))
     finally:
@@ -460,6 +435,11 @@ async def run_init(repo_root: Path | None) -> Path | None:
 
     click.echo(f"Wrote {manifest_path} and a starter rubric.")
     click.echo("Run `kagan doctor` to confirm. Edit either file by hand — kagan flags AGENT edits.")
+    if len(clis) > 1:
+        click.echo(
+            f"  Models set under agents.{draft_cli} only — add an agents.<cli> block per "
+            "other CLI you run, or those tasks use the CLI default."
+        )
     _print_unwalked_suggestions(draft)
     return manifest_path
 

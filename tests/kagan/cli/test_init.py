@@ -74,10 +74,10 @@ def test_skeleton_floor_when_no_agent(tmp_path, monkeypatch):
     assert (tmp_path / ".kagan" / "review.md").exists()
 
 
-def test_init_drops_incompatible_models_for_codex_but_writes(tmp_path, monkeypatch):
-    # An incompatible builder/reviewer (Claude tiers a codex drafter can't run) must NOT
-    # abort onboarding: the manifest IS written, the verified checks/risk tiers survive,
-    # the bad models are dropped to the CLI default, and a notice explains why.
+def test_init_writes_drafted_models_under_the_cli_section_verbatim(tmp_path, monkeypatch):
+    # The drafting agent proposes builder/reviewer for the CLI it ran under; init writes
+    # them verbatim under `agents.<cli>` (no translation, no compatibility judgement —
+    # the CLI rejects a bad id at spawn). The verified checks/risk tiers survive alongside.
     _git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(Harness, "available_clis", lambda self: ["codex"])
@@ -86,24 +86,21 @@ def test_init_drops_incompatible_models_for_codex_but_writes(tmp_path, monkeypat
         _manifest_payload(
             [{"name": "test", "command": "pytest", "provenance": "invented"}],
             risk_tiers={"high": ["src/**"]},
-            builder="sonnet",
-            reviewer="opus",
+            builder="gpt-5-codex",
+            reviewer="o3",
         ),
     )
     result = _invoke_init(input="y\na\nn\n")
     assert result.exit_code == 0
-    path = tmp_path / ".kagan" / "repo.yaml"
-    assert path.exists()  # never dead-ended over an optional field
     cfg = load_repo_config(tmp_path)
     assert cfg.checks == {"test": "pytest"}  # verified check survived
     assert cfg.risk_tiers == {"high": ["src/**"]}  # risk tiers survived
-    assert cfg.builder is None and cfg.reviewer is None  # dropped to CLI default
-    assert "codex" in result.output
-    assert "isn't runnable" in result.output
-    assert "Fix the draft" not in result.output  # the old abort path is gone
+    models = cfg.agents.for_cli("codex")
+    assert models.builder == "gpt-5-codex"
+    assert models.reviewer == "o3"
 
 
-def test_init_accepts_opus_tier_for_claude_builder(tmp_path, monkeypatch):
+def test_init_writes_claude_models_under_the_claude_section(tmp_path, monkeypatch):
     _git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
@@ -117,28 +114,9 @@ def test_init_accepts_opus_tier_for_claude_builder(tmp_path, monkeypatch):
     )
     result = _invoke_init(input="y\na\nn\n")
     assert result.exit_code == 0
-    cfg = load_repo_config(tmp_path)
-    assert cfg.builder == "opus"
-    assert cfg.reviewer == "haiku"
-
-
-def test_init_accepts_codex_native_reviewer(tmp_path, monkeypatch):
-    _git_repo(tmp_path)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(Harness, "available_clis", lambda self: ["codex"])
-    _stub_draft(
-        monkeypatch,
-        _manifest_payload(
-            [{"name": "test", "command": "pytest", "provenance": "invented"}],
-            builder="o3",
-            reviewer="gpt-5-codex",
-        ),
-    )
-    result = _invoke_init(input="y\na\nn\n")
-    assert result.exit_code == 0
-    cfg = load_repo_config(tmp_path)
-    assert cfg.builder == "o3"
-    assert cfg.reviewer == "gpt-5-codex"
+    models = load_repo_config(tmp_path).agents.for_cli("claude")
+    assert models.builder == "opus"
+    assert models.reviewer == "haiku"
 
 
 def test_agent_draft_accept_all_writes_manifest(tmp_path, monkeypatch):
@@ -152,14 +130,14 @@ def test_agent_draft_accept_all_writes_manifest(tmp_path, monkeypatch):
                 {"name": "build", "command": "make build", "provenance": "ci", "source": "ci.yml"},
                 {"name": "test", "command": "pytest", "provenance": "invented"},
             ],
-            reviewer="claude-opus",
+            reviewer="opus",
         ),
     )
     result = _invoke_init(input="y\na\na\nn\n")
     assert result.exit_code == 0
     cfg = load_repo_config(tmp_path)
     assert cfg.checks == {"build": "make build", "test": "pytest"}
-    assert cfg.reviewer == "claude-opus"
+    assert cfg.agents.for_cli("claude").reviewer == "opus"
 
 
 def test_walk_drop_and_edit(tmp_path, monkeypatch):

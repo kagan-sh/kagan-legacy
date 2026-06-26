@@ -87,11 +87,11 @@ def test_init_git_repo_creates_repo_with_commit(tmp_path):
 
 def test_render_manifest_yaml_validates_and_roundtrips():
     text = render_manifest_yaml(
-        {"project_name": "x", "base_branch": "main", "checks": {"test": "pytest"}, "reviewer": None}
+        {"project_name": "x", "base_branch": "main", "checks": {"test": "pytest"}, "agents": None}
     )
     parsed = yaml.safe_load(text)
     assert parsed["checks"] == {"test": "pytest"}
-    assert "reviewer" not in parsed  # None is dropped, not written
+    assert "agents" not in parsed  # None is dropped, not written
     RepoConfig.model_validate(parsed)
 
 

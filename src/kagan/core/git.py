@@ -134,6 +134,27 @@ def repo_root(start: Path) -> Path | None:
     return Path(out.stdout.strip()).resolve()
 
 
+def current_branch(start: Path) -> str | None:
+    """The checked-out branch name, or None (detached HEAD / outside a repo).
+
+    Sync so `init` can record the repo's REAL default branch in the manifest — a
+    `master` repo must not get `base_branch: main`, or every task's worktree add
+    fails on a missing ref.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(start), "symbolic-ref", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            env=build_sanitized_subprocess_environment(),
+        )
+    except OSError:
+        return None
+    if out.returncode != 0:
+        return None
+    return out.stdout.strip() or None
+
+
 def _git_config_get(start: Path, key: str) -> str | None:
     try:
         out = subprocess.run(

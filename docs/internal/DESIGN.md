@@ -301,7 +301,7 @@ subset is tracked.
 | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------- | ------------------------------------------------------------------------ |
 | `state.json`, `events.jsonl`                                                                                                  | in-repo `.kagan/state/` (gitignored) | no                                           | operational; gitignored so it never enters commits                       |
 | worktree/port/pid bookkeeping, cooldown + **fatigue** (l5), **stats** source (l7)                                             | in-repo `.kagan/state/` (gitignored) | no — l5/l7 are **private**                   | machine-local self-mirror; gitignored; never committed                   |
-| `.kagan/repo.yaml` (risk tiers, checks, rubric)                                                                               | in-repo `.kagan/`                    | yes (intended — see gitignore note)          | shared review contract                                                   |
+| `.kagan/repo.yaml` (risk tiers, checks, rubric, per-CLI agent models)                                                         | in-repo `.kagan/`                    | yes (intended — see gitignore note)          | shared review contract                                                   |
 | receipt = decision record (l6): understanding + pinned decisions + findings/verdicts + comprehension + not-covered + diff ref | in-repo `.kagan/reviews/<task>.md`   | yes — **auto-written on approve** (intended) | the cross-team provenance / trust artifact + durable decision log (§3.7) |
 | `AGENTS.md` deltas (l8)                                                                                                       | in-repo root                         | yes                                          | compounding org knowledge                                                |
 
@@ -467,25 +467,31 @@ self-review. `VALIDATING` is declared but never assigned.
 - **DESIGN-LVR2-06** The receipt ceremony banner **MUST** read
   `validator_outcome` and **MUST** append "(validator unavailable — reviewed
   unaided)" on failure; a failed validator **MUST NOT** read as one that ran.
-- **DESIGN-LVR2-07** **IF** `resolve_model` raises `ConfigurationError` for a
-  model/CLI mismatch, **THEN** the harness **MUST** fail loud before side effects
-  and **MUST NOT** degrade to "reviewed unaided".
-- **DESIGN-LVR2-08** `builder`/`reviewer` **MUST** resolve per the task's CLI
-  (`core/recipes.resolve_model`, called in `core/agent._build_cmd`). The portable
-  vocabulary is `opus`/`sonnet`/`haiku` (top/mid/fast): claude takes the bare
-  alias; opencode maps to `opencode/claude-*`; any non-alias value passes
-  through verbatim. **IF** a tier alias is used on codex or kimi (vendor-locked
-  with no claude-tier equivalent), **THEN** `resolve_model` **MUST** raise
-  `ConfigurationError` — distinct from the F2 soft-degrade.
+- **DESIGN-LVR2-07** **WHEN** the validator runs, its reviewer model **MUST** be
+  the one configured under the task CLI's own `agents.<cli>` section, so a
+  cross-vendor mismatch is unrepresentable by construction; **IF** that model is
+  one the CLI cannot run, **THEN** the failure **MUST** surface through the F2
+  degrade as a receipt-visible "reviewed unaided", never as a silent wrong-vendor
+  run.
+- **DESIGN-LVR2-08** `builder`/`reviewer` **MUST** be read from `repo.yaml`
+  `agents.<cli>` keyed by the task's CLI (`Harness._builder_model` /
+  `_reviewer_model`) and passed VERBATIM to that CLI's model flag
+  (`core/agent._build_cmd`); the harness **MUST NOT** translate model names or
+  carry a cross-vendor alias map. Each CLI's own vocabulary applies (claude
+  resolves `opus`/`sonnet`/`haiku` itself; opencode takes `opencode/claude-*`;
+  codex/kimi take vendor-native ids). An unknown CLI key under `agents`
+  **MUST** be rejected at manifest load (`extra="forbid"`).
 - **DESIGN-LVR2-09** The validator also generates lever-1's comprehension prompts
   on the riskiest hunks, reported via `report_comprehension_prompts`
   (`Harness.record_comprehension_prompts` → `core/tasks.py`) and stored capped to
   the risk floor. A short or empty generated set **MUST** fall back to the static
   count (the rule-8 floor guard) — a degraded validator can never shrink the gate.
-- **DESIGN-LVR2-10** Builder/reviewer model compatibility is gated at the seam
-  (`validate_model_for_cli`, `core/recipes.py`): a builder or reviewer model the
-  task CLI cannot run **MUST** fail at init / doctor / harness, never as a silent
-  review-time degrade of the validator.
+- **DESIGN-LVR2-10** Because each model lives under its CLI's `agents.<cli>` key,
+  a model can never reach a CLI that cannot run it by vendor — there is no
+  compatibility resolver. `kagan doctor` **MUST** warn **WHERE** a CLI configured
+  with models is absent from PATH (those tasks fall back to the CLI default), and
+  a model id the CLI rejects at spawn **MUST** degrade via F2, never strand the
+  task.
 
 **Seam:** `core/enums.py`, `core/harness.py:222`, `core/gate.py`, `core/config.py`,
 `core/agent.py`, `core/recipes.py`, `mcp/server.py`, `format/workspaces.py`.

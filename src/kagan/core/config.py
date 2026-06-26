@@ -39,6 +39,37 @@ class ServiceConfig(BaseModel):
         return value
 
 
+class AgentModels(BaseModel):
+    model_config = ConfigDict(extra="forbid", use_attribute_docstrings=True)
+
+    builder: str | None = None
+    """Model id passed verbatim to this CLI's model flag for the builder run. Unset
+    leaves the CLI's own default."""
+
+    reviewer: str | None = None
+    """Model id the adversarial validator (lever 2) runs with under this CLI. The
+    anti-bias guarantee is the FRESH, SEPARATE spawn, so ``reviewer == builder`` is
+    allowed and a smaller same-vendor model (e.g. opus builder, haiku reviewer) is a
+    valid one-vendor setup. Unset disables the validator stage for this CLI."""
+
+
+class AgentsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", use_attribute_docstrings=True)
+
+    claude: AgentModels = Field(default_factory=AgentModels)
+    codex: AgentModels = Field(default_factory=AgentModels)
+    opencode: AgentModels = Field(default_factory=AgentModels)
+    kimi: AgentModels = Field(default_factory=AgentModels)
+
+    def for_cli(self, cli: str) -> AgentModels:
+        """The model section for ``cli``; an unconfigured/unknown CLI yields an empty
+        section (both models None = CLI default, validator disabled)."""
+        return getattr(self, cli, _EMPTY_AGENT_MODELS)
+
+
+_EMPTY_AGENT_MODELS = AgentModels()
+
+
 class RepoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", use_attribute_docstrings=True)
 
@@ -76,25 +107,15 @@ class RepoConfig(BaseModel):
     pinned: list[str] = Field(default_factory=list)
     """Branches/paths the agent must not touch."""
 
-    builder: str | None = None
-    """Model the builder agent runs with, resolved per the task's CLI then passed via
-    that CLI's model flag. Write a canonical TIER ALIAS (``opus``/``sonnet``/``haiku``
-    = top/mid/fast) for a portable value, or a CLI-native model id. claude and opencode
-    accept the aliases (opencode maps them to ``opencode/claude-*``); codex and kimi are
-    vendor-locked, so a tier alias there errors loudly — give them a native id (codex
-    ``o3``/``gpt-5-codex``; kimi ``kimi-code/...``). Find ids: claude ``--help`` or
-    /model; ``opencode models``; codex ``--help``/OpenAI docs; kimi docs. Unset leaves
-    the CLI's own default."""
-
-    reviewer: str | None = None
-    """Model the adversarial validator runs with (lever 2). Same per-CLI resolution as
-    ``builder`` (canonical tier alias or a CLI-native id). The anti-bias guarantee is
-    the FRESH, SEPARATE spawn — the validator never sees the builder's session — so a
-    different model is recommended-not-required: ``reviewer == builder`` is allowed, and
-    the same model at a different size (e.g. opus builder, haiku reviewer) is a valid
-    one-vendor setup that never forces a second paid tool. A tier alias the task's CLI
-    can't map (codex/kimi) fails the validator LOUD — it never silently degrades to
-    'reviewed unaided'. Unset disables the validator stage."""
+    agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    """Per-CLI builder/reviewer models, keyed by the agent CLI name (claude, codex,
+    opencode, kimi). A task's CLI — chosen at new-task time — indexes this section;
+    its `builder`/`reviewer` are passed verbatim to that CLI's model flag. Because the
+    model lives under its CLI's key, a cross-vendor mismatch is unrepresentable: kagan
+    does no model-name translation. Write each CLI's own model id (claude resolves its
+    native aliases ``opus``/``sonnet``/``haiku`` itself; opencode wants
+    ``opencode/claude-*``; codex/kimi want their vendor-native ids). An unconfigured
+    CLI uses its own default model. An unknown CLI key is rejected at load."""
 
     max_concurrent_agents: int = 2
     """Hard cap on agents in flight at once (lever 5). The harness refuses to

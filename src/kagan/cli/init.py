@@ -34,6 +34,11 @@ _HARD_PREREQS = ("git", "python")  # a fail here stops init; agent/gh/manifest o
 _DRAFT_TIMEOUT = 300.0  # 5 min — a foreground agent call must never wedge the CLI (rule 12)
 _SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 _VALID_AX_E = frozenset({"a", "x", "e"})
+_MENU_INTERRUPT_WINDOW = 1.0  # seconds — two ctrl-c's within this window quit the walk
+
+
+class _WalkCancelled(Exception):
+    """The human bailed out of the check walk (double ctrl-c at the a/x/e menu)."""
 
 
 class _Spinner:
@@ -115,6 +120,22 @@ async def _draft_with_progress(cli: str, repo_root: Path):
             with contextlib.suppress(NotImplementedError, RuntimeError):
                 loop.remove_signal_handler(signal.SIGINT)
         spinner.stop()
+        _drain_pending_sigint()
+
+
+def _drain_pending_sigint() -> None:
+    """Drop a SIGINT queued while the asyncio draft skip handler was installed.
+
+    Without this, the next blocking stdin read (a/x/e or an edit prompt) can raise
+    KeyboardInterrupt even though the human already skipped the agent draft."""
+    if not sys.stdin.isatty():
+        return
+    previous = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        time.sleep(0.05)
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def _columns() -> int:
@@ -125,8 +146,12 @@ def _frame(renderable) -> str:
     return render_to_str(renderable, width=_columns(), no_color=False)
 
 
-def _read_ax_e() -> str:
-    """One-keystroke a/x/e menu on a TTY; line-based read when stdin is piped (tests)."""
+def _read_ax_e(*, last_interrupt: list[float]) -> str | None:
+    """One-keystroke a/x/e menu on a TTY; line-based read when stdin is piped (tests).
+
+    A single ctrl-c re-prompts the same check. Two ctrl-c's within
+    ``_MENU_INTERRUPT_WINDOW`` raise ``_WalkCancelled`` so setup exits without
+    taking down a parent ``kagan`` session via ``click.Abort``."""
     if not sys.stdin.isatty():
         while True:
             line = click.get_text_stream("stdin").readline().strip().lower()
@@ -137,11 +162,29 @@ def _read_ax_e() -> str:
     while True:
         try:
             key = click.getchar(echo=False)
-        except KeyboardInterrupt, EOFError:
+        except KeyboardInterrupt:
+            now = time.monotonic()
+            if now - last_interrupt[0] < _MENU_INTERRUPT_WINDOW:
+                raise _WalkCancelled() from None
+            last_interrupt[0] = now
+            click.echo("  (ctrl-c again to quit setup)")
+            return None
+        except EOFError:
             raise click.Abort() from None
         if key in _VALID_AX_E:
             click.echo(key)
             return key
+
+
+def _prompt_command(default: str) -> str | None:
+    """Edit a proposed check command; ctrl-c returns to the a/x/e menu."""
+    try:
+        edited = click.prompt("Command", default=default)
+    except click.Abort, KeyboardInterrupt:
+        click.echo("  Edit cancelled.")
+        return None
+    stripped = edited.strip() if edited else ""
+    return stripped or None
 
 
 def _choose_cli(clis: list[str]) -> str:
@@ -167,23 +210,33 @@ def _walk_checks(checks: list[ProposedCheck]) -> dict[str, str]:
 
     approved: dict[str, str] = {}
     total = len(checks)
+    last_interrupt = [0.0]
+    _drain_pending_sigint()
     for index, original in enumerate(checks):
         check = original
         while True:
             click.echo(_frame(render_check_walk(check, index, total)))
-            click.echo("  a accept · x drop · e edit")
-            key = _read_ax_e()
+            click.echo("  a accept · x drop · e edit · ctrl-c twice to quit")
+            key = _read_ax_e(last_interrupt=last_interrupt)
+            if key is None:
+                continue
             if key == "x":
                 break
             if key == "e":
-                edited = click.prompt("Command", default=check.command)
-                if edited and edited.strip():
-                    check = replace(check, command=edited.strip(), provenance="edited", source="")
+                edited = _prompt_command(check.command)
+                if edited is not None:
+                    check = replace(check, command=edited, provenance="edited", source="")
                 continue
             # key == "a"
             danger = flag_dangerous(check.command)
-            if danger and not click.confirm(f"{danger} — approve anyway?", default=False):
-                continue
+            if danger:
+                try:
+                    ok = click.confirm(f"{danger} — approve anyway?", default=False)
+                except click.Abort, KeyboardInterrupt:
+                    click.echo("  Approve cancelled.")
+                    continue
+                if not ok:
+                    continue
             approved[check.name] = check.command
             break
     return approved
@@ -342,7 +395,11 @@ async def run_init(repo_root: Path | None) -> Path | None:
             return manifest_path
 
         print_themed(render_draft_summary(draft))
-        approved = _walk_checks(draft.checks)
+        try:
+            approved = _walk_checks(draft.checks)
+        except _WalkCancelled:
+            click.echo("Setup interrupted — no manifest written. Re-run `kagan init` to continue.")
+            return None
 
         if approved and click.confirm(
             f"Run the {len(approved)} approved check(s) once to confirm?",

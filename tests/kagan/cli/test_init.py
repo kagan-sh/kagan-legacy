@@ -6,10 +6,21 @@ risk-lint gate, opt-in verify, skeleton floor, and idempotency are exercised liv
 """
 
 import subprocess
+import sys
+import time
 from pathlib import Path
 
+import click
+import pytest
 from click.testing import CliRunner
 
+from kagan.cli.init import (
+    _drain_pending_sigint,
+    _prompt_command,
+    _read_ax_e,
+    _walk_checks,
+    _WalkCancelled,
+)
 from kagan.cli.main import cli
 from kagan.core import Harness
 from kagan.core.config import load_repo_config
@@ -273,3 +284,97 @@ def test_idempotent_decline_overwrite_leaves_file(tmp_path, monkeypatch):
 
 def test_init_command_is_registered():
     assert "init" in cli.list_commands(ctx=None)
+
+
+def test_read_ax_e_recovers_from_single_keyboard_interrupt(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    calls = {"n": 0}
+    last_interrupt = [0.0]
+
+    def _fake_getchar(**_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise KeyboardInterrupt
+        return "a"
+
+    monkeypatch.setattr(click, "getchar", _fake_getchar)
+    assert _read_ax_e(last_interrupt=last_interrupt) is None
+    assert _read_ax_e(last_interrupt=last_interrupt) == "a"
+
+
+def test_read_ax_e_double_keyboard_interrupt_raises_walk_cancelled(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(
+        click, "getchar", lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt)
+    )
+
+    with pytest.raises(_WalkCancelled):
+        _read_ax_e(last_interrupt=[time.monotonic() - 0.1])
+
+
+def test_prompt_command_cancels_on_keyboard_interrupt(monkeypatch):
+    def _raise_interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(click, "prompt", _raise_interrupt)
+    assert _prompt_command("pytest") is None
+
+
+def test_walk_edit_cancel_then_accept_writes_manifest(tmp_path, monkeypatch):
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload([{"name": "test", "command": "pytest", "provenance": "invented"}]),
+    )
+    calls = {"n": 0}
+
+    def _fake_prompt_command(default: str) -> str | None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            click.echo("  Edit cancelled.")
+            return None
+        return "uv run poe check"
+
+    monkeypatch.setattr("kagan.cli.init._prompt_command", _fake_prompt_command)
+    result = _invoke_init(input="y\ne\ne\na\nn\n")
+    assert result.exit_code == 0
+    assert load_repo_config(tmp_path).checks == {"test": "uv run poe check"}
+    assert "Edit cancelled" in result.output
+
+
+def test_walk_double_ctrl_c_raises_walk_cancelled(monkeypatch):
+    from kagan.core.onboard import ProposedCheck
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(
+        click,
+        "getchar",
+        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+    with pytest.raises(_WalkCancelled):
+        _walk_checks([ProposedCheck("test", "pytest")])
+
+
+def test_run_init_walk_cancelled_writes_nothing(tmp_path, monkeypatch):
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload([{"name": "test", "command": "pytest", "provenance": "invented"}]),
+    )
+    monkeypatch.setattr(
+        "kagan.cli.init._walk_checks",
+        lambda _checks: (_ for _ in ()).throw(_WalkCancelled()),
+    )
+    result = _invoke_init(input="y\n")
+    assert result.exit_code == 0
+    assert not (tmp_path / ".kagan" / "repo.yaml").exists()
+    assert "Setup interrupted" in result.output
+
+
+def test_drain_pending_sigint_noop_when_not_a_tty(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    _drain_pending_sigint()  # must not raise

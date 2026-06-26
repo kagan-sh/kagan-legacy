@@ -11,6 +11,8 @@ from the builder, read from repo.yaml.
 import os
 from pathlib import Path
 
+import pytest
+
 from kagan.core import Harness, git
 from kagan.core.agent import _build_cmd
 from kagan.core.enums import TaskState
@@ -254,6 +256,75 @@ async def test_validator_timeout_degrades_to_unaided_review(tmp_path, monkeypatc
     assert task.state is TaskState.REVIEW
     assert task.validator_outcome == "failed"  # NOT "ran"
     assert "validator unavailable" in core.render_receipt(task.id)
+
+
+async def test_unresolvable_reviewer_model_fails_loud_not_soft_degrade(tmp_path, monkeypatch):
+    # R-003: a canonical tier alias the task's CLI can't map (codex/kimi are
+    # vendor-locked) is a CONFIG error, not a validator crash. run_validation must raise
+    # ConfigurationError BEFORE the VALIDATING transition — it must NOT spawn the
+    # validator and must NOT soft-degrade to "reviewed unaided" (which would tell the
+    # user opus reviewed when nothing did). Distinct from the F2 crash path above.
+    from kagan.core.errors import ConfigurationError
+
+    repo = await _repo(tmp_path / "repo", "builder: o3\nreviewer: opus\n")
+    bin_dir = tmp_path / "bin"
+    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+
+    # codex is vendor-locked: the canonical alias `opus` has no mapping for it.
+    called = {"v": False}
+
+    async def _must_not_run(task, *, model, timeout=None):
+        called["v"] = True
+        return [], True
+
+    monkeypatch.setattr("kagan.core.harness.launch_validate", _must_not_run)
+
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("feature")
+    # set a worktree + medium risk so run_validation reaches the resolve step.
+    core.update_task(task.id, agent_cli="codex", worktree_path=repo, risk="medium")
+    core.transition_task(task.id, TaskState.RUNNING)
+
+    with pytest.raises(ConfigurationError) as exc:
+        await core.run_validation(task.id)
+    assert "opus" in str(exc.value) and "codex" in str(exc.value)
+    assert called["v"] is False  # the validator was never spawned
+
+    task = core.get_task(task.id)
+    assert task.state is TaskState.RUNNING  # NOT transitioned into VALIDATING
+    assert task.validator_outcome != "failed"  # NOT the F2 "reviewed unaided" degrade
+    assert not any("reviewed unaided" in f.message for f in task.findings)
+
+
+async def test_unresolvable_builder_model_fails_loud_before_side_effects(tmp_path, monkeypatch):
+    # R-003: start_task resolves the builder model up front. A tier alias on a
+    # vendor-locked CLI fails LOUD before any worktree/transition side effect, so a
+    # misconfiguration never strands a task in RUNNING.
+    from kagan.core.errors import ConfigurationError
+
+    repo = await _repo(tmp_path / "repo", "builder: opus\nreviewer: o3\n")
+    bin_dir = tmp_path / "bin"
+    _install(bin_dir, "fakeagent", PHASED_AGENT)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+
+    launched = {"v": False}
+
+    async def _must_not_run(task, *, model=None):
+        launched["v"] = True
+        raise AssertionError("launch_run should never be reached on a config error")
+
+    monkeypatch.setattr("kagan.core.harness.launch_run", _must_not_run)
+
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("feature")
+    core.configure_task(task.id, agent_cli="codex", scope=["src/**"])
+
+    with pytest.raises(ConfigurationError) as exc:
+        await core.start_task(task.id)
+    assert "opus" in str(exc.value) and "codex" in str(exc.value)
+    assert launched["v"] is False
+    assert core.get_task(task.id).state is not TaskState.RUNNING  # no stranded run
 
 
 async def test_validator_stage_skipped_when_no_reviewer_configured(tmp_path, monkeypatch):

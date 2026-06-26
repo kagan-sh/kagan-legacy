@@ -35,7 +35,7 @@ from kagan.core.models import CheckResult, Finding, NeedsYou, ReportMessage, Tas
 from kagan.core.notifications import NotificationEvent, Notifier
 from kagan.core.paths import ensure_gitignore_line, is_run_artifact
 from kagan.core.receipt import render_pr_body, render_receipt
-from kagan.core.recipes import available_clis, recipe_for
+from kagan.core.recipes import available_clis, recipe_for, resolve_model
 from kagan.core.remote_ci import RemoteCi
 from kagan.core.reports import detect_drift, read_ask, summarize_learnings
 from kagan.core.retro import append_learning
@@ -508,6 +508,13 @@ class Harness:
         # (DESIGN L175). Medium/high run it when a reviewer model is configured.
         if task.risk == "low" or reviewer is None or task.worktree_path is None:
             return task  # validator not applicable — outcome stays None
+        # R-003: a misconfigured reviewer model (a canonical alias with no mapping for
+        # this task's CLI) must fail LOUD, not soft-degrade. Resolve it up front, before
+        # the VALIDATING transition, so a config error reads as a config error — never as
+        # "reviewed unaided" (which would tell the user opus reviewed when nothing did).
+        # Distinct from a genuine validator RUNTIME crash below, which legitimately keeps
+        # the F2 fallback.
+        resolve_model(task.agent_cli or "claude", reviewer)
         self.transition_task(task_id, TaskState.VALIDATING)
         # F2: the validator is an enhancement, not the floor. If it crashes (raises)
         # OR exits unclean / times out (ok=False), do NOT strand the task in
@@ -703,6 +710,11 @@ class Harness:
         if not self.can_start_agent(exclude=task_id):
             raise AgentCapError(self.running_count(exclude=task_id), self._agent_cap())
         task = self._require(task_id)
+        # R-003: fail LOUD on a misconfigured builder model (a canonical alias with no
+        # mapping for this task's CLI) BEFORE any worktree/transition side effect, so a
+        # config error never strands a task in RUNNING. resolve_model raises
+        # ConfigurationError the surface shows; None and native ids are no-ops here.
+        resolve_model(task.agent_cli or "claude", self._builder_model())
         # Idempotent: send-back reuses the existing worktree (TUI-GATE-07).
         task = await self._tasks.prepare_worktree(task, self.repo_root)
         assert task.worktree_path is not None

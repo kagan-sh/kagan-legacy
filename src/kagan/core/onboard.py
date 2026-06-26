@@ -188,10 +188,14 @@ def skeleton_manifest() -> str:
         "#   low: [docs/**]\n"
         "#   high: [src/auth/**, migrations/**]\n"
         "\n"
-        "# reviewer: model for the adversarial validator (a 2nd opinion on the diff).\n"
-        "# Unset DISABLES that stage. A different size of the same vendor is fine.\n"
-        "# reviewer: <model>\n"
-        "# builder: <model>\n"
+        "# builder/reviewer: the model each agent runs with, resolved per the task's CLI.\n"
+        "# Use a canonical tier alias (opus | sonnet | haiku) for a portable value, or a\n"
+        "# CLI-native model id. claude/opencode accept the aliases; codex/kimi need a\n"
+        "# native id (a tier alias errors there). reviewer unset DISABLES that stage; a\n"
+        "# different size of the same vendor is fine. Find native ids: claude `--help` or\n"
+        "# /model; opencode `opencode models`; codex `--help` / OpenAI docs; kimi docs.\n"
+        "# reviewer: opus\n"
+        "# builder: sonnet\n"
     )
 
 

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from kagan.core.errors import ConfigurationError
-from kagan.core.recipes import recipe_for
+from kagan.core.recipes import recipe_for, resolve_model
 from kagan.core.reports import read_ask
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
@@ -145,8 +145,14 @@ def _run_prompt(task: Task) -> str:
 def _build_cmd(cli: str, prompt_path: Path, *, cwd: Path, model: str | None = None) -> list[str]:
     r = recipe_for(cli)
     cmd = list(r.command)
-    if model and r.model_flag:
-        cmd += [r.model_flag, model]
+    # R-003: a repo.yaml builder/reviewer value is per-CLI — a canonical tier alias
+    # (opus/sonnet/haiku) maps to THIS cli's native --model string; a native id passes
+    # through; an alias with no mapping for this cli raises ConfigurationError (loud
+    # fail, surfaced to the user — never a silent wrong-vendor run). This is the seam
+    # where the CLI and the model meet, so resolution happens here.
+    resolved = resolve_model(cli, model)
+    if resolved and r.model_flag:
+        cmd += [r.model_flag, resolved]
     if r.workdir_flag:
         # A CLI that ignores cwd (opencode walks up to a project root) must be pinned to
         # the worktree/sandbox, or it operates on the WRONG tree.

@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from kagan.core.agent import _build_cmd
-from kagan.core.recipes import RECIPES, available_clis, recipe_for
+from kagan.core.errors import ConfigurationError
+from kagan.core.recipes import RECIPES, available_clis, recipe_for, resolve_model
 
 SUPPORTED_CLIS = ("claude", "codex", "kimi", "opencode")
 
@@ -69,6 +72,81 @@ def test_build_cmd_pins_opencode_to_the_workdir(tmp_path: Path):
     assert cmd[cmd.index("--dir") + 1] == str(tmp_path)
     # a CLI that honors cwd (claude) gets no --dir injected.
     assert "--dir" not in _build_cmd("claude", prompt, cwd=tmp_path)
+
+
+def test_resolve_model_none_omits_the_flag():
+    # R-003 STEP 3: an unset builder/reviewer must stay None so _build_cmd omits --model
+    # and the CLI's own default is used — unchanged behaviour for the common case.
+    for cli in SUPPORTED_CLIS:
+        assert resolve_model(cli, None) is None
+
+
+def test_resolve_model_claude_alias_stays_a_bare_alias():
+    # claude --help documents opus/sonnet/haiku as native aliases it resolves itself, so
+    # the resolver hands claude the BARE alias (never a drifting full id).
+    assert resolve_model("claude", "opus") == "opus"
+    assert resolve_model("claude", "sonnet") == "sonnet"
+    assert resolve_model("claude", "haiku") == "haiku"
+
+
+def test_resolve_model_opencode_alias_is_provider_qualified():
+    # opencode `run --model` needs `provider/model`; a fresh install carries the claude
+    # models under its own `opencode/` gateway provider. The alias must become that id,
+    # never the bare tier (opencode rejects a bare alias).
+    assert resolve_model("opencode", "opus") == "opencode/claude-opus-4-8"
+    assert resolve_model("opencode", "sonnet") == "opencode/claude-sonnet-4-6"
+    assert resolve_model("opencode", "haiku") == "opencode/claude-haiku-4-5"
+    assert "/" in resolve_model("opencode", "opus")
+
+
+def test_resolve_model_passes_native_ids_through_verbatim():
+    # A power-user native id (NOT a canonical alias) is passed through unchanged for any
+    # CLI — kagan never second-guesses an explicit vendor model string.
+    assert resolve_model("claude", "claude-opus-4-8") == "claude-opus-4-8"
+    assert resolve_model("codex", "o3") == "o3"
+    assert resolve_model("codex", "gpt-5-codex") == "gpt-5-codex"
+    assert resolve_model("kimi", "kimi-code/kimi-for-coding") == "kimi-code/kimi-for-coding"
+    assert resolve_model("opencode", "openai/gpt-5") == "openai/gpt-5"
+
+
+@pytest.mark.parametrize("cli", ["codex", "kimi"])
+@pytest.mark.parametrize("alias", ["opus", "sonnet", "haiku"])
+def test_resolve_model_alias_on_vendor_locked_cli_fails_loud(cli: str, alias: str):
+    # codex/kimi are OpenAI-/Moonshot-locked with no verifiable claude-tier equivalent.
+    # A canonical tier alias there MUST raise (loud fail), never silently pick a
+    # wrong-vendor model — the message names the model and the CLI so the user can fix it.
+    with pytest.raises(ConfigurationError) as exc:
+        resolve_model(cli, alias)
+    assert alias in str(exc.value)
+    assert cli in str(exc.value)
+
+
+def test_build_cmd_uses_the_resolved_model_for_the_flag(tmp_path: Path):
+    # The (cli, alias) pair must reach --model RESOLVED: claude gets the bare alias,
+    # opencode gets the provider-qualified id. Pins that _build_cmd resolves at the seam.
+    prompt = tmp_path / ".kagan" / "p.txt"
+    prompt.parent.mkdir()
+    prompt.write_text("x")
+
+    claude_cmd = _build_cmd("claude", prompt, cwd=tmp_path, model="opus")
+    assert claude_cmd[claude_cmd.index("--model") + 1] == "opus"
+
+    oc_cmd = _build_cmd("opencode", prompt, cwd=tmp_path, model="opus")
+    assert oc_cmd[oc_cmd.index("--model") + 1] == "opencode/claude-opus-4-8"
+
+    # a native id passes through to the flag unchanged.
+    native = _build_cmd("codex", prompt, cwd=tmp_path, model="o3")
+    assert native[native.index("--model") + 1] == "o3"
+
+
+def test_build_cmd_raises_on_an_unresolvable_alias(tmp_path: Path):
+    # _build_cmd is the seam: a canonical alias with no mapping for the CLI fails LOUD
+    # there (rule 8 — the gate must be able to reject the violation), not silently.
+    prompt = tmp_path / ".kagan" / "p.txt"
+    prompt.parent.mkdir()
+    prompt.write_text("x")
+    with pytest.raises(ConfigurationError):
+        _build_cmd("codex", prompt, cwd=tmp_path, model="opus")
 
 
 def test_available_clis_filters_to_path(tmp_path: Path):

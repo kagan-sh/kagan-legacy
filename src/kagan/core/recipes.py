@@ -2,6 +2,7 @@ import shutil
 from dataclasses import dataclass, field
 
 from kagan.core.doctor_checks import _AGENT_CLIS
+from kagan.core.errors import ConfigurationError
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,8 +73,72 @@ def recipe_for(cli: str) -> LaunchRecipe:
     return RECIPES.get(cli) or LaunchRecipe([cli], prompt_flag=None)
 
 
+# Canonical capability tiers — the portable vocabulary a user writes in repo.yaml
+# (builder:/reviewer:) instead of a CLI-specific model id. top / mid / fast.
+CANONICAL_TIERS: tuple[str, ...] = ("opus", "sonnet", "haiku")
+
+# alias -> that CLI's native --model string. The ONLY model-namespace knowledge kagan
+# carries; keep it MINIMAL. A `None` row means the tier has no faithful, VERIFIABLE
+# model for that CLI (a cross-vendor "nearest tier" would be a guess) → resolve_model
+# fails LOUD rather than silently running the wrong vendor (R-003).
+#
+# claude  -> the bare tier alias; claude --help documents opus/sonnet/haiku/fable as
+#            native aliases it resolves to the latest model itself, so DO NOT pin a
+#            drifting full id here — the alias is the stable value.
+# opencode-> provider-qualified `opencode/<full-id>` (run --help: "format of
+#            provider/model"). A FRESH opencode install has NO literal `anthropic`
+#            provider — its claude models ship under opencode's own gateway provider
+#            `opencode/`, with NO `-latest` alias, so these are FULL VERSIONED IDS that
+#            DRIFT. Refresh from `opencode models` (filter `opencode/claude-*`) when a
+#            newer tier model ships.
+# codex/kimi -> NO row: OpenAI-/Moonshot-locked, no verifiable claude-tier equivalent.
+#            A canonical tier alias on codex/kimi → loud fail; a native id passes through.
+_ALIAS_MAP: dict[str, dict[str, str | None]] = {
+    "claude": {"opus": "opus", "sonnet": "sonnet", "haiku": "haiku"},
+    "opencode": {
+        "opus": "opencode/claude-opus-4-8",
+        "sonnet": "opencode/claude-sonnet-4-6",
+        "haiku": "opencode/claude-haiku-4-5",
+    },
+}
+
+
+def resolve_model(cli: str, value: str | None) -> str | None:
+    """Map a repo.yaml builder/reviewer value to the model string the CLI's --model
+    flag actually accepts.
+
+    - ``None`` -> ``None`` (omit the flag; the CLI's own default — unchanged behaviour).
+    - a value that is NOT a canonical tier alias -> passed through verbatim (a power-user
+      native id like ``claude-opus-4-8``, ``o3``, ``opencode/gpt-5``).
+    - a canonical tier alias (opus/sonnet/haiku) -> that CLI's native string from the map.
+    - a canonical tier alias with NO mapping for this CLI (codex/kimi) -> raises
+      ``ConfigurationError`` so the caller fails LOUD. NEVER silently picks a wrong vendor."""
+    if value is None:
+        return None
+    if value not in CANONICAL_TIERS:
+        return value
+    native = _ALIAS_MAP.get(cli, {}).get(value)
+    if native is None:
+        raise ConfigurationError(
+            context="model",
+            detail=(
+                f"model alias {value!r} has no mapping for CLI {cli!r} "
+                f"(it is OpenAI-/Moonshot-locked, with no verifiable {value} tier); "
+                f"set a {cli}-native model id, or unset to use the CLI default"
+            ),
+        )
+    return native
+
+
 def available_clis(path: str | None = None) -> list[str]:
     return [cli for cli in _AGENT_CLIS if shutil.which(cli, path=path)]
 
 
-__all__ = ["RECIPES", "LaunchRecipe", "available_clis", "recipe_for"]
+__all__ = [
+    "CANONICAL_TIERS",
+    "RECIPES",
+    "LaunchRecipe",
+    "available_clis",
+    "recipe_for",
+    "resolve_model",
+]

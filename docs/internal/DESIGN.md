@@ -527,6 +527,22 @@ self-review. `VALIDATING` is declared but never assigned.
   with models is absent from PATH (those tasks fall back to the CLI default), and
   a model id the CLI rejects at spawn **MUST** degrade via F2, never strand the
   task.
+- **DESIGN-LVR2-11 (convergence — decided, F24)** Each validator pass is
+  **intentionally INDEPENDENT**: a fresh adversarial spawn (LVR2-02) reviews the
+  *current* diff anew, and auto-generated findings are replaced by source every run
+  (`_REGENERATED_FINDING_SOURCES`). There is deliberately **NO cross-pass finding
+  ledger** — a pass-1 finding and a pass-2 finding at the same location are not "the
+  same finding" once the code changed, so a stable-id tally would manufacture false
+  continuity (and over-build a tracking subsystem for no decision the human needs).
+  The terminal "diff clean" signal already exists and **MUST** be honest: a pass
+  with `validator_outcome="ran"` and zero blocking ai-review findings renders
+  `ai-review (clean)` (the digest), and a re-run that surfaces *different* defects is
+  the validator working, not failing to converge — the human owns the loop (send
+  back, or approve with a resolution note per LVR1-01). The only obligation on the
+  UI is honesty: the findings view **MUST** state that each pass reviews the current
+  diff afresh (this pass's findings, not a running tally), so a vanished prior-pass
+  finding never reads as lost. No whack-a-mole "max passes" cap and no convergence
+  tracker are built — resisted as speculative.
 
 **Seam:** `core/enums.py`, `core/harness.py:222`, `core/gate.py`, `core/config.py`,
 `core/agent.py`, `core/recipes.py`, `mcp/server.py`, `format/workspaces.py`.

@@ -87,6 +87,30 @@ def test_findings_card_tags_and_verdict():
     assert "disagree — acceptable" in out
 
 
+def test_findings_note_each_pass_is_independent_when_ai_review_present():
+    # F24 / LVR2-11: each validator pass reviews the current diff afresh — the findings
+    # view says so, so a vanished prior-pass finding never reads as silently lost.
+    ai = to_str(
+        gate.render_findings(
+            [
+                Finding(
+                    id="f", severity="blocking", location="a.py:1", message="m", source="ai-review"
+                )
+            ]
+        )
+    )
+    assert "not a running tally" in ai
+
+    # A purely machine/gate finding set carries no validator-pass note (nothing re-derived
+    # adversarially), so the line stays out of the way.
+    machine = to_str(
+        gate.render_findings(
+            [Finding(id="g", severity="question", location=".", message="m", source="machine")]
+        )
+    )
+    assert "running tally" not in machine
+
+
 def test_findings_none_hunk_does_not_leak_the_word_none():
     out = to_str(gate.render_findings([Finding(id="f", severity="nit", location="a", message="m")]))
     assert "None" not in out

@@ -89,6 +89,16 @@ def render_findings(findings: list[Finding], *, cursor: int = 0) -> RenderableTy
     cursor = max(0, min(cursor, len(open_) - 1)) if open_ else 0
 
     cards: list[RenderableType] = [heading]
+    # F24: each validator pass reviews the current diff afresh (LVR2-11) — say so, so a
+    # prior pass's finding that is no longer present never reads as silently lost.
+    if any(f.source == "ai-review" for f in findings):
+        cards.append(
+            Text(
+                "Each pass reviews the current diff afresh — this pass's findings, "
+                "not a running tally across re-runs.",
+                style="secondary",
+            )
+        )
     for i, f in enumerate(open_):
         cards.append(_finding_line(f, focused=i == cursor))
     if resolved:

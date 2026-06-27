@@ -39,6 +39,11 @@ def _git_subcommand(args: tuple[str, ...]) -> str | None:
 
     `_run_git("-c", "commit.gpgsign=false", "commit", ...)` must resolve to "commit",
     not the `-c` value token — a naive first-non-flag scan would mis-read it."""
+    return git_subcommand(args)
+
+
+def git_subcommand(args: tuple[str, ...]) -> str | None:
+    """Public alias for subcommand parsing (git R1 ruin-guard tests read this)."""
     it = iter(args)
     for a in it:
         if a in ("-c", "-C"):

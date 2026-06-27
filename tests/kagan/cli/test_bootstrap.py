@@ -39,7 +39,6 @@ def test_install_subprocess_timeout_fails_open(monkeypatch):
     # TimeoutExpired is caught and reported, not propagated, so the command returns.
     monkeypatch.setattr(_bootstrap, "_current_version", lambda: "1.0.0")
     monkeypatch.setattr(_bootstrap, "_fetch_pypi_version", lambda timeout_seconds=6.0: "2.0.0")
-    monkeypatch.setattr(_bootstrap, "_detect_install_method", lambda: "pip")
 
     def _hang(*_a, **_k):
         raise subprocess.TimeoutExpired(

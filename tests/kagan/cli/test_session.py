@@ -37,6 +37,10 @@ class _FakeCore:
         self.answered_decisions: list = []
         self.claimed: tuple | None = None
 
+    @property
+    def task(self) -> Task:
+        return self._task
+
     def touch_viewed(self, task_id: str) -> None:
         self.viewed.append(task_id)
 
@@ -52,14 +56,19 @@ class _FakeCore:
         return False
 
     def can_approve(self, task_id: str) -> bool:
-        # Mirrors the real gate: refused until every required risk-scaled prompt
-        # carries a substantive answer.
+        # Mirrors the real gate: findings adjudicated, F20 resolution notes, then
+        # risk-scaled comprehension for medium/high.
         from kagan.core.comprehension import required_keys
-        from kagan.core.tasks import _is_substantive
+        from kagan.core.tasks import _is_substantive, is_open_blocker, is_unresolved_agreed_blocker
 
-        return all(
-            _is_substantive(self._task.comprehension.get(k)) for k in required_keys(self._task.risk)
-        )
+        task = self._task
+        if any(is_open_blocker(f) for f in task.findings):
+            return False
+        if any(is_unresolved_agreed_blocker(f) for f in task.findings):
+            return False
+        if task.risk == "low":
+            return True
+        return all(_is_substantive(task.comprehension.get(k)) for k in required_keys(task.risk))
 
     # -- lever 5 stubs ----------------------------------------------------
 
@@ -356,7 +365,7 @@ def test_review_c_records_comprehension_and_gates_approve(tmp_path, monkeypatch)
     run_async(session.view_review("task-7"))
 
     # 'c' walked both medium prompts; each was answered through the core.
-    assert core._task.comprehension == {"postcondition": note, "what_breaks": note}
+    assert core.task.comprehension == {"postcondition": note, "what_breaks": note}
     # The first 'a' was refused (no answers); the second 'a' approved exactly once.
     assert core.transitions == [TaskState.READY]
 
@@ -410,7 +419,7 @@ def test_comprehension_walk_uses_generated_prompts_at_floor(tmp_path, monkeypatc
 
     run_async(session._walk_comprehension(task))
 
-    assert core._task.comprehension == {"postcondition": note, "what_breaks": note}
+    assert core.task.comprehension == {"postcondition": note, "what_breaks": note}
 
 
 def test_comprehension_walk_rejects_trivial_answer_with_feedback(tmp_path, monkeypatch, capsys):
@@ -431,7 +440,7 @@ def test_comprehension_walk_rejects_trivial_answer_with_feedback(tmp_path, monke
     run_async(session._walk_comprehension(task))
 
     # The trivial "stuff" was never persisted; both prompts hold their substantive answer.
-    assert core._task.comprehension == {"postcondition": good, "what_breaks": good}
+    assert core.task.comprehension == {"postcondition": good, "what_breaks": good}
     assert "placeholder" in capsys.readouterr().out
 
 
@@ -600,46 +609,9 @@ def test_findings_g_d_acts_on_focused_finding_not_first(tmp_path, monkeypatch):
 
     run_async(session.view_review("task-fw"))
 
-    assert core._task.findings[1].verdict == "disagree"
-    assert core._task.findings[1].reply == "not a bug"
-    assert core._task.findings[0].verdict is None  # untouched
-
-
-def test_agree_blocking_finding_captures_resolution_note(tmp_path, monkeypatch):
-    # F20: agreeing a BLOCKING finding prompts for a resolution note and stores it, so the
-    # gate can clear and the receipt records how the conceded defect ships.
-    from kagan.core.models import Finding
-
-    findings = [Finding(id="f0", severity="blocking", location="a.py:1", message="real bug")]
-    task = Task(id="task-fw", title="t", state=TaskState.REVIEW, findings=findings)
-    session, core = _session(task, tmp_path)
-
-    review_verbs = iter(["findings", "back"])
-
-    async def _review_frame(*_a, **_k):
-        return next(review_verbs)
-
-    monkeypatch.setattr(session, "_review_frame", _review_frame)
-
-    calls = {"n": 0}
-
-    async def _findings_frame(_task, open_findings, cursor):
-        calls["n"] += 1
-        return "agree" if calls["n"] == 1 else "back"
-
-    monkeypatch.setattr(session, "_findings_frame", _findings_frame)
-
-    notes = iter(["deferred to #7, edge case only"])
-
-    async def _note(*_a, **_k):
-        return next(notes)
-
-    monkeypatch.setattr(_interactive, "prompt_in_frame", _note)
-
-    run_async(session.view_review("task-fw"))
-
-    assert core._task.findings[0].verdict == "agree"
-    assert core._task.findings[0].resolution_note == "deferred to #7, edge case only"
+    assert core.task.findings[1].verdict == "disagree"
+    assert core.task.findings[1].reply == "not a bug"
+    assert core.task.findings[0].verdict is None  # untouched
 
 
 def test_smoke_v_verifies_focused_test_not_bulk(tmp_path, monkeypatch):
@@ -675,8 +647,8 @@ def test_smoke_v_verifies_focused_test_not_bulk(tmp_path, monkeypatch):
 
     run_async(session.view_review("task-sw"))
 
-    assert core._task.smoke_tests[1].verified is True
-    assert core._task.smoke_tests[0].verified is False  # untouched
+    assert core.task.smoke_tests[1].verified is True
+    assert core.task.smoke_tests[0].verified is False  # untouched
 
 
 # -- F1 regression: the REAL prompt-toolkit loop, not a stub ------------------
@@ -712,8 +684,62 @@ def test_review_real_loop_records_note_then_approves(tmp_path):
 
         run_async(session.view_review("task-real-1"))  # must NOT raise RuntimeError
 
-    assert core._task.comprehension == {"postcondition": note, "what_breaks": note}
+    assert core.task.comprehension == {"postcondition": note, "what_breaks": note}
     assert core.transitions == [TaskState.READY]
+
+
+def test_review_real_loop_agreed_blocker_note_then_approves(tmp_path):
+    # F20 end-to-end: agree a blocking finding with a substantive note, then approve.
+    from prompt_toolkit.input import create_pipe_input
+
+    from kagan.core.models import Finding
+
+    findings = [Finding(id="f0", severity="blocking", location="a.py:1", message="real bug")]
+    task = Task(
+        id="task-real-f20",
+        title="t",
+        state=TaskState.REVIEW,
+        risk="low",
+        findings=findings,
+    )
+    note = "deferred to issue seven, edge case only"
+    with create_pipe_input() as pipe:
+        session, core = _headless_session(task, tmp_path, pipe)
+        pipe.send_text("f")  # findings walk
+        pipe.send_text("g")  # agree focused blocker
+        pipe.send_text(f"{note}\r")  # resolution note + submit
+        pipe.send_text("a")  # approve (findings walk auto-exits when cleared)
+
+        run_async(session.view_review("task-real-f20"))
+
+    assert core.transitions == [TaskState.READY]
+
+
+def test_review_real_loop_empty_blocker_note_keeps_approve_locked(tmp_path):
+    # F20 gate: agreeing a blocker but submitting an empty note must not unlock approve.
+    from prompt_toolkit.input import create_pipe_input
+
+    from kagan.core.models import Finding
+
+    findings = [Finding(id="f0", severity="blocking", location="a.py:1", message="real bug")]
+    task = Task(
+        id="task-real-f20b",
+        title="t",
+        state=TaskState.REVIEW,
+        risk="low",
+        findings=findings,
+    )
+    with create_pipe_input() as pipe:
+        session, core = _headless_session(task, tmp_path, pipe)
+        pipe.send_text("f")
+        pipe.send_text("g")
+        pipe.send_text("\r")  # empty note — must not persist agree
+        pipe.send_text("q")  # back from findings (blocker still open)
+        pipe.send_text("q")  # exit review
+
+        run_async(session.view_review("task-real-f20b"))
+
+    assert core.transitions == []
 
 
 def test_optional_intake_decision_is_adjudicable(tmp_path, monkeypatch):
@@ -759,7 +785,7 @@ def test_spawn_run_claims_running_synchronously(tmp_path, monkeypatch):
     session._spawn_run("task-fw")
 
     assert core.claimed == ("task-fw", 4242)
-    assert core._task.state is TaskState.RUNNING
+    assert core.task.state is TaskState.RUNNING
 
 
 def test_intake_real_loop_run_key_spawns_detached(tmp_path, monkeypatch):
@@ -1054,9 +1080,9 @@ def test_new_task_intake_failure_is_not_reported_as_create_failure(tmp_path, mon
     async def _confirm(*_a, **_k):
         return True
 
-    monkeypatch.setattr(session, "_prompt_in_frame", _field)
-    monkeypatch.setattr(session, "_choose_in_frame", _choose)
-    monkeypatch.setattr(session, "_confirm_in_frame", _confirm)
+    monkeypatch.setattr(_interactive, "prompt_in_frame", _field)
+    monkeypatch.setattr(_interactive, "choose_in_frame", _choose)
+    monkeypatch.setattr(_interactive, "confirm_in_frame", _confirm)
 
     run_async(session.action_new_task())
 
@@ -1093,9 +1119,9 @@ def test_new_task_intake_runs_inside_planning_frame(tmp_path, monkeypatch):
     async def _open(task_id):
         opened.append(task_id)
 
-    monkeypatch.setattr(session, "_prompt_in_frame", _field)
-    monkeypatch.setattr(session, "_choose_in_frame", _choose)
-    monkeypatch.setattr(session, "_confirm_in_frame", _confirm)
+    monkeypatch.setattr(_interactive, "prompt_in_frame", _field)
+    monkeypatch.setattr(_interactive, "choose_in_frame", _choose)
+    monkeypatch.setattr(_interactive, "confirm_in_frame", _confirm)
     monkeypatch.setattr(_interactive, "wait_in_frame", _wait)
     monkeypatch.setattr(session, "open_task", _open)
 
@@ -1331,9 +1357,15 @@ def test_ship_enter_refuses_when_branch_absent_on_origin(tmp_path, monkeypatch, 
 
     monkeypatch.setattr(_interactive, "confirm_in_frame", _yes)
 
-    handled = run_async(session._verify_and_mark_pushed("task-sh"))
+    keys = iter(["enter", "q"])
 
-    assert handled is False  # the view stays put
+    async def _next_key(_body):
+        return next(keys)
+
+    monkeypatch.setattr(session, "_ship_frame", _next_key)
+
+    run_async(session.view_ship("task-sh"))
+
     assert not hasattr(core, "marked_pushed")
     assert "branch not found on origin" in capsys.readouterr().out
 
@@ -1350,9 +1382,15 @@ def test_ship_enter_softens_when_verification_unavailable(tmp_path, monkeypatch,
 
     monkeypatch.setattr(_interactive, "confirm_in_frame", _yes)
 
-    handled = run_async(session._verify_and_mark_pushed("task-sh2"))
+    keys = iter(["enter"])
 
-    assert handled is True
+    async def _next_key(_body):
+        return next(keys)
+
+    monkeypatch.setattr(session, "_ship_frame", _next_key)
+
+    run_async(session.view_ship("task-sh2"))
+
     assert core.marked_pushed == "task-sh2"
     assert "could not verify" in capsys.readouterr().out
 
@@ -1367,7 +1405,15 @@ def test_ship_enter_marks_pushed_when_branch_present(tmp_path, monkeypatch):
 
     monkeypatch.setattr(_interactive, "confirm_in_frame", _yes)
 
-    assert run_async(session._verify_and_mark_pushed("task-sh3")) is True
+    keys = iter(["enter"])
+
+    async def _next_key(_body):
+        return next(keys)
+
+    monkeypatch.setattr(session, "_ship_frame", _next_key)
+
+    run_async(session.view_ship("task-sh3"))
+
     assert core.marked_pushed == "task-sh3"
 
 
@@ -1641,18 +1687,49 @@ def test_needs_you_answer_routes_through_in_frame_prompt(tmp_path, monkeypatch):
 # -- Phase 12c WORKSPACES: the cooldown nudge is threaded for a just-landed review --
 
 
-def test_workspaces_threads_cooldown_for_just_landed_review(tmp_path):
+def test_workspaces_threads_cooldown_for_just_landed_review(tmp_path, monkeypatch):
     # Phase 12c workspaces §1: a REVIEW task still in cooldown produces a cooldown note
     # the detail renderer surfaces — the screen's attention-thesis contribution.
+    import kagan.cli.session as session_mod
+
     task = Task(id="task-cd", title="export-csv", state=TaskState.REVIEW)
     session, core = _session(task, tmp_path)
     core.approve_cooldown_remaining = lambda *_a, **_k: 20  # 20s left
 
-    note = session._cooldown_note(task)
-    assert note is not None
-    assert "give it a read before approving" in note
-    assert "0:20" in note
+    captured: list[str | None] = []
 
-    # A non-REVIEW task (or elapsed cooldown) has no note.
+    def _capture_detail(task, **kw):
+        captured.append(kw.get("cooldown_note"))
+        from rich.text import Text
+
+        return Text("detail")
+
+    monkeypatch.setattr(session_mod.fmt_workspaces, "render_workspace_detail", _capture_detail)
+
+    class _App:
+        def exit(self, *_a, **_kw):
+            return None
+
+    class _Event:
+        def __init__(self) -> None:
+            self.app = _App()
+
+    async def _navigate(render, handlers, **_kw):
+        from kagan.format.shell import frame_geometry
+
+        render(frame_geometry(100, 40))
+        handlers["q"](_Event())
+
+    monkeypatch.setattr(_interactive, "navigate", _navigate)
+
+    run_async(session.view_workspaces(focus="task-cd"))
+
+    assert captured and captured[0] is not None
+    assert "give it a read before approving" in captured[0]
+    assert "0:20" in captured[0]
+
     running = Task(id="task-r", title="t", state=TaskState.RUNNING)
-    assert session._cooldown_note(running) is None
+    core._task = running
+    captured.clear()
+    run_async(session.view_workspaces(focus="task-r"))
+    assert captured and captured[0] is None

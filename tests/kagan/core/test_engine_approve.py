@@ -3,6 +3,8 @@
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from kagan.core import Harness
 from kagan.core.enums import TaskState
 from kagan.core.models import CheckResult
@@ -109,3 +111,28 @@ async def test_high_risk_does_not_write_receipt_until_bar_met(tmp_path: Path):
     assert not list((repo / ".kagan" / "reviews").glob("*.md"))
     core.approve_task(tid, approver="bob <b@x.io>")
     assert len(list((repo / ".kagan" / "reviews").glob("*.md"))) == 1
+
+
+@pytest.mark.parametrize(
+    "resolution_note,expect_ready",
+    [
+        (None, False),
+        ("ok", False),
+        ("deferred to issue seven, edge case only", True),
+    ],
+)
+async def test_agreed_blocking_finding_resolution_note_gates_approve(
+    tmp_path: Path, resolution_note: str | None, expect_ready: bool
+):
+    """F20: agreed blocking findings stay approve-locked until resolution_note is substantive."""
+    repo = await make_repo(tmp_path / "repo")
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("Ship with blocker")
+    core.update_task(task.id, branch="kagan/" + task.id, risk="low")
+    core.transition_task(task.id, TaskState.REVIEW)
+    updated = core.add_finding(task.id, severity="blocking", location="a.py:1", message="real bug")
+    fid = updated.findings[0].id
+    core.set_verdict(task.id, fid, verdict="agree", resolution_note=resolution_note)
+    assert core.can_approve(task.id) is expect_ready
+    approved = core.approve_task(task.id, approver="alice <a@x.io>")
+    assert (approved.state is TaskState.READY) is expect_ready

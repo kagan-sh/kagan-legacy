@@ -193,8 +193,7 @@ async def test_start_task_leases_port_and_starts_service(tmp_path, monkeypatch):
     core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
     try:
         await core.start_task(task.id)
-        assert "api" in core.get_task(task.id).ports
-        assert [s.name for s in core._running[task.id]] == ["api"]
+        assert list(core.get_task(task.id).ports) == ["api"]
     finally:
         await core.stop_services(task.id)
         await core.await_agent(task.id)

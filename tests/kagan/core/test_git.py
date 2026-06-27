@@ -49,9 +49,9 @@ def test_git_subcommand_skips_global_flag_values() -> None:
     # R1: the denylist must read the real subcommand past git's global flags. The
     # `-c name=value` value token is NOT the subcommand (commit_all uses exactly this
     # shape: `-c commit.gpgsign=false commit`); a naive first-non-flag scan mis-reads it.
-    assert git._git_subcommand(("-c", "commit.gpgsign=false", "commit", "-m", "x")) == "commit"
-    assert git._git_subcommand(("-C", "/some/path", "status")) == "status"
-    assert git._git_subcommand(("rev-parse", "HEAD")) == "rev-parse"
+    assert git.git_subcommand(("-c", "commit.gpgsign=false", "commit", "-m", "x")) == "commit"
+    assert git.git_subcommand(("-C", "/some/path", "status")) == "status"
+    assert git.git_subcommand(("rev-parse", "HEAD")) == "rev-parse"
 
 
 @pytest.mark.parametrize(

@@ -289,6 +289,16 @@ class _StubRemoteCi:
 async def test_mark_task_pushed_captures_remote_pr_url(tmp_path):
     # Lever 7 prereq: at mark-pushed kagan reads the PR URL (read-only gh) and
     # persists it so remote_ci.fetch + the CFR metric stop being inert.
+    seen_branch: dict[str, str] = {}
+
+    class _StubRemoteCi:
+        def __init__(self, url):
+            self._url = url
+
+        async def pr_url(self, branch):
+            seen_branch["branch"] = branch
+            return self._url
+
     core = Harness(data_dir=tmp_path / "ledger")
     task = core.create_task("t")
     core.update_task(task.id, branch="kagan/" + task.id)
@@ -298,7 +308,7 @@ async def test_mark_task_pushed_captures_remote_pr_url(tmp_path):
     pushed = await core.mark_task_pushed(task.id)
     assert pushed.state is TaskState.PR_OPEN
     assert pushed.remote_pr_url == "https://github.com/o/r/pull/9"
-    assert core._remote_ci_obj.seen_branch == "kagan/" + task.id
+    assert seen_branch["branch"] == "kagan/" + task.id
 
 
 async def test_mark_task_pushed_flips_even_when_gh_yields_no_url(tmp_path):

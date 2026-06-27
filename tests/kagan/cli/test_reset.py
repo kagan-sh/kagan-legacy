@@ -11,6 +11,8 @@ from click.testing import CliRunner
 from kagan.cli import reset as reset_mod
 from kagan.cli.main import cli
 
+_ORIGINAL_REMOVE_GITIGNORE = reset_mod._remove_kagan_gitignore_line
+
 
 class _FakeClient:
     def __init__(self) -> None:
@@ -92,12 +94,15 @@ def test_reset_prunes_even_when_worktree_dir_is_already_gone(fake_client, monkey
     assert calls == ["prune"]
 
 
-def test_reset_removes_kagan_worktrees_gitignore_line(tmp_path, monkeypatch):
+def test_reset_removes_kagan_worktrees_gitignore_line(tmp_path, monkeypatch, fake_client):
+    monkeypatch.setattr(reset_mod, "_remove_kagan_gitignore_line", _ORIGINAL_REMOVE_GITIGNORE)
     (tmp_path / ".gitignore").write_text("build/\n.kagan_worktrees/\n.env\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("kagan.core.git.repo_root", lambda _start: tmp_path)
 
-    assert reset_mod._remove_kagan_gitignore_line() is True
+    result = CliRunner().invoke(cli, ["reset", "--yes"])
 
+    assert result.exit_code == 0, result.output
     assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == "build/\n.env\n"
 
 

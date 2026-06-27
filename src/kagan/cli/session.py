@@ -1451,6 +1451,7 @@ class Session:
             recipe_command=recipe_cmd,
             risk=self.core.preview_risk(scope),
             reviewer_configured=selected is not None and self.core.reviewer_configured(selected),
+            reviewer_note=self.core.reviewer_model(selected) if selected is not None else None,
             queue_note=queue_note,
         )
         if not await self._confirm_in_frame("Create & plan this task?", body=form):

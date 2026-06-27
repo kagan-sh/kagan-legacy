@@ -630,6 +630,13 @@ class Harness:
         EFFECTIVE ceremony rather than the risk-tier label (WS1/B10)."""
         return self._reviewer_model(cli) is not None
 
+    def reviewer_model(self, cli: str) -> str | None:
+        """The effective reviewer model for this CLI (repo.yaml `agents.<cli>.reviewer`),
+        or None when unconfigured. The new-task confirm and launch line name it so the
+        supervisor sees, at create time, WHICH model will review — or that it is unaided
+        (F9, DESIGN-LVR2-06). One resolver, read by every surface."""
+        return self._reviewer_model(cli)
+
     def _builder_model(self, cli: str) -> str | None:
         """The builder's model, from repo.yaml `agents.<cli>.builder`. None = the CLI
         default.

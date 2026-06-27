@@ -64,6 +64,25 @@ def test_new_task_risk_line_reflects_effective_validator_config():
     assert "disabled" not in with_reviewer
 
 
+def test_new_task_confirm_names_the_effective_reviewer_model():
+    # F9: the new-task confirm names WHICH model will review (the effective reviewer), so a
+    # supervisor sees it at create time — not a presumed "(a different model)" it can't honor.
+    out = to_str(
+        new_task.render_new_task_form(
+            title="t",
+            scope=["src/**"],
+            clis=["kimi"],
+            selected="kimi",
+            recipe_command=["kimi"],
+            risk="medium",
+            reviewer_configured=True,
+            reviewer_note="kimi-code/kimi-for-coding",
+        )
+    )
+    assert "reviewed by kimi-code/kimi-for-coding" in out
+    assert "(a different model)" not in out
+
+
 def test_new_task_risk_and_reviewer_lines_absent_when_none():
     out = to_str(
         new_task.render_new_task_form(

@@ -1021,6 +1021,19 @@ Resurrect `VALIDATING`. `core/enums.py`, `core/harness.py`, `core/gate.py`,
   **THEN** onboarding **MUST** stop.
 - **DESIGN-INIT-06** `.kagan/repo.yaml` **MUST** remain a `PROTECTED_PATH` so an
   agent cannot silently rewrite the contract.
+- **DESIGN-INIT-07** The adversarial validator is the headline safety feature, so
+  leaving it OFF **MUST** be a deliberate, acknowledged choice — never the silent
+  path of least resistance (F4, DESIGN-LVR4-02 / GOAL-01). When the draft names no
+  reviewer, `init` offers to enable it; declining the offer **MUST** require an
+  explicit "reviews will be unaided" acknowledgement, otherwise it re-prompts for a
+  reviewer model. The reviewer-model prompt suggests one of the CLI's own model ids
+  (a different id from the builder) and defaults to the builder; it does **NOT**
+  validate the id (the CLI rejects a bad one at spawn, DESIGN-LVR2-10) (F5).
+- **DESIGN-INIT-08** The new-task confirm and launch line **MUST** name the
+  effective reviewer model (`Harness.reviewer_model`), or state the validator is
+  disabled, so a supervisor sees at create time WHICH model will review — never a
+  presumed "(a different model)" it cannot honor under a single CLI (F9,
+  DESIGN-LVR2-06).
 
 ______________________________________________________________________
 

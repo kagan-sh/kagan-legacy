@@ -157,8 +157,8 @@ def test_init_offers_to_enable_validator_when_draft_names_no_reviewer(tmp_path, 
 
 
 def test_init_keeps_commented_agents_when_validator_declined(tmp_path, monkeypatch):
-    # B1: declining the validator nudge is a deliberate choice — the commented skeleton
-    # stays (no silent live config), and the manifest still parses.
+    # B1/F4: declining the validator is deliberate — it now requires an explicit "reviews
+    # will be unaided" ack. With that ack the commented skeleton stays (no silent config).
     _git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
@@ -166,12 +166,29 @@ def test_init_keeps_commented_agents_when_validator_declined(tmp_path, monkeypat
         monkeypatch,
         _manifest_payload([{"name": "test", "command": "pytest", "provenance": "invented"}]),
     )
-    # y draft · a accept check · n skip verify · n decline validator
-    result = _invoke_init(input="y\na\nn\nn\n")
+    # y draft · a accept check · n skip verify · n decline validator · y unaided-ack
+    result = _invoke_init(input="y\na\nn\nn\ny\n")
     assert result.exit_code == 0
     assert load_repo_config(tmp_path).agents.for_cli("claude").reviewer is None
     text = (tmp_path / ".kagan" / "repo.yaml").read_text(encoding="utf-8")
     assert "#     reviewer: <reviewer-model>" in text
+
+
+def test_init_declining_validator_without_ack_falls_through_to_a_reviewer(tmp_path, monkeypatch):
+    # F4: turning the headline safety check OFF must be deliberate. Declining the enable
+    # prompt but NOT acknowledging "reviews will be unaided" re-prompts for a reviewer —
+    # a medium-risk repo never ends up silently unaided as the path of least resistance.
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload([{"name": "test", "command": "pytest", "provenance": "invented"}]),
+    )
+    # y draft · a accept check · n skip verify · n decline · n NOT-unaided · model id
+    result = _invoke_init(input="y\na\nn\nn\nn\nclaude-sonnet\n")
+    assert result.exit_code == 0
+    assert load_repo_config(tmp_path).agents.for_cli("claude").reviewer == "claude-sonnet"
 
 
 def test_init_scaffolds_commented_agents_when_agent_names_no_models(tmp_path, monkeypatch):

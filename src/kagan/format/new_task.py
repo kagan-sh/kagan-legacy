@@ -82,13 +82,8 @@ def render_new_task_form(
         else:
             agent_line.append(tok)
     blocks.append(agent_line)
-    if reviewer_note is not None:
-        blocks.append(
-            Text(
-                _indent(f"reviewed by {reviewer_note} (a different model)", label_w),
-                style="secondary",
-            )
-        )
+    if reviewer_note:
+        blocks.append(Text(_indent(f"reviewed by {reviewer_note}", label_w), style="secondary"))
 
     if recipe_command is None:
         blocks.append(Text("launch: you drive — no agent CLI", style="secondary"))

@@ -295,14 +295,28 @@ def _offer_validator(cfg: dict, agent_cli: str, draft: ManifestDraft) -> dict:
     click.echo("")
     click.echo("The adversarial validator (a second model reviewing the diff) is kagan's")
     click.echo("headline check — it only runs when you set a reviewer model for this CLI.")
+    default_model = section.get("builder") or draft.builder or ""
+    # F5: under a single CLI the reviewer is one of THAT CLI's own model ids; a different
+    # id from the builder is the recommendation (not a different vendor, which is
+    # impossible here). kagan does not validate the id — the CLI rejects a bad one at
+    # spawn (DESIGN-LVR2-10) — so the prompt suggests rather than enforces.
+    model_prompt = (
+        f"Reviewer model id for {agent_cli} (one of {agent_cli}'s own model ids; "
+        "a different id from the builder is recommended)"
+    )
     try:
-        if not click.confirm(f"Enable it for {agent_cli} now?", default=True):
+        if click.confirm(f"Enable it for {agent_cli} now?", default=True):
+            reviewer = click.prompt(model_prompt, default=default_model).strip()
+        elif click.confirm(
+            "Reviews will be UNAIDED — no second model checks the diff. Continue without one?",
+            default=False,
+        ):
+            # F4: turning the headline safety check OFF is a deliberate, acknowledged
+            # choice, never the silent path of least resistance (DESIGN-GOAL-01).
+            click.echo("  Validator OFF — reviews are unaided. Add a reviewer in repo.yaml later.")
             return cfg
-        default_model = section.get("builder") or draft.builder or ""
-        reviewer = click.prompt(
-            f"Reviewer model id for {agent_cli} (a different model is recommended)",
-            default=default_model,
-        ).strip()
+        else:
+            reviewer = click.prompt(model_prompt, default=default_model).strip()
     except click.Abort, EOFError:
         return cfg
     if not reviewer:

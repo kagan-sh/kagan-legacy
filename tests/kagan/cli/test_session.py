@@ -185,6 +185,9 @@ class _FakeCore:
     def reviewer_configured(self, cli: str) -> bool:
         return getattr(self, "_reviewer_configured", False)
 
+    def reviewer_model(self, cli: str) -> str | None:
+        return getattr(self, "_reviewer_model_value", None)
+
     def available_clis(self) -> list[str]:
         return ["codex"]
 

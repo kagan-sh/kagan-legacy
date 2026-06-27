@@ -49,6 +49,53 @@ async def repo(tmp_path: Path):
     return await _repo_with_checks(tmp_path / "repo")
 
 
+async def test_e2e_agreed_blocker_ships_only_with_a_note_and_surfaces_in_receipt(repo, tmp_path):
+    # DESIGN §8 smoke for the headline (F20/F23): a VERIFIED blocking ai-review finding
+    # cannot ship behind a green check. Approve is REFUSED until the human records a
+    # resolution note; the conceded blocker then appears as a known issue in the receipt
+    # and as "shipped unfixed" in the ship digest — never silently green.
+    from kagan.core.comprehension import required_keys
+    from kagan.format.receipt import render_receipt_digest
+    from tests.kagan.format._render import to_str
+
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("add feature")
+    core.configure_task(task.id, agent_cli="claude", scope=["src/**"])
+    core.transition_task(task.id, TaskState.REVIEW)
+    core.update_task(task.id, validator_outcome="ran", risk="medium")
+    core.add_finding(
+        task.id,
+        severity="blocking",
+        location="src/a.py:9",
+        message="Ctrl-C leaves raw mode",
+        source="ai-review",
+        confidence=9,
+        status="VERIFIED",
+    )
+    for key in required_keys("medium"):  # isolate the resolution-note gate
+        core.record_comprehension(task.id, key, "Rounds half-up; could break on negative input.")
+    fid = core.get_task(task.id).findings[0].id
+
+    # Agree with NO note -> approve is refused; the task stays in REVIEW (not shipped).
+    core.set_verdict(task.id, fid, verdict="agree")
+    assert core.can_approve(task.id) is False
+    assert core.approve_task(task.id).state is TaskState.REVIEW
+
+    # Record how the conceded blocker ships -> approve clears to READY.
+    core.set_verdict(task.id, fid, verdict="agree", resolution_note="deferred to #42, cosmetic")
+    assert core.can_approve(task.id) is True
+    assert core.approve_task(task.id).state is TaskState.READY
+
+    receipt = core.render_receipt(task.id)
+    assert "known issue · `src/a.py:9`: Ctrl-C leaves raw mode — deferred to #42" in receipt
+    assert "_Nothing explicitly marked as not covered._" not in receipt
+
+    digest = to_str(render_receipt_digest(core.get_task(task.id)))
+    assert "shipped unfixed" in digest
+    assert "✓ ai-review" not in digest
+    core.close()
+
+
 async def test_claim_running_transitions_synchronously_with_runner_pid(repo, tmp_path):
     # F12: the session claims RUNNING synchronously at spawn so the frame after `r`
     # re-probes a running task, not the stale pre-run intake frame. The detached child's

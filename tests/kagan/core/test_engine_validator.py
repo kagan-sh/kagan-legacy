@@ -113,7 +113,9 @@ async def test_harvest_runs_validator_through_validating_into_review(tmp_path, m
     for f in others:
         core.set_verdict(task.id, f.id, verdict="disagree", reply="kagan-generated, ignore")
     assert core.can_approve(task.id) is False  # the ai-review blocking finding holds
-    core.set_verdict(task.id, ai[0].id, verdict="agree")
+    core.set_verdict(
+        task.id, ai[0].id, verdict="agree", resolution_note="accepted; kagan-generated, low impact"
+    )
     assert core.can_approve(task.id) is True  # only after the human adjudicates it too
 
 
@@ -495,7 +497,9 @@ async def test_generated_prompts_surface_through_review_into_receipt(tmp_path, m
     # stay locked, proving the generated keys (not the static ones) are what gate.
     ai = [f for f in task.findings if f.source == "ai-review"]
     assert len(ai) == 1
-    core.set_verdict(task.id, ai[0].id, verdict="agree")
+    core.set_verdict(
+        task.id, ai[0].id, verdict="agree", resolution_note="accepted; kagan-generated, low impact"
+    )
     for k in static_keys:
         core.record_comprehension(task.id, k, "a generic note that is plenty long enough")
     assert core.can_approve(task.id) is False

@@ -16,6 +16,7 @@ def _service(tmp_path: Path) -> TaskService:
 
 
 _SUBSTANTIVE = "Rounds half-up so totals never drift; could break on negative inputs."
+_RES = "deferred to #123, low-impact edge case"
 
 
 def _answer_all(core: Harness, task_id: str) -> None:
@@ -71,6 +72,36 @@ def test_disagree_finding_requires_reply_and_blocks_approve(tmp_path: Path):
     core.close()
 
 
+def test_agreed_blocking_finding_requires_resolution_note(tmp_path: Path):
+    # F20 / DESIGN-LVR1-01: agreeing a blocking finding concedes a real defect; approve
+    # stays locked until the human records HOW it ships, even with comprehension answered
+    # and no other gate open. Disagreed blockers carry a reply; agreed ones a note.
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Add feature")
+    _answer_all(core, task.id)
+    task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    assert not core.can_approve(task.id)  # agreed, no resolution note -> still locked
+    # A trivial / placeholder note does not clear the gate (it must be able to fail).
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note="ok")
+    assert not core.can_approve(task.id)
+    # A real disposition clears it.
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
+    assert core.can_approve(task.id)
+    core.close()
+
+
+def test_question_finding_agree_needs_no_resolution_note(tmp_path: Path):
+    # Only BLOCKING findings demand a note; agreeing a low-stakes question is one keypress.
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Add feature")
+    _answer_all(core, task.id)
+    task = core.add_finding(task.id, severity="question", location="a.py:1", message="naming?")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    assert core.can_approve(task.id)
+    core.close()
+
+
 def test_comprehension_gate_blocks_approve_until_substantive_note(tmp_path: Path):
     # Lever 1 (the load-bearing test): even with every blocking finding adjudicated,
     # approve stays locked until the human records a real own-words rationale. The
@@ -78,7 +109,7 @@ def test_comprehension_gate_blocks_approve_until_substantive_note(tmp_path: Path
     core = Harness(data_dir=tmp_path)
     task = core.create_task("Add feature")
     task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
-    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
     # Findings cleared, but no note yet -> still locked.
     assert not core.can_approve(task.id)
 
@@ -108,7 +139,7 @@ def test_low_risk_approves_without_a_comprehension_note(tmp_path: Path):
     core.update_task(task.id, risk="low")
     task = core.add_finding(task.id, severity="blocking", location="docs/x.md", message="typo")
     assert not core.can_approve(task.id)  # the findings lock still holds for every tier
-    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
     # No comprehension note recorded, yet low risk unlocks.
     assert core.can_approve(task.id)
     core.close()
@@ -139,7 +170,7 @@ def test_medium_and_high_risk_still_require_the_comprehension_note(tmp_path: Pat
         task = core.create_task("Touch auth")
         core.update_task(task.id, risk=tier)
         task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
-        core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+        core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
         assert not core.can_approve(task.id), tier  # findings cleared but answers missing
         _answer_all(core, task.id)
         assert core.can_approve(task.id), tier
@@ -155,7 +186,7 @@ def test_high_risk_locked_until_all_five_prompts_answered(tmp_path: Path):
     task = core.create_task("Touch auth")
     core.update_task(task.id, risk="high")
     task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
-    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
     keys = required_keys("high")
     assert len(keys) == 5
     for key in keys[:-1]:
@@ -179,7 +210,7 @@ def test_short_generated_prompts_fall_back_to_static_floor(tmp_path: Path):
         comprehension_prompts=[("postcondition", "Only one generated prompt?")],
     )
     task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
-    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
     core.record_comprehension(task.id, "postcondition", _SUBSTANTIVE)
     assert not core.can_approve(task.id)
     for key in required_keys("high")[1:]:
@@ -193,7 +224,7 @@ def test_empty_generated_prompts_on_high_risk_still_demand_static_set(tmp_path: 
     task = core.create_task("Touch auth")
     core.update_task(task.id, risk="high", comprehension_prompts=[])
     task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
-    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
     assert not core.can_approve(task.id)
     _answer_all(core, task.id)
     assert core.can_approve(task.id)
@@ -209,7 +240,7 @@ def test_can_approve_uses_generated_prompts_when_at_floor(tmp_path: Path):
     task = core.create_task("Billing retry")
     core.update_task(task.id, comprehension_prompts=generated)
     task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
-    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
     core.record_comprehension(task.id, "postcondition", _SUBSTANTIVE)
     assert not core.can_approve(task.id)
     core.record_comprehension(task.id, "what_breaks", _SUBSTANTIVE)
@@ -267,7 +298,7 @@ def test_record_comprehension_prompts_short_leaves_empty_and_gate_demands_static
     )
     assert task.comprehension_prompts == []
     task = core.add_finding(task.id, severity="blocking", location="a.py:1", message="bug")
-    core.set_verdict(task.id, task.findings[0].id, verdict="agree")
+    core.set_verdict(task.id, task.findings[0].id, verdict="agree", resolution_note=_RES)
     core.record_comprehension(task.id, "postcondition", _SUBSTANTIVE)
     assert not core.can_approve(task.id)
     for key in required_keys("high")[1:]:

@@ -190,6 +190,29 @@ def test_receipt_is_honest_when_empty():
     assert "_No intake understanding recorded._" in md
 
 
+def test_receipt_forces_agreed_blocker_into_known_issues():
+    # F20: an agreed blocking finding ships a conceded defect; the receipt MUST surface it
+    # as a known issue with its resolution note — never silently behind "nothing not covered".
+    task = Task(
+        id="t-1",
+        title="Add feature",
+        findings=[
+            Finding(
+                id="f1",
+                severity="blocking",
+                location="src/a.py:9",
+                message="Ctrl-C leaves raw mode",
+                verdict="agree",
+                resolution_note="deferred to #42, cosmetic on exit",
+            )
+        ],
+    )
+    md = render_receipt(task)
+    assert "## Consequences · not covered" in md
+    assert "known issue · `src/a.py:9`: Ctrl-C leaves raw mode — deferred to #42" in md
+    assert "_Nothing explicitly marked as not covered._" not in md
+
+
 def test_receipt_renders_generated_comprehension_questions():
     task = Task(
         id="t-1",

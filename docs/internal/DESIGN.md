@@ -426,6 +426,13 @@ keeps levers 1–3 *proportionate*. Normative CLI/harness implementation lives i
 - **DESIGN-LVR1-01** **WHILE** a task awaits approve, the harness **MUST** keep
   approve locked until the human records, in their own words, a "why correct /
   what could break" rationale and a resolution note per blocking finding.
+  Enforced (rule 8) in `can_approve` via `is_unresolved_agreed_blocker`: agreeing
+  a blocking finding concedes a real defect, so approve stays locked until a
+  resolution note (fixed / accepted-because / deferred-to-#X) is recorded — a
+  disagreed blocker already carries its reply (TUI-GATE-05), an agreed one must
+  carry its note. The note **MUST** travel in the receipt as a "Consequences ·
+  not covered" *known issue* entry, so an agreed-but-unfixed blocker never ships
+  silently behind a green check (F20/F23).
 - **DESIGN-LVR1-02** Empty, templated, or trivial comprehension **MUST** keep
   the lock (the gate **MUST** be able to fail).
 - **DESIGN-LVR1-03** Comprehension scaffold depth **MUST** scale by risk tier:
@@ -473,6 +480,10 @@ self-review. `VALIDATING` is declared but never assigned.
   reviewed unaided)". A disabled or failed validator **MUST NOT** read as one that
   ran, and the ship digest's `ai-review (N)` **MUST** count only real
   ai-review/validator findings (never a send-back or other adjudicated finding).
+  **WHEN** any counted finding is an agreed blocker (a conceded defect shipped
+  unfixed), the digest **MUST** drop the clean green check for the warning form
+  `⚠ ai-review (N · M shipped unfixed)`, so effective state — not a tidy count —
+  is what the supervisor reads (F23).
 - **DESIGN-LVR2-07** **WHEN** the validator runs, its reviewer model **MUST** be
   the one configured under the task CLI's own `agents.<cli>` section, so a
   cross-vendor mismatch is unrepresentable by construction; **IF** that model is

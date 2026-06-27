@@ -771,7 +771,13 @@ class Session:
             task = self.core.get_task(task_id)
             if task is None:
                 return
-            open_findings = [f for f in task.findings if f.verdict is None]
+            from kagan.core.tasks import is_unresolved_agreed_blocker
+
+            # An agreed blocker still needing a resolution note stays in the walk so the
+            # human can re-press g and supply it — never a dead-end behind the lock (F20).
+            open_findings = [
+                f for f in task.findings if f.verdict is None or is_unresolved_agreed_blocker(f)
+            ]
             if not open_findings:
                 return
             cursor["i"] = min(cursor["i"], len(open_findings) - 1)
@@ -923,13 +929,15 @@ class Session:
 
     def _approve_lock_reason(self, task_id: str) -> str:
         """Name the actual unmet approve condition (findings / comprehension / approver)."""
-        from kagan.core.tasks import is_open_blocker
+        from kagan.core.tasks import is_open_blocker, is_unresolved_agreed_blocker
 
         task = self.core.get_task(task_id)
         if task is None:
             return "Approve is locked."
         if any(is_open_blocker(f) for f in task.findings):
             return "Approve is locked: adjudicate the open blocking finding(s) first."
+        if any(is_unresolved_agreed_blocker(f) for f in task.findings):
+            return "Approve is locked: note how each agreed blocking finding ships (press f, g)."
         failed_checks = [c.name for c in task.checks if not c.passed]
         if failed_checks:
             return "Approve is locked: fix failing required check(s) first: " + ", ".join(
@@ -1108,21 +1116,31 @@ class Session:
         return body
 
     async def _adjudicate_finding(self, task_id: str, finding_id: str, verdict: str) -> None:
-        """Set the verdict on a SPECIFIC finding; disagree requires a reason."""
-        if verdict == "disagree":
-            from rich.text import Text
+        """Set the verdict on a SPECIFIC finding. Disagree needs a reason; agreeing a
+        BLOCKING finding needs a resolution note — agreeing concedes a real defect, so
+        the human records how it ships (fixed / accepted / deferred) before approve can
+        clear (F20, DESIGN-LVR1-01). A question/nit agree stays one keypress."""
+        from rich.text import Text
 
-            task = self.core.get_task(task_id)
-            finding = next((f for f in task.findings if f.id == finding_id), None) if task else None
-            body = (
-                Text(f"{finding.location or 'finding'}: {finding.message}", style="secondary")
-                if finding is not None
-                else None
-            )
+        task = self.core.get_task(task_id)
+        finding = next((f for f in task.findings if f.id == finding_id), None) if task else None
+        if finding is None:
+            return
+        body = Text(f"{finding.location or 'finding'}: {finding.message}", style="secondary")
+        if verdict == "disagree":
             reply = await self._prompt_in_frame("Why do you disagree?", body=body)
-            if not reply or not reply.strip():
-                return
-            self.core.set_verdict(task_id, finding_id, verdict="disagree", reply=reply.strip())
+            if reply and reply.strip():
+                self.core.set_verdict(task_id, finding_id, verdict="disagree", reply=reply.strip())
+        elif finding.severity == "blocking":
+            note = await self._prompt_in_frame(
+                "Agreeing ships this blocker — how is it resolved? "
+                "(fixed / accepted because… / deferred to #…)",
+                body=body,
+            )
+            if note and note.strip():
+                self.core.set_verdict(
+                    task_id, finding_id, verdict="agree", resolution_note=note.strip()
+                )
         else:
             self.core.set_verdict(task_id, finding_id, verdict="agree")
 

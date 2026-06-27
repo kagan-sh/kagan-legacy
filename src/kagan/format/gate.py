@@ -16,7 +16,7 @@ from kagan.core.api import humanize_task_state
 from kagan.core.checks import has_failed_checks
 from kagan.core.comprehension import prompts_for_risk, prompts_for_task
 from kagan.core.hygiene import display_location
-from kagan.core.tasks import _is_substantive, is_open_blocker
+from kagan.core.tasks import _is_substantive, is_open_blocker, is_unresolved_agreed_blocker
 from kagan.format import _symbols as sym
 from kagan.format._risk import risk_label, risk_style
 from kagan.format.checks import readiness_check_parts
@@ -183,7 +183,7 @@ def render_approvers(task: Task, required: int) -> RenderableType | None:
 def _focusable_readiness_rows(task: Task) -> list[str]:
     """Ordered kinds of the readiness rows that the cursor may land on."""
     rows: list[str] = []
-    if any(is_open_blocker(f) for f in task.findings):
+    if any(is_open_blocker(f) or is_unresolved_agreed_blocker(f) for f in task.findings):
         rows.append("findings")
     if _unanswered_keys(task):
         rows.append("comprehension")
@@ -237,6 +237,7 @@ def render_readiness(
     data. ``cursor`` marks the focused focusable row (findings / comprehension /
     smoke)."""
     open_blocking = [f for f in task.findings if is_open_blocker(f)]
+    unresolved_agreed = [f for f in task.findings if is_unresolved_agreed_blocker(f)]
     check_glyph, check_style, check_label = readiness_check_parts(task.checks)
     smoke_todo = [s for s in task.smoke_tests if not s.verified]
     unanswered = _unanswered_keys(task)
@@ -246,7 +247,12 @@ def render_readiness(
     cursor = max(0, min(cursor, len(focusable) - 1)) if focusable else 0
     focus_kind = focusable[cursor] if focusable else None
 
-    todo_count = len(open_blocking) + len(unanswered) + int(has_failed_checks(task.checks))
+    todo_count = (
+        len(open_blocking)
+        + len(unresolved_agreed)
+        + len(unanswered)
+        + int(has_failed_checks(task.checks))
+    )
     title = (
         Text(f"Almost ready — {todo_count} thing(s) before you approve.")
         if locked
@@ -260,6 +266,15 @@ def render_readiness(
                 sym.NEEDS_YOU,
                 "blocker",
                 f"Adjudicate {len(open_blocking)} blocking finding(s)",
+                focused=focus_kind == "findings",
+            )
+        )
+    elif unresolved_agreed:
+        rows.append(
+            _readiness_row(
+                sym.NEEDS_YOU,
+                "blocker",
+                f"Note how {len(unresolved_agreed)} agreed blocking finding(s) ship",
                 focused=focus_kind == "findings",
             )
         )
@@ -331,6 +346,10 @@ def render_lock_block(
     if locked:
         if any(is_open_blocker(f) for f in task.findings):
             lines.append(Text("Approve is locked: adjudicate the open blocking finding(s) first."))
+        elif any(is_unresolved_agreed_blocker(f) for f in task.findings):
+            lines.append(
+                Text("Approve is locked: note how each agreed blocking finding ships (press f, g).")
+            )
         failed_checks = [c.name for c in task.checks if not c.passed]
         if failed_checks:
             lines.append(

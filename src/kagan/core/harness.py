@@ -215,9 +215,17 @@ class Harness:
         )
 
     def set_verdict(
-        self, task_id: str, finding_id: str, *, verdict: str, reply: str | None = None
+        self,
+        task_id: str,
+        finding_id: str,
+        *,
+        verdict: str,
+        reply: str | None = None,
+        resolution_note: str | None = None,
     ) -> Task:
-        return self._tasks.set_verdict(task_id, finding_id, verdict=verdict, reply=reply)
+        return self._tasks.set_verdict(
+            task_id, finding_id, verdict=verdict, reply=reply, resolution_note=resolution_note
+        )
 
     def record_comprehension(self, task_id: str, key: str, answer: str) -> Task:
         return self._tasks.record_comprehension(task_id, key, answer)

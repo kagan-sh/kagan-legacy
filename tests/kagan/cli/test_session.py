@@ -103,11 +103,21 @@ class _FakeCore:
             return self._task
         return self.transition_task(task_id, TaskState.READY)
 
-    def set_verdict(self, task_id: str, finding_id: str, *, verdict: str, reply: str = ""):
+    def set_verdict(
+        self,
+        task_id: str,
+        finding_id: str,
+        *,
+        verdict: str,
+        reply: str = "",
+        resolution_note: str | None = None,
+    ):
         for f in self._task.findings:
             if f.id == finding_id:
                 f.verdict = verdict
                 f.reply = reply or None
+                if resolution_note is not None:
+                    f.resolution_note = resolution_note
                 return self._task
         return self._task
 
@@ -581,6 +591,43 @@ def test_findings_g_d_acts_on_focused_finding_not_first(tmp_path, monkeypatch):
     assert core._task.findings[1].verdict == "disagree"
     assert core._task.findings[1].reply == "not a bug"
     assert core._task.findings[0].verdict is None  # untouched
+
+
+def test_agree_blocking_finding_captures_resolution_note(tmp_path, monkeypatch):
+    # F20: agreeing a BLOCKING finding prompts for a resolution note and stores it, so the
+    # gate can clear and the receipt records how the conceded defect ships.
+    from kagan.core.models import Finding
+
+    findings = [Finding(id="f0", severity="blocking", location="a.py:1", message="real bug")]
+    task = Task(id="task-fw", title="t", state=TaskState.REVIEW, findings=findings)
+    session, core = _session(task, tmp_path)
+
+    review_verbs = iter(["findings", "back"])
+
+    async def _review_frame(*_a, **_k):
+        return next(review_verbs)
+
+    monkeypatch.setattr(session, "_review_frame", _review_frame)
+
+    calls = {"n": 0}
+
+    async def _findings_frame(_task, open_findings, cursor):
+        calls["n"] += 1
+        return "agree" if calls["n"] == 1 else "back"
+
+    monkeypatch.setattr(session, "_findings_frame", _findings_frame)
+
+    notes = iter(["deferred to #7, edge case only"])
+
+    async def _note(*_a, **_k):
+        return next(notes)
+
+    monkeypatch.setattr(_interactive, "prompt_in_frame", _note)
+
+    run_async(session.view_review("task-fw"))
+
+    assert core._task.findings[0].verdict == "agree"
+    assert core._task.findings[0].resolution_note == "deferred to #7, edge case only"
 
 
 def test_smoke_v_verifies_focused_test_not_bulk(tmp_path, monkeypatch):

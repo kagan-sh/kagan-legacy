@@ -30,6 +30,13 @@ def _ai_review_row(task: Task) -> Text | None:
     status = task_validator_status(task)
     if status == RAN:
         found = [f for f in task.findings if f.source == "ai-review"]
+        # F23: an agreed blocking finding ships unfixed — never a clean green check over it.
+        unfixed = [f for f in found if f.severity == "blocking" and f.verdict == "agree"]
+        if unfixed:
+            return Text(
+                f"{sym.NOTE} ai-review ({len(found)} · {len(unfixed)} shipped unfixed)",
+                style="note",
+            )
         label = f"ai-review ({len(found)})" if found else "ai-review (clean)"
         return Text(f"{sym.DONE} {label}")
     if status == DISABLED:

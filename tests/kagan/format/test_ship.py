@@ -68,7 +68,7 @@ def test_digest_ai_review_reflects_validator_outcome_not_any_verdict():
         findings=[
             Finding(
                 id="f",
-                severity="blocking",
+                severity="question",
                 location="x",
                 message="m",
                 source="ai-review",
@@ -78,6 +78,37 @@ def test_digest_ai_review_reflects_validator_outcome_not_any_verdict():
     )
     out2 = to_str(render_receipt_digest(ran))
     assert "ai-review (1)" in out2
+
+
+def test_digest_flags_agreed_blockers_as_shipped_unfixed():
+    # F23: an agreed blocking ai-review finding ships a known defect; the digest must warn,
+    # never show a clean green "✓ ai-review (N)" over it.
+    task = _task(
+        risk="medium",
+        validator_outcome="ran",
+        findings=[
+            Finding(
+                id="f1",
+                severity="blocking",
+                location="x",
+                message="real bug",
+                source="ai-review",
+                verdict="agree",
+                resolution_note="deferred to #9",
+            ),
+            Finding(
+                id="f2",
+                severity="question",
+                location="y",
+                message="q",
+                source="ai-review",
+                verdict="agree",
+            ),
+        ],
+    )
+    out = to_str(render_receipt_digest(task))
+    assert "ai-review (2 · 1 shipped unfixed)" in out
+    assert "✓ ai-review" not in out
 
 
 def test_receipt_digest_honesty_failing_check_shows_blocker():

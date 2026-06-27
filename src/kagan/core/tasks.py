@@ -72,6 +72,19 @@ def _is_substantive(text: str | None) -> bool:
     return len(real_words) >= 3
 
 
+def _is_resolution_note(text: str | None) -> bool:
+    """A blocking finding's resolution note clears the approve lock only if it says
+    something — empty, whitespace, or a known placeholder keeps it locked (rule 8).
+    Lighter than ``_is_substantive``: a real disposition is often terse
+    ("deferred to #123", "accepted, legacy path") so three words is enough."""
+    if not text:
+        return False
+    normalized = " ".join(text.split()).casefold()
+    if not normalized or normalized in _PLACEHOLDER_NOTES:
+        return False
+    return len(normalized.split()) >= 3
+
+
 def is_open_blocker(finding: Finding) -> bool:
     """The ONE predicate for an unadjudicated blocking finding (B13): a verdict — agree
     OR disagree — adjudicates it. ``can_approve`` and every review surface (checklist,
@@ -80,6 +93,25 @@ def is_open_blocker(finding: Finding) -> bool:
     ``verdict != "agree"`` (counting an overruled finding as still open) while another
     read ``verdict is None``."""
     return finding.severity == "blocking" and finding.verdict is None
+
+
+def is_unresolved_agreed_blocker(finding: Finding) -> bool:
+    """An agreed blocking finding the human has not yet explained shipping (lever 1, F20).
+    Agreeing a blocker concedes it is a real defect; approve stays locked until a
+    resolution note (fixed / accepted-because / deferred-to-#X) is recorded, so a known
+    blocker can never ship behind a green check. Disagreed blockers already carry a
+    reply (TUI-GATE-05); agreed ones must carry a note too (DESIGN-LVR1-01)."""
+    return (
+        finding.severity == "blocking"
+        and finding.verdict == "agree"
+        and not _is_resolution_note(finding.resolution_note)
+    )
+
+
+def shipped_blockers(task: Task) -> list[Finding]:
+    """Agreed blocking findings — known defects shipped with the diff. The receipt and
+    ship digest surface these so an accepted/deferred blocker is never read as clean."""
+    return [f for f in task.findings if f.severity == "blocking" and f.verdict == "agree"]
 
 
 def _event_summary(event: dict) -> str:
@@ -199,7 +231,13 @@ class TaskService:
         return task
 
     def set_verdict(
-        self, task_id: str, finding_id: str, *, verdict: str, reply: str | None = None
+        self,
+        task_id: str,
+        finding_id: str,
+        *,
+        verdict: str,
+        reply: str | None = None,
+        resolution_note: str | None = None,
     ) -> Task:
         if verdict == "disagree" and not reply:
             raise ValueError("a disagree verdict must carry a reply (TUI-GATE-05)")
@@ -209,6 +247,10 @@ class TaskService:
             raise NotFoundError("finding", finding_id)
         finding.verdict = verdict
         finding.reply = reply
+        # Agreeing a blocking finding records how it is being shipped (F20); the
+        # approve gate (can_approve) refuses until this note is present.
+        if resolution_note is not None:
+            finding.resolution_note = resolution_note
         self._commit(task, {"type": "verdict_set", "finding_id": finding_id, "verdict": verdict})
         return task
 
@@ -267,6 +309,10 @@ class TaskService:
         task = self._load(task_id)
         findings_clear = not any(is_open_blocker(f) for f in task.findings)
         if not findings_clear:
+            return False
+        # F20: an agreed blocking finding is a conceded, shipped defect; it stays locked
+        # until the human records how it is being shipped (DESIGN-LVR1-01, rule 8).
+        if any(is_unresolved_agreed_blocker(f) for f in task.findings):
             return False
         if has_failed_checks(task.checks):
             return False

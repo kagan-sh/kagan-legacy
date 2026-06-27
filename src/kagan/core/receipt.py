@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from kagan.core.ceremony import banner_suffix, gates_clause, task_validator_status
 from kagan.core.comprehension import prompts_for_task
 from kagan.core.hygiene import display_location, distill_check_detail
+from kagan.core.tasks import shipped_blockers
 
 if TYPE_CHECKING:
     from kagan.core.models import CheckResult, Decision, Finding, SmokeTest, Task
@@ -97,12 +98,18 @@ def _comprehension_lines(task: Task) -> list[str]:
         if answer:
             lines.append(f"**{question}**")
             lines.append(answer)
-    notes = [
-        f"- `{display_location(f.location)}`: {f.resolution_note.strip()}"
-        for f in task.findings
-        if f.resolution_note and f.resolution_note.strip()
-    ]
-    return [*lines, *notes]
+    return lines
+
+
+def _not_covered_lines(task: Task) -> list[str]:
+    # F20: an agreed blocking finding ships a known, conceded defect — it MUST surface here,
+    # never silently behind a green check. The resolution note explains the disposition
+    # (fixed / accepted-because / deferred-to-#X) so a teammate trusts the receipt.
+    lines = list(task.not_covered)
+    for f in shipped_blockers(task):
+        note = (f.resolution_note or "").strip() or "no resolution note recorded"
+        lines.append(f"known issue · `{display_location(f.location)}`: {f.message} — {note}")
+    return lines
 
 
 def _context_lines(task: Task) -> list[str]:
@@ -172,7 +179,7 @@ def render_receipt(task: Task) -> str:
         ),
         *_section(
             "Consequences · not covered",
-            task.not_covered,
+            _not_covered_lines(task),
             "_Nothing explicitly marked as not covered._",
         ),
         # STATUS — the ADR lifecycle line + approver provenance.
@@ -229,7 +236,7 @@ def render_pr_body(task: Task) -> str:
         ),
         *_section(
             "Consequences · not covered",
-            task.not_covered,
+            _not_covered_lines(task),
             "_Nothing explicitly marked as not covered._",
         ),
         *_section("Status", _status_lines(task), "_Proposed._"),

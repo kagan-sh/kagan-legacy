@@ -51,6 +51,20 @@ def test_resolved_decision_shows_answer_annotation():
     assert "rounding? → half-up" in out
 
 
+def test_optional_decision_is_focusable_after_blocking_resolved():
+    # F11: with blocking resolved, the optional row joins the focusable walk so the cursor
+    # reaches it — it is adjudicable, not display-only. The cursor maps over
+    # [*blocking, *optional], so the single open (optional) decision is focused at index 0.
+    task = _task(
+        decisions=[
+            Decision(id="b", question="rounding?", severity="blocking", answer="half-up"),
+            Decision(id="o", question="show errors?", severity="question", options=["yes", "no"]),
+        ]
+    )
+    out = to_str(intake.render_intake(task, can_run=True, cursor=0))
+    assert "› ○ show errors?" in out  # noqa: RUF001 — the cursor + optional glyph
+
+
 def test_scope_footer_present():
     out = to_str(intake.render_intake(_task(scope=["src/billing/**"]), can_run=True))
     assert "Scope" in out

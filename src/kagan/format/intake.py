@@ -87,10 +87,11 @@ def render_intake(
         blocks.append(
             Text("Answer before it runs   ·   Approve = take assumption · Reject = override")
         )
-        for focus_index, d in enumerate(blocking):
+        # The whole walk is focusable, blocking first then optional (DESIGN §5 / appendix ③):
+        # an optional `○` row is adjudicable too, so the cursor reaches it (F11). The cursor
+        # index maps to this [*blocking, *optional] order — the session walks the same list.
+        for focus_index, d in enumerate([*blocking, *optional]):
             blocks.append(_decision_line(d, focused=focus_index == cursor))
-        for d in optional:
-            blocks.append(_decision_line(d, focused=False))
         blocks.append(Text(""))
 
     if resolved:

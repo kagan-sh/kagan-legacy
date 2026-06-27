@@ -493,16 +493,19 @@ class Session:
             task = self.core.get_task(task_id)
             if task is None:
                 return
-            blocking = [
-                d
-                for d in task.decisions
-                if d.severity == "blocking" and not (d.answer or d.approved)
+            # The whole walk is adjudicable — blocking first, then optional `○` rows (F11,
+            # DESIGN §5 / appendix ③). Only blocking decisions gate the run (can_run); an
+            # unanswered optional is still focusable so the human can pin it, not left to
+            # the agent's silent assumption. Order matches fmt_intake.render_intake.
+            open_decisions = [d for d in task.decisions if not (d.answer or d.approved)]
+            pending = [d for d in open_decisions if d.severity == "blocking"] + [
+                d for d in open_decisions if d.severity != "blocking"
             ]
-            cursor["i"] = min(cursor["i"], max(len(blocking) - 1, 0))
-            verb = await self._intake_frame(task, blocking, cursor)
+            cursor["i"] = min(cursor["i"], max(len(pending) - 1, 0))
+            verb = await self._intake_frame(task, pending, cursor)
             if verb in ("back", None):
                 return
-            focused = blocking[cursor["i"]] if blocking and cursor["i"] < len(blocking) else None
+            focused = pending[cursor["i"]] if pending and cursor["i"] < len(pending) else None
             if verb == "approve" and focused is not None:
                 # B16: record WHAT was accepted (the agent's assumption = the first
                 # offered option), not a bare verb — the receipt must reconstruct it.
@@ -514,9 +517,9 @@ class Session:
                 if override:
                     self.core.answer_decision(task_id, focused.id, answer=override, approved=False)
             elif verb == "approve-all":
-                if not await self._confirm_approve_all(blocking, task.risk):
+                if not await self._confirm_approve_all(pending, task.risk):
                     continue
-                for d in blocking:
+                for d in pending:
                     self.core.answer_decision(
                         task_id, d.id, answer=_accepted_assumption(d), approved=True
                     )
@@ -533,9 +536,10 @@ class Session:
                     _print(f"Cannot start run: {exc}")
                 return
 
-    async def _intake_frame(self, task: Task, blocking: list, cursor: dict[str, int]) -> str | None:
+    async def _intake_frame(self, task: Task, pending: list, cursor: dict[str, int]) -> str | None:
         """One in-place navigator frame for the decision walk; returns the chosen verb
-        (approve / reject / approve-all / run / back) or None to quit."""
+        (approve / reject / approve-all / run / back) or None to quit. ``pending`` is the
+        full focusable set (blocking + optional) so a/x reach optional rows too (F11)."""
         result: dict[str, str | None] = {"verb": None}
 
         def _render(geometry: FrameGeometry) -> RenderedFrame:
@@ -546,13 +550,13 @@ class Session:
             # B5: the footer rides the PINNED region (not inside the body Group) so the
             # decision controls survive even when many decisions overflow the frame —
             # render_frame clips the body, never the pinned footer.
-            footer = render_footer(_intake_footer(len(blocking), can_run=can_run, risk=task.risk))
+            footer = render_footer(_intake_footer(len(pending), can_run=can_run, risk=task.risk))
             return self._frame(body, geometry, footer=footer)
 
         def _move(step: int):
             def _handler(event) -> None:
-                if blocking:
-                    cursor["i"] = (cursor["i"] + step) % len(blocking)
+                if pending:
+                    cursor["i"] = (cursor["i"] + step) % len(pending)
 
             return _handler
 

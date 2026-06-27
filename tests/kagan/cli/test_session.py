@@ -704,6 +704,36 @@ def test_review_real_loop_records_note_then_approves(tmp_path):
     assert core.transitions == [TaskState.READY]
 
 
+def test_optional_intake_decision_is_adjudicable(tmp_path, monkeypatch):
+    # F11: with blocking resolved, the cursor reaches the optional decision and approve
+    # records on it — never left to the agent's silent assumption.
+    from kagan.core.models import Decision
+
+    decisions = [
+        Decision(id="b", question="rounding?", severity="blocking", answer="half-up"),
+        Decision(id="o", question="show errors?", severity="question", options=["yes", "no"]),
+    ]
+    task = Task(id="task-in", title="t", state=TaskState.INTAKE, decisions=decisions)
+    session, core = _session(task, tmp_path)
+    core._can_run = True
+
+    calls = {"n": 0}
+
+    async def _intake_frame(_task, pending, cursor):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            assert [d.id for d in pending] == ["o"]  # only the optional is still open
+            cursor["i"] = 0
+            return "approve"
+        return "back"
+
+    monkeypatch.setattr(session, "_intake_frame", _intake_frame)
+
+    run_async(session.view_intake("task-in"))
+
+    assert ("o", "yes", True) in core.answered_decisions
+
+
 def test_intake_real_loop_run_key_spawns_detached(tmp_path, monkeypatch):
     # Drives the REAL read_key loop in the intake view: pressing 'r' on a runnable
     # task spawns the detached runner. Proves read_key works under the live loop

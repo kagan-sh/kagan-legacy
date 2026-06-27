@@ -43,6 +43,23 @@ def _get_data_dirs() -> list[tuple[str, Path, str]]:
     ]
 
 
+def _has_kagan_state() -> bool:
+    """True when this repo has any kagan state a reset would remove (ledger, worktrees,
+    or the worktree .gitignore line). A never-initialized repo has none, so reset must
+    no-op rather than fabricate a stray `.kagan/state/` — and the probe runs BEFORE the
+    client is built, because constructing the Harness eagerly creates the ledger dir (F1)."""
+    from kagan.core import default_data_dir, git
+
+    root = git.repo_root(Path.cwd()) or Path.cwd()
+    if default_data_dir().exists() or (root / ".kagan_worktrees").exists():
+        return True
+    gitignore = root / ".gitignore"
+    return (
+        gitignore.exists()
+        and ".kagan_worktrees/" in gitignore.read_text(encoding="utf-8").splitlines()
+    )
+
+
 def _prune_worktrees() -> None:
     """rm -rf leaves .git/worktrees/<name> dangling (P5); prune so the paths reuse."""
     from kagan.core import git
@@ -142,7 +159,7 @@ def _do_full_reset(client, force: bool) -> None:
     click.echo()
     click.echo("Resetting ledger...")
     run_async(client.reset())
-    click.echo(f"  {click.style('✓', fg='green')} Ledger wiped and recreated")
+    click.echo(f"  {click.style('✓', fg='green')} Ledger wiped")
 
     for label, path, _desc in _get_data_dirs():
         if not path.exists() or label == "Ledger":
@@ -200,9 +217,16 @@ def reset(force: bool, yes: bool, dry_run: bool) -> None:
 
     skip_prompt = force or yes
 
+    if dry_run and skip_prompt:
+        raise click.UsageError("--yes/--force has no effect with --dry-run")
+
+    # F1: a never-initialized repo has nothing to reset — no-op WITHOUT building the client
+    # (constructing it would eagerly create the ledger dir we are trying not to fabricate).
+    if not _has_kagan_state():
+        click.secho("Nothing to reset — this repo has no kagan state.", fg="green")
+        return
+
     if dry_run:
-        if skip_prompt:
-            raise click.UsageError("--yes/--force has no effect with --dry-run")
         _print_full_impact()
         click.secho("Dry run — no changes made.", fg="cyan", bold=True)
         return

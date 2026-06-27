@@ -49,6 +49,30 @@ async def repo(tmp_path: Path):
     return await _repo_with_checks(tmp_path / "repo")
 
 
+async def test_claim_running_transitions_synchronously_with_runner_pid(repo, tmp_path):
+    # F12: the session claims RUNNING synchronously at spawn so the frame after `r`
+    # re-probes a running task, not the stale pre-run intake frame. The detached child's
+    # start_task then skips the now-redundant transition (idempotent).
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("add feature")
+    assert task.state is TaskState.INTAKE
+
+    claimed = core.claim_running(task.id, runner_pid=4242)
+    assert claimed.state is TaskState.RUNNING
+    assert claimed.runner_pid == 4242
+
+    # Idempotent: claiming an already-running task is a no-op (no duplicate transition).
+    transitions_before = sum(
+        1 for e in core._ledger.read_events(task.id) if e.get("type") == "transition"
+    )
+    core.claim_running(task.id, runner_pid=9999)
+    transitions_after = sum(
+        1 for e in core._ledger.read_events(task.id) if e.get("type") == "transition"
+    )
+    assert transitions_after == transitions_before
+    core.close()
+
+
 async def test_harvest_runs_gate_so_review_carries_checks_and_drift(repo, tmp_path, monkeypatch):
     # TUI-GATE-01/02/03: harvest delegates to the gate engine, so REVIEW carries
     # the mirror's checks (not just drift). This fails if _harvest reverts to a
@@ -68,6 +92,36 @@ async def test_harvest_runs_gate_so_review_carries_checks_and_drift(repo, tmp_pa
     assert task.state == TaskState.REVIEW
     assert any(c.name == "lint" for c in task.checks)  # mirror ran via run_gate
     assert any(f.location.startswith("README") for f in task.findings)  # drift kept
+
+
+async def test_rerun_resets_harvest_flags_done_and_smoke(repo, tmp_path, monkeypatch):
+    # F19: a send-back re-run clears per-run harvest signals — done_reported and smoke —
+    # so the re-run never starts already "done" (stale pass-1 signal) or carries pass-1
+    # smoke onto a changed diff. The fresh run re-reports them via the MCP tools.
+    bin_dir = tmp_path / "bin"
+    _install(bin_dir, "fakeagent", AGENT)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("add feature")
+    core.configure_task(task.id, agent_cli="fakeagent", scope=["src/**"])
+    await core.start_task(task.id)
+    await core.await_agent(task.id)
+
+    # Pass-1 harvest signals the agent reported.
+    core.update_task(task.id, done_reported=True)
+    core.add_smoke_test(task.id, behaviour="open /health")
+    assert core.get_task(task.id).done_reported is True
+    assert core.get_task(task.id).smoke_tests
+
+    await core.send_back(task.id, "fix the thing")
+    await core.await_agent(task.id)
+
+    settled = core.get_task(task.id)
+    # The fake agent does not re-report, so the reset is directly observable.
+    assert settled.done_reported is False
+    assert settled.smoke_tests == []
+    core.close()
 
 
 async def test_start_task_leases_port_and_starts_service(tmp_path, monkeypatch):

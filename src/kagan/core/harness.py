@@ -783,6 +783,23 @@ class Harness:
             self._ledger.append_event(task_id, {"type": "intake_no_unknowns"})
         return task
 
+    def claim_running(self, task_id: str, runner_pid: int) -> Task:
+        """Synchronously mark a task RUNNING owned by the detached runner's pid (F12).
+
+        The session calls this right after spawning `kagan _run`, BEFORE the detached
+        child transitions itself, so the frame rendered immediately after `r` re-probes a
+        RUNNING task instead of the stale pre-run intake frame (DESIGN §3.8 re-invocation
+        hygiene). The child's start_task re-stamps the same pid and skips the now-redundant
+        transition; if the child dies before launching, reconcile_in_flight sees the dead
+        pid and re-offers the task (rule 12). No-op when the task is already in flight."""
+        task = self._require(task_id)
+        if task.state in (TaskState.RUNNING, TaskState.VALIDATING):
+            return task
+        task.runner_pid = runner_pid
+        task.interrupted = False
+        self._ledger.save_task(task)
+        return self._tasks.transition(task_id, TaskState.RUNNING)
+
     async def start_task(self, task_id: str) -> Task:
         if self.repo_root is None:
             raise ValueError("kagan must run inside a git repository (none found here)")
@@ -800,6 +817,12 @@ class Harness:
         task.findings = [
             f for f in task.findings if f.source not in self._REGENERATED_FINDING_SOURCES
         ]
+        # F19: harvest signals are per-run. Clear them so a re-run never starts already
+        # "done" (a stale pass-1 done_reported re-emitted at the transition into running,
+        # or misread as done on a crashed resume) nor carries pass-1 smoke onto the changed
+        # diff. The fresh run re-reports done + smoke via the MCP tools.
+        task.done_reported = False
+        task.smoke_tests = []
         # Idempotent: send-back reuses the existing worktree (TUI-GATE-07).
         task = await self._tasks.prepare_worktree(task, self.repo_root)
         assert task.worktree_path is not None
@@ -813,7 +836,10 @@ class Harness:
         task.runner_pid = os.getpid()
         task.interrupted = False
         self._ledger.save_task(task)
-        task = self._tasks.transition(task_id, TaskState.RUNNING)
+        # Idempotent (F12): the session may have already claimed RUNNING synchronously at
+        # spawn so the frame after `r` re-probes a running task, not the stale intake frame.
+        if task.state is not TaskState.RUNNING:
+            task = self._tasks.transition(task_id, TaskState.RUNNING)
         # Services need the worktree; start them once the task is running
         # (TUI-WS-02/07). Skip when the repo declares none.
         with suppress(ConfigurationError):
@@ -1052,9 +1078,12 @@ class Harness:
         logger.info("Ledger reset complete")
 
     def _wipe(self) -> None:
+        # Remove only — do NOT recreate. The ledger is recreated lazily on the next write
+        # (Ledger.__init__), so a reset of a never-initialized repo leaves no stray
+        # .kagan/state/ behind (F1). reset.py also no-ops before constructing the client
+        # when there is nothing to reset.
         if self.data_dir.exists():
             shutil.rmtree(self.data_dir, ignore_errors=True)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
 
 
 __all__ = ["Harness", "default_data_dir"]

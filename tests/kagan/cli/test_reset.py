@@ -27,11 +27,35 @@ class _FakeClient:
 def fake_client(monkeypatch):
     client = _FakeClient()
     monkeypatch.setattr(reset_mod, "make_client", lambda: client)
+    # These tests exercise the WIPE path, so the repo "has state"; the F1 no-op probe is
+    # covered separately below.
+    monkeypatch.setattr(reset_mod, "_has_kagan_state", lambda: True)
     # The data-dir probe walks real dirs; stub it so the test stays hermetic.
     monkeypatch.setattr(reset_mod, "_get_data_dirs", lambda: [])
     monkeypatch.setattr(reset_mod, "_prune_worktrees", lambda: None)
     monkeypatch.setattr(reset_mod, "_remove_kagan_gitignore_line", lambda: False)
     return client
+
+
+def test_reset_no_ops_on_uninitialized_repo(tmp_path, monkeypatch):
+    # F1: reset on a repo with no kagan state must NOT fabricate `.kagan/state/`. It must
+    # no-op (never even build the client, whose ledger ctor would create the dir).
+    monkeypatch.delenv("KAGAN_DATA_DIR", raising=False)  # assert the repo-scoped default
+    monkeypatch.chdir(tmp_path)
+    built = {"client": False}
+
+    def _boom():
+        built["client"] = True
+        raise AssertionError("make_client must not run when there is nothing to reset")
+
+    monkeypatch.setattr(reset_mod, "make_client", _boom)
+
+    result = CliRunner().invoke(cli, ["reset", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert "Nothing to reset" in result.output
+    assert built["client"] is False
+    assert not (tmp_path / ".kagan").exists()
 
 
 def test_reset_refuses_on_non_tty_stdin_and_never_wipes(fake_client):

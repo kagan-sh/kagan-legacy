@@ -315,9 +315,21 @@ subset is tracked.
 - **DESIGN-PLAT-19** **WHEN** a worktree is created, kagan **MUST** append
   `.kagan_worktrees/` to the repo-root `.gitignore`.
 - **DESIGN-PLAT-20** `cli/reset.py` **MUST** treat `.kagan/repo.yaml` as the
-  user's own config (not in the kill-list).
+  user's own config (not in the kill-list). It **MUST** also no-op on a
+  never-initialized repo — when there is no ledger, worktree, or worktree
+  `.gitignore` line to remove — and **MUST NOT** fabricate a stray `.kagan/state/`
+  (the no-op runs BEFORE the client is built, since the Harness ctor eagerly
+  creates the ledger dir). `_wipe` removes the ledger without recreating it; the
+  next write recreates it lazily (F1).
 - **DESIGN-PLAT-21** `kagan doctor` **MUST** exit non-zero when any check is a hard
   fail, so `kagan doctor && …` is a safe gate in scripts and CI (F2).
+- **DESIGN-PLAT-22** **WHEN** a run starts (`r` / re-run), the session **MUST**
+  claim `RUNNING` synchronously (owned by the detached runner's pid) so the frame
+  rendered immediately after re-probes a running task, never the stale pre-run
+  intake frame; the detached child's `start_task` is idempotent (skips the
+  redundant transition). A run start **MUST** reset per-run harvest signals
+  (`done_reported`, smoke) so a re-run never begins already "done" nor carries
+  pass-1 smoke onto a changed diff (F12/F19; §3.8 re-invocation hygiene, rule 12).
 
 **FUTURE (not built):** an external store at
 `platformdirs.user_data_dir("kagan")/repos/<repo-key>/`, with `<repo-key>`

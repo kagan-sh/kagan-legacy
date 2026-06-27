@@ -35,6 +35,7 @@ class _FakeCore:
         self.start_task_calls: list[str] = []
         self.transitions: list = []
         self.answered_decisions: list = []
+        self.claimed: tuple | None = None
 
     def touch_viewed(self, task_id: str) -> None:
         self.viewed.append(task_id)
@@ -216,6 +217,11 @@ class _FakeCore:
     ):
         self.answered_decisions.append((decision_id, answer, approved))
 
+    def claim_running(self, task_id: str, runner_pid: int):
+        self.claimed = (task_id, runner_pid)
+        self._task.state = TaskState.RUNNING
+        return self._task
+
 
 def _session(task: Task, tmp_path) -> tuple[Session, _FakeCore]:
     core = _FakeCore(task, data_dir=tmp_path / "state", repo_root=tmp_path)
@@ -298,10 +304,13 @@ def test_spawn_run_is_detached_and_well_formed(tmp_path, monkeypatch):
     session, core = _session(task, tmp_path)
     captured: dict = {}
 
+    class _Proc:
+        pid = 1234
+
     def _fake_popen(cmd, **kwargs):
         captured["cmd"] = cmd
         captured["kwargs"] = kwargs
-        return object()
+        return _Proc()
 
     monkeypatch.setattr(subprocess, "Popen", _fake_popen)
     session._spawn_run("task-9")
@@ -732,6 +741,22 @@ def test_optional_intake_decision_is_adjudicable(tmp_path, monkeypatch):
     run_async(session.view_intake("task-in"))
 
     assert ("o", "yes", True) in core.answered_decisions
+
+
+def test_spawn_run_claims_running_synchronously(tmp_path, monkeypatch):
+    # F12: after `r`, _spawn_run claims RUNNING synchronously (with the child's pid) so the
+    # frame rendered right after re-probes a running task, never the stale intake frame.
+    class _Proc:
+        pid = 4242
+
+    task = Task(id="task-fw", title="t", state=TaskState.INTAKE)
+    session, core = _session(task, tmp_path)
+    monkeypatch.setattr("kagan.cli.session.subprocess.Popen", lambda *a, **k: _Proc())
+
+    session._spawn_run("task-fw")
+
+    assert core.claimed == ("task-fw", 4242)
+    assert core._task.state is TaskState.RUNNING
 
 
 def test_intake_real_loop_run_key_spawns_detached(tmp_path, monkeypatch):

@@ -426,7 +426,7 @@ class Session:
             "--data-dir",
             str(self.core.data_dir),
         ]
-        subprocess.Popen(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(self.core.repo_root) if self.core.repo_root else None,
             stdin=subprocess.DEVNULL,
@@ -434,6 +434,9 @@ class Session:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
+        # F12: claim RUNNING synchronously (owned by the child's pid) so the frame rendered
+        # right after `r` re-probes a running task, never the stale pre-run intake frame.
+        self.core.claim_running(task_id, proc.pid)
 
     def action_copy_push(self, task_id: str) -> None:
         try:

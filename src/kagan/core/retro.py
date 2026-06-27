@@ -6,7 +6,7 @@ surface (DESIGN lever 8 / §3.6). Stdlib file IO; create-or-append under a stabl
 heading so a human-edited file is never clobbered.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 _HEADING = "## kagan learnings"
@@ -26,7 +26,8 @@ def append_learning(repo_root: str | Path, line: str) -> Path:
     if not text:
         raise ValueError("refusing to append an empty learning to AGENTS.md")
     path = Path(repo_root) / "AGENTS.md"
-    date = datetime.now(UTC).strftime("%Y-%m-%d")
+    # B23: a human-facing date stamp in the committed AGENTS.md — LOCAL date, not UTC.
+    date = datetime.now().strftime("%Y-%m-%d")
     bullet = f"- {date}: {text}\n"
     if not path.exists():
         path.write_text(f"{_HEADING}\n\n{_INTRO}\n\n{bullet}", encoding="utf-8")

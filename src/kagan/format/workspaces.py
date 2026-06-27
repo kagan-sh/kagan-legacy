@@ -45,10 +45,15 @@ def _active(tasks: list[Task]) -> list[Task]:
 
 
 def render_workspaces(
-    tasks: list[Task], *, repo_name: str, now: datetime | None = None
+    tasks: list[Task],
+    *,
+    repo_name: str,
+    now: datetime | None = None,
+    started_at_by_task: dict[str, datetime] | None = None,
 ) -> RenderableType:
     """Header + one row per active task; calm one-liner when nothing is running."""
     now = now or datetime.now(UTC)
+    started_at_by_task = started_at_by_task or {}
     active = _active(tasks)
     working = sum(1 for t in tasks if t.state in (TaskState.RUNNING, TaskState.VALIDATING))
 
@@ -60,16 +65,19 @@ def render_workspaces(
         return Group(header, Text(""), Text("No agents are working right now.", style="secondary"))
 
     # Two display-width-aligned columns (title | status·ports·started) — no fixed gaps.
-    rows = label_value_rows([(t.title, _row_meta(t, now)) for t in active], label_style="bold")
+    rows = label_value_rows(
+        [(t.title, _row_meta(t, now, started_at_by_task.get(t.id, t.created_at))) for t in active],
+        label_style="bold",
+    )
     return Group(header, Text(""), Rule(style="secondary"), rows)
 
 
-def _row_meta(task: Task, now: datetime) -> str:
+def _row_meta(task: Task, now: datetime, started_at: datetime) -> str:
     status = _STATUS_WORD.get(task.state, task.state.value)
     bits = [status]
     if task.ports:
         bits.append(" ".join(f"{name} :{port}" for name, port in task.ports.items()))
-    bits.append(f"started {_elapsed(task.created_at, now)} ago")
+    bits.append(f"started {_elapsed(started_at, now)} ago")
     return "  ·  ".join(bits)
 
 

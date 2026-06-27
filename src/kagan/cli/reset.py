@@ -51,7 +51,41 @@ def _prune_worktrees() -> None:
     if root is None:
         return
     with contextlib.suppress(Exception):
-        run_async(git.run_git(["worktree", "prune"], cwd=root, check=False))
+        run_async(git.worktree_prune(root))
+
+
+def _remove_kagan_gitignore_line() -> bool:
+    """Remove the repo-root .gitignore line kagan appends for worktree checkouts."""
+    from kagan.core import git
+
+    root = git.repo_root(Path.cwd())
+    if root is None:
+        return False
+    path = root / ".gitignore"
+    if not path.exists():
+        return False
+    lines = path.read_text(encoding="utf-8").splitlines()
+    kept = [line for line in lines if line.strip() != ".kagan_worktrees/"]
+    if kept == lines:
+        return False
+    if kept:
+        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    else:
+        path.unlink()
+    return True
+
+
+def _delete_kagan_task_branches() -> tuple[list[str], list[str]]:
+    from kagan.core import git
+
+    root = git.repo_root(Path.cwd())
+    if root is None:
+        return [], []
+    try:
+        return run_async(git.delete_kagan_task_branches(root))
+    except Exception:
+        logger.exception("Failed to delete kagan task branches during reset")
+        return [], ["kagan/task-*"]
 
 
 def _print_full_impact() -> None:
@@ -118,11 +152,28 @@ def _do_full_reset(client, force: bool) -> None:
             click.echo(f"  {click.style('✓', fg='green')} Removed {label}: {path}")
         except OSError as err:
             click.echo(f"  {click.style('✗', fg='red')} Failed to remove {label}: {err}")
-        if label == "Worktrees":
-            _prune_worktrees()
+
+    # Prune unconditionally: the checkout directory may already be gone while git
+    # metadata still has a dangling .git/worktrees entry.
+    _prune_worktrees()
+    if _remove_kagan_gitignore_line():
+        click.echo(f"  {click.style('✓', fg='green')} Removed .kagan_worktrees/ from .gitignore")
+    deleted, failed = _delete_kagan_task_branches()
+    if deleted:
+        click.echo(f"  {click.style('✓', fg='green')} Deleted branches: {', '.join(deleted)}")
+    if failed:
+        click.echo(f"  {click.style('!', fg='yellow')} Branches still present: {', '.join(failed)}")
 
     click.echo()
-    click.secho("Reset complete. All Kagan data has been removed.", fg="green", bold=True)
+    message = (
+        "Reset complete. Ledger state was recreated; "
+        "worktrees and logs were removed where possible."
+    )
+    click.secho(
+        message,
+        fg="green",
+        bold=True,
+    )
     logger.info("Full reset complete")
 
 

@@ -8,6 +8,7 @@ Every helper degrades when stdin is not a TTY (or under tests with a scripted
 pipe input) instead of blocking, so the session is testable with a piped input.
 """
 
+import asyncio
 import re
 from typing import TYPE_CHECKING
 
@@ -33,7 +34,7 @@ from kagan.format._console import render_to_str
 from kagan.format.shell import FrameGeometry, RenderedFrame, frame_geometry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Awaitable, Callable, Sequence
 
     from prompt_toolkit.input import Input
     from prompt_toolkit.output import Output
@@ -78,6 +79,44 @@ async def navigate(
     )
     with patch_stdout():
         await app.run_async()
+
+
+async def wait_in_frame(
+    render: Callable[[FrameGeometry], RenderedFrame],
+    awaitable: Awaitable[object],
+    *,
+    input: Input | None = None,
+    output: Output | None = None,
+) -> object:
+    """Show a read-only frame while an awaitable runs, then return its result.
+
+    Lets the scheduled awaitable run one tick first so an awaitable that settles
+    (or raises) immediately — fast results, and piped-input test runs — propagates
+    without ever painting a frame, matching the module's non-blocking contract."""
+    task = asyncio.ensure_future(awaitable)
+    await asyncio.sleep(0)
+    if task.done():
+        return await task
+    bindings = KeyBindings()
+    app: Application[None] = Application(
+        layout=Layout(_centered_frame(render)),
+        key_bindings=bindings,
+        full_screen=True,
+        input=input,
+        output=output,
+    )
+
+    def _done(_task) -> None:
+        app.invalidate()
+        app.exit()
+
+    task.add_done_callback(_done)
+    try:
+        with patch_stdout():
+            await app.run_async()
+        return await task
+    finally:
+        task.remove_done_callback(_done)
 
 
 async def show_until_dismiss(
@@ -144,7 +183,8 @@ async def prompt_in_frame(
     esc/ctrl-c cancel (→ None), backspace / ctrl-w / ctrl-u edit, ctrl-o opens $EDITOR.
     Runs the SAME `full_screen` Application as `navigate()`, so the rounded box never
     breaks and the test seam (`input`/`output`) is preserved."""
-    state = {"text": default}
+    text = [default]
+    replace_on_type = [bool(default)]
     outcome: dict[str, object] = {"result": None, "edit": False}
     while True:
         outcome["result"] = None
@@ -154,23 +194,30 @@ async def prompt_in_frame(
         @bindings.add(Keys.Any)
         def _type(event) -> None:
             if event.data and event.data.isprintable():
-                state["text"] += event.data
+                if replace_on_type[0]:
+                    text[0] = event.data
+                    replace_on_type[0] = False
+                else:
+                    text[0] += event.data
 
         @bindings.add("backspace")
         def _backspace(event) -> None:
-            state["text"] = state["text"][:-1]
+            text[0] = text[0][:-1]
+            replace_on_type[0] = False
 
         @bindings.add("c-w")
         def _delete_word(event) -> None:
-            state["text"] = re.sub(r"\s*\S+\s*$", "", state["text"])
+            text[0] = re.sub(r"\s*\S+\s*$", "", text[0])
+            replace_on_type[0] = False
 
         @bindings.add("c-u")
         def _clear(event) -> None:
-            state["text"] = ""
+            text[0] = ""
+            replace_on_type[0] = False
 
         @bindings.add("enter")
         def _submit(event) -> None:
-            outcome["result"] = state["text"]
+            outcome["result"] = text[0]
             event.app.exit()
 
         @bindings.add("c-o")
@@ -184,7 +231,7 @@ async def prompt_in_frame(
             event.app.exit()
 
         app: Application[None] = Application(
-            layout=Layout(_centered_frame(lambda g: render(g, state["text"]))),
+            layout=Layout(_centered_frame(lambda g: render(g, text[0]))),
             key_bindings=bindings,
             full_screen=True,
             input=input,
@@ -193,9 +240,10 @@ async def prompt_in_frame(
         with patch_stdout():
             await app.run_async()
         if outcome["edit"]:
-            edited = _open_editor(state["text"])
+            edited = _open_editor(text[0])
             if edited is not None:
-                state["text"] = edited.rstrip("\n")
+                text[0] = edited.rstrip("\n")
+                replace_on_type[0] = False
             continue
         return outcome["result"]  # type: ignore[return-value]
 
@@ -342,4 +390,5 @@ __all__ = [
     "prompt_in_frame",
     "render_to_ansi",
     "show_until_dismiss",
+    "wait_in_frame",
 ]

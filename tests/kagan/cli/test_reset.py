@@ -30,6 +30,7 @@ def fake_client(monkeypatch):
     # The data-dir probe walks real dirs; stub it so the test stays hermetic.
     monkeypatch.setattr(reset_mod, "_get_data_dirs", lambda: [])
     monkeypatch.setattr(reset_mod, "_prune_worktrees", lambda: None)
+    monkeypatch.setattr(reset_mod, "_remove_kagan_gitignore_line", lambda: False)
     return client
 
 
@@ -55,3 +56,33 @@ def test_reset_force_flag_still_wipes(fake_client):
     result = CliRunner().invoke(cli, ["reset", "--force"])
     assert result.exit_code == 0, result.output
     assert fake_client.reset_called is True
+
+
+def test_reset_prunes_even_when_worktree_dir_is_already_gone(fake_client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(reset_mod, "_prune_worktrees", lambda: calls.append("prune"))
+
+    result = CliRunner().invoke(cli, ["reset", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == ["prune"]
+
+
+def test_reset_removes_kagan_worktrees_gitignore_line(tmp_path, monkeypatch):
+    (tmp_path / ".gitignore").write_text("build/\n.kagan_worktrees/\n.env\n", encoding="utf-8")
+    monkeypatch.setattr("kagan.core.git.repo_root", lambda _start: tmp_path)
+
+    assert reset_mod._remove_kagan_gitignore_line() is True
+
+    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == "build/\n.env\n"
+
+
+def test_reset_reports_branch_cleanup_and_does_not_overclaim(fake_client, monkeypatch):
+    monkeypatch.setattr(reset_mod, "_delete_kagan_task_branches", lambda: (["kagan/task-abc"], []))
+
+    result = CliRunner().invoke(cli, ["reset", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert "Deleted branches: kagan/task-abc" in result.output
+    assert "All Kagan data has been removed" not in result.output
+    assert "Ledger state was recreated" in result.output

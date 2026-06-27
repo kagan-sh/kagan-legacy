@@ -7,6 +7,7 @@ from kagan.core import Harness
 from kagan.core.enums import TaskState
 from kagan.core.errors import NotFoundError, ValidationError
 from kagan.core.ledger import Ledger
+from kagan.core.models import CheckResult
 from kagan.core.tasks import TaskService, _is_substantive
 
 
@@ -42,12 +43,12 @@ def test_blocking_decision_locks_run_until_answered(tmp_path: Path):
     core.close()
 
 
-def test_blessing_a_blocking_decision_unlocks_run(tmp_path: Path):
-    # blessed counts as explicitly resolved.
+def test_approving_a_blocking_decision_unlocks_run(tmp_path: Path):
+    # approved (took the agent's assumption) counts as explicitly resolved.
     core = Harness(data_dir=tmp_path)
     task = core.create_task("Add feature")
     task = core.add_decision(task.id, question="?", severity="blocking")
-    task = core.answer_decision(task.id, task.decisions[0].id, answer="", blessed=True)
+    task = core.answer_decision(task.id, task.decisions[0].id, answer="", approved=True)
     assert core.can_run(task.id)
     core.close()
 
@@ -109,6 +110,22 @@ def test_low_risk_approves_without_a_comprehension_note(tmp_path: Path):
     assert not core.can_approve(task.id)  # the findings lock still holds for every tier
     core.set_verdict(task.id, task.findings[0].id, verdict="agree")
     # No comprehension note recorded, yet low risk unlocks.
+    assert core.can_approve(task.id)
+    core.close()
+
+
+def test_failed_required_check_blocks_approve_even_at_low_risk(tmp_path: Path):
+    # Machine checks are still a low-risk gate: "fast approve" cannot certify a
+    # failed declared check as accepted.
+    core = Harness(data_dir=tmp_path)
+    task = core.create_task("Tweak docs")
+    core.update_task(
+        task.id,
+        risk="low",
+        checks=[CheckResult(name="fmt", passed=False, detail="rc=1")],
+    )
+    assert not core.can_approve(task.id)
+    core.update_task(task.id, checks=[CheckResult(name="fmt", passed=True)])
     assert core.can_approve(task.id)
     core.close()
 

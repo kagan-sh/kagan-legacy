@@ -41,6 +41,10 @@ if TYPE_CHECKING:
 # a view-loop actually accepts appears here (the regression that let Review's footer
 # omit g/d/v/q while the loop handled them).
 _PROMPT_HINT = "enter submit · ctrl-o editor · esc cancel"
+_TRIVIAL_COMPREHENSION_HINT = (
+    "That reads as a placeholder — restate it in your own words; "
+    "the gate needs your understanding, not a stand-in."
+)
 
 _VIEW_KEYS: dict[str, tuple[KeyHint, ...]] = {
     "Inbox": (
@@ -117,6 +121,12 @@ _VIEW_KEYS: dict[str, tuple[KeyHint, ...]] = {
 
 def _repo_name(core: Harness) -> str:
     return core.repo_root.name if core.repo_root else "kagan"
+
+
+def _accepted_assumption(decision) -> str:
+    """The agent's assumption a human accepts on Approve = the first offered option
+    (DESIGN §5 'take the assumption'); empty when the decision carried no options."""
+    return decision.options[0] if decision.options else ""
 
 
 def _print(console_text: str) -> None:
@@ -258,21 +268,34 @@ class Session:
         Returns ``(verb, task_id)`` or None to quit. ``verb`` is one of: open,
         send-back, allow-scope, re-run, copy-push, new, workspaces, stats, help.
         """
-        items = self.core.inbox_tasks()
         cursor: dict[str, int | None] = {"i": 0 if rows else None}
         result: dict[str, tuple[str, str | None] | None] = {"action": None}
+        # B14: re-read the ledger on every frame so the body AND the header derive from
+        # the SAME snapshot — a detached runner's transition can't leave the row list
+        # stale while the badge already moved on. Not a poll timer (DESIGN-UI-03): the
+        # read happens only on a keypress repaint, never on a background tick.
+        live: dict[str, list[InboxItem]] = {"rows": rows}
 
         def _focused() -> InboxItem | None:
-            i = cursor["i"]
-            return rows[i] if i is not None and 0 <= i < len(rows) else None
+            i, current = cursor["i"], live["rows"]
+            return current[i] if i is not None and 0 <= i < len(current) else None
 
         def _render(geometry: FrameGeometry) -> RenderedFrame:
+            items = self.core.inbox_tasks()
+            live["rows"] = fmt_inbox.selectable_rows(items)
+            if not live["rows"]:
+                cursor["i"] = None
+            elif cursor["i"] is None:
+                cursor["i"] = 0
+            else:
+                cursor["i"] = min(cursor["i"], len(live["rows"]) - 1)
             return self._inbox_frame(items, cursor["i"], geometry)
 
         def _move(step: int):
             def _handler(event) -> None:
-                if rows and cursor["i"] is not None:
-                    cursor["i"] = (cursor["i"] + step) % len(rows)
+                current = live["rows"]
+                if current and cursor["i"] is not None:
+                    cursor["i"] = (cursor["i"] + step) % len(current)
 
             return _handler
 
@@ -473,7 +496,7 @@ class Session:
             blocking = [
                 d
                 for d in task.decisions
-                if d.severity == "blocking" and not (d.answer or d.blessed)
+                if d.severity == "blocking" and not (d.answer or d.approved)
             ]
             cursor["i"] = min(cursor["i"], max(len(blocking) - 1, 0))
             verb = await self._intake_frame(task, blocking, cursor)
@@ -481,22 +504,22 @@ class Session:
                 return
             focused = blocking[cursor["i"]] if blocking and cursor["i"] < len(blocking) else None
             if verb == "approve" and focused is not None:
-                self.core.answer_decision(task_id, focused.id, answer="", blessed=True)
-            elif verb == "reject" and focused is not None:
-                from rich.text import Text
-
-                override = await self._prompt_in_frame(
-                    "Override answer", body=Text(focused.question, style="secondary")
+                # B16: record WHAT was accepted (the agent's assumption = the first
+                # offered option), not a bare verb — the receipt must reconstruct it.
+                self.core.answer_decision(
+                    task_id, focused.id, answer=_accepted_assumption(focused), approved=True
                 )
-                if override and override.strip():
-                    self.core.answer_decision(
-                        task_id, focused.id, answer=override.strip(), blessed=False
-                    )
+            elif verb == "reject" and focused is not None:
+                override = await self._override_decision(focused)
+                if override:
+                    self.core.answer_decision(task_id, focused.id, answer=override, approved=False)
             elif verb == "approve-all":
                 if not await self._confirm_approve_all(blocking, task.risk):
                     continue
                 for d in blocking:
-                    self.core.answer_decision(task_id, d.id, answer="", blessed=True)
+                    self.core.answer_decision(
+                        task_id, d.id, answer=_accepted_assumption(d), approved=True
+                    )
             elif verb == "run":
                 if not self.core.can_run(task_id):
                     _print("Run is locked: resolve blocking decisions first.")
@@ -513,8 +536,6 @@ class Session:
     async def _intake_frame(self, task: Task, blocking: list, cursor: dict[str, int]) -> str | None:
         """One in-place navigator frame for the decision walk; returns the chosen verb
         (approve / reject / approve-all / run / back) or None to quit."""
-        from rich.console import Group
-
         result: dict[str, str | None] = {"verb": None}
 
         def _render(geometry: FrameGeometry) -> RenderedFrame:
@@ -522,13 +543,11 @@ class Session:
             body = fmt_intake.render_intake(
                 task, can_run=can_run, risk=task.risk, cursor=cursor["i"]
             )
-            return self._frame(
-                Group(
-                    body,
-                    render_footer(_intake_footer(len(blocking), can_run=can_run, risk=task.risk)),
-                ),
-                geometry,
-            )
+            # B5: the footer rides the PINNED region (not inside the body Group) so the
+            # decision controls survive even when many decisions overflow the frame —
+            # render_frame clips the body, never the pinned footer.
+            footer = render_footer(_intake_footer(len(blocking), can_run=can_run, risk=task.risk))
+            return self._frame(body, geometry, footer=footer)
 
         def _move(step: int):
             def _handler(event) -> None:
@@ -559,6 +578,26 @@ class Session:
         }
         await _interactive.navigate(_render, handlers, input=self._input, output=self._output)
         return result["verb"]
+
+    async def _override_decision(self, decision) -> str | None:
+        """B6: reject/override lets the human PICK from the offered options (the decision
+        already carries them) with free-text as the fallback — no retyping an option that
+        was right there. Returns the chosen/typed answer, or None if cancelled/empty."""
+        from rich.text import Text
+
+        body = Text(decision.question, style="secondary")
+        options = list(decision.options)
+        if options:
+            labels = [*options, "✎ type a different answer"]
+            picked = await self._choose_in_frame(
+                "Override — pick the correct answer", labels, body=body
+            )
+            if picked is None:
+                return None
+            if picked < len(options):
+                return options[picked]
+        typed = await self._prompt_in_frame("Override answer", body=body)
+        return typed.strip() if typed and typed.strip() else None
 
     async def _confirm_approve_all(self, blocking: list, risk: str) -> bool:
         """`A` approve-all is a one-key gate bypass — gate it behind a confirm naming
@@ -596,6 +635,11 @@ class Session:
             if verb in ("back", None):
                 return
             if verb == "approve":
+                # B19: low/med approve is deliberately a single keystroke with no extra
+                # y/N confirm — DESIGN mandates no-auto-advance only at high/irreversible,
+                # and the lever-5 cooldown below already forces a real read before it
+                # unlocks. High risk gets its no-bypass friction via the second-approver
+                # bar in approve_task, not a confirm prompt here.
                 remaining = self.core.approve_cooldown_remaining(task_id)
                 if not self.core.can_approve(task_id):  # TUI-GATE-06 structural re-check
                     _print(self._approve_lock_reason(task_id))
@@ -861,8 +905,12 @@ class Session:
         suggested = self.core.propose_retro(task_id)
         if not suggested:
             return
+        # B21: the field is PREFILLED with the suggestion, so Enter appends the (edited)
+        # text and esc skips — the header must say that, not the contradictory "enter to
+        # skip" (which read as "Enter does nothing" while the footer said "enter submit").
         edited = await self._prompt_in_frame(
-            "One learning for AGENTS.md? (enter to skip)", default=suggested
+            "One learning for AGENTS.md — edit & enter to append, esc to skip",
+            default=suggested,
         )
         if edited and edited.strip():
             self.core.confirm_retro(task_id, edited.strip())
@@ -875,11 +923,18 @@ class Session:
 
     def _approve_lock_reason(self, task_id: str) -> str:
         """Name the actual unmet approve condition (findings / comprehension / approver)."""
+        from kagan.core.tasks import is_open_blocker
+
         task = self.core.get_task(task_id)
         if task is None:
             return "Approve is locked."
-        if any(f.severity == "blocking" and f.verdict is None for f in task.findings):
+        if any(is_open_blocker(f) for f in task.findings):
             return "Approve is locked: adjudicate the open blocking finding(s) first."
+        failed_checks = [c.name for c in task.checks if not c.passed]
+        if failed_checks:
+            return "Approve is locked: fix failing required check(s) first: " + ", ".join(
+                failed_checks
+            )
         from kagan.format.gate import _unanswered_keys
 
         remaining = len(_unanswered_keys(task))
@@ -992,7 +1047,7 @@ class Session:
             "j": _scroll(1),
             "up": _scroll(-1),
             "k": _scroll(-1),
-            "page-down": _page(1),
+            "pagedown": _page(1),
             "pageup": _page(-1),
             "q": _back,
             "escape": _back,
@@ -1003,8 +1058,14 @@ class Session:
     async def _walk_comprehension(self, task: Task) -> None:
         """Lever 1: walk the risk-scaled prompt set one prompt at a time, recording
         each answer as we go (partial-save — quitting mid-walk leaves answered
-        prompts recorded). An empty set (low risk) is a no-op with a note."""
+        prompts recorded). An empty set (low risk) is a no-op with a note.
+
+        A trivial/templated answer is NOT silently swallowed (B9): the gate's own
+        substance check rejects it, the human is told WHY, and the junk is never
+        persisted — the stored value stays the last ACCEPTED answer, so a placeholder
+        can never ride into the receipt."""
         from kagan.core.comprehension import prompts_for_task
+        from kagan.core.tasks import _is_substantive
 
         prompts = prompts_for_task(task)
         if not prompts:
@@ -1015,13 +1076,22 @@ class Session:
         context = self._comprehension_context(task)
         total = len(prompts)
         for i, (key, question) in enumerate(prompts, start=1):
-            existing = task.comprehension.get(key, "")
-            # 1a + Phase 4: single-line, captured in-frame — Enter submits and the loop
-            # advances to the next prompt (multiline made Enter insert a newline).
             label = f"{i} of {total} — {question}"
-            answer = await self._prompt_in_frame(label, body=context, default=existing)
-            if answer and answer.strip():
-                self.core.record_comprehension(task.id, key, answer.strip())
+            # Prefill with the last ACCEPTED answer (trivial attempts are never stored).
+            draft = task.comprehension.get(key, "")
+            while True:
+                answer = await self._prompt_in_frame(label, body=context, default=draft)
+                if answer is None:
+                    return  # esc leaves the walk; answers so far are already recorded
+                stripped = answer.strip()
+                if not stripped:
+                    break  # blank skips this prompt, keeping any prior accepted answer
+                if not _is_substantive(stripped):
+                    draft = stripped  # let them edit their attempt; do NOT persist it
+                    _print(_TRIVIAL_COMPREHENSION_HINT)
+                    continue
+                self.core.record_comprehension(task.id, key, stripped)
+                break
 
     def _comprehension_context(self, task: Task):
         """Changed-file context above comprehension questions; D opens the diff viewer."""
@@ -1089,14 +1159,11 @@ class Session:
             if key in ("q", None):
                 return
             if key == "c":
-                self._copy(push_cmd, "Push command")
-                copied = "c"
+                copied = "c" if self._copy(push_cmd, "Push command") else None
             elif key == "p":
-                self._copy(pr_cmd, "PR command")
-                copied = "p"
+                copied = "p" if self._copy(pr_cmd, "PR command") else None
             elif key == "r":
-                self._copy(receipt, "Receipt")
-                copied = "r"
+                copied = "r" if self._copy(receipt, "Receipt") else None
             elif key == "l" and retro:
                 copied = None
                 await self._offer_retro(task_id)
@@ -1155,11 +1222,15 @@ class Session:
         def _render(geometry: FrameGeometry) -> RenderedFrame:
             from rich.console import Group
 
+            self.core.reconcile_in_flight()
             tasks = self.core.list_tasks()
             target = focus if focus is not None else self._first_live_worktree()
             blocks: list = [
                 fmt_workspaces.render_workspaces(
-                    tasks, repo_name=_repo_name(self.core), now=datetime.now(UTC)
+                    tasks,
+                    repo_name=_repo_name(self.core),
+                    now=datetime.now(UTC),
+                    started_at_by_task=self._running_started_at_map(tasks),
                 )
             ]
             if focus is not None:
@@ -1179,6 +1250,7 @@ class Session:
             return self._frame(Group(*blocks), geometry)
 
         def _take_over(event) -> None:
+            self.core.reconcile_in_flight()
             target = focus if focus is not None else self._first_live_worktree()
             cmd = self._takeover_cd(target)
             if cmd is None:
@@ -1191,7 +1263,32 @@ class Session:
             event.app.exit()
 
         handlers = {"t": _take_over, "w": _back, "q": _back, "escape": _back, "c-c": _back}
-        await _interactive.navigate(_render, handlers, input=self._input, output=self._output)
+        # No background refresh timer (DESIGN-PLAT-01 / UI-03: no live-updating panes).
+        # _render reconciles on entry and on every keypress repaint — enough to keep a
+        # finished run from reading as "working" (#21) without idle-watching.
+        await _interactive.navigate(
+            _render,
+            handlers,
+            input=self._input,
+            output=self._output,
+        )
+
+    def _running_started_at_map(self, tasks: list[Task]):
+        from datetime import datetime
+
+        from kagan.core import TaskState
+
+        started: dict[str, datetime] = {}
+        for task in tasks:
+            if task.state not in (TaskState.RUNNING, TaskState.VALIDATING, TaskState.PR_OPEN):
+                continue
+            for event in self.core.read_events(task.id):
+                if event.get("type") != "transition" or event.get("to") != TaskState.RUNNING.value:
+                    continue
+                ts = event.get("ts")
+                if ts:
+                    started[task.id] = datetime.fromisoformat(ts)
+        return started
 
     def _first_live_worktree(self) -> str | None:
         from kagan.core import TaskState
@@ -1328,6 +1425,7 @@ class Session:
             selected=selected,
             recipe_command=recipe_cmd,
             risk=self.core.preview_risk(scope),
+            reviewer_configured=selected is not None and self.core.reviewer_configured(selected),
             queue_note=queue_note,
         )
         if not await self._confirm_in_frame("Create & plan this task?", body=form):
@@ -1338,9 +1436,13 @@ class Session:
             task = self.core.create_task(title)
             if selected is not None or scope:
                 self.core.configure_task(task.id, agent_cli=selected, scope=scope or None)
-            await self.core.run_intake(task.id)
         except Exception as exc:
             _print(f"Cannot create task: {exc}")
+            return
+        try:
+            await self._run_intake_with_status(task.id, title)
+        except Exception as exc:
+            _print(f"Cannot plan task: {exc}")
             return
         # Lever 5: intake plans read-only (no agent in flight), so creation is never
         # blocked — but warn the cap is hit (no auto-queue; re-run from intake later).
@@ -1351,11 +1453,32 @@ class Session:
             )
         await self.open_task(task.id)
 
+    async def _run_intake_with_status(self, task_id: str, title: str) -> None:
+        from rich.console import Group
+        from rich.text import Text
+
+        def _render(geometry: FrameGeometry) -> RenderedFrame:
+            return self._frame(
+                Group(
+                    Text(f"{title} · planning…", style="bold"),
+                    Text("asking the agent to report what it understood", style="secondary"),
+                ),
+                geometry,
+            )
+
+        await _interactive.wait_in_frame(
+            _render,
+            self.core.run_intake(task_id),
+            input=self._input,
+            output=self._output,
+        )
+
     # -- helpers ----------------------------------------------------------
 
-    def _copy(self, value: str, label: str) -> None:
+    def _copy(self, value: str, label: str) -> bool:
         copied = _interactive.copy_to_clipboard(value)
         _print(f"{label}{' copied' if copied else ' (copy unavailable — select the text)'}.")
+        return copied
 
     @staticmethod
     def _safe(fn, fallback: str) -> str:

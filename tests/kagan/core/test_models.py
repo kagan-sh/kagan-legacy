@@ -29,12 +29,12 @@ def test_task_defaults():
 
 
 def test_decision_defaults_to_unanswered():
-    # can_run (test_tasks) treats `answer is None and not blessed` as an open
+    # can_run (test_tasks) treats `answer is None and not approved` as an open
     # blocking decision; pin those defaults so a model change that silently
     # unlocks the run gate fails here.
     d = Decision(id="d-1", question="Which base branch?", severity="blocking", options=["main"])
     assert d.answer is None
-    assert d.blessed is False
+    assert d.approved is False
 
 
 def test_finding_verdict_and_reply_default_none():

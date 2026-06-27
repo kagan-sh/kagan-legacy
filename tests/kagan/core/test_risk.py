@@ -18,6 +18,7 @@ def test_high_if_any_scope_path_matches_a_high_glob():
     # autonomy ladder routes by the worst thing touched, not the average.
     assert classify(["docs/x.md", "src/auth/login.py"], _TIERS) == "high"
     assert classify(["migrations/0007.py"], _TIERS) == "high"
+    assert classify(["src/**"], {"high": ["src/auth/**"]}) == "high"
 
 
 def test_low_only_when_every_scope_path_matches_a_low_glob():
@@ -25,6 +26,14 @@ def test_low_only_when_every_scope_path_matches_a_low_glob():
     # drops it to medium so a docs+code mix never skips the gate.
     assert classify(["docs/a.md", "docs/b.md"], _TIERS) == "low"
     assert classify(["docs/a.md", "src/util.py"], _TIERS) == "medium"
+
+
+def test_low_scope_must_be_contained_by_low_glob():
+    # Low relaxes the gate, so a scope only earns low when the declared low matcher
+    # contains it. A subdirectory under a low docs tree is safe; partial overlap is not.
+    assert classify(["docs/images/**"], {"low": ["docs/**"]}) == "low"
+    assert classify(["docs/*.md"], {"low": ["docs/images/**"]}) == "medium"
+    assert classify(["docs/images/**"], {"low": ["docs/*.md"]}) == "medium"
 
 
 def test_medium_for_unmatched_scope():

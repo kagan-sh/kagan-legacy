@@ -321,6 +321,13 @@ async def test_validator_stage_skipped_when_no_reviewer_configured(tmp_path, mon
         if e.get("type") == "transition"
     ]
     assert ("running", "validating") not in transitions
+    # WS1/B18: a med-risk task with no reviewer records the validator as DISABLED (not a
+    # bare None that the receipt could mistake for "ran"), and the receipt says so
+    # honestly — disabled, not "unavailable" (which is reserved for a ran-and-failed pass).
+    assert task.validator_outcome == "disabled"
+    receipt = core.render_receipt(task.id)
+    assert "validator disabled — no reviewer configured" in receipt
+    assert "validator unavailable" not in receipt
 
 
 async def test_low_risk_scope_skips_the_validator_even_with_reviewer_configured(
@@ -357,10 +364,10 @@ async def test_low_risk_scope_skips_the_validator_even_with_reviewer_configured(
     assert ("running", "validating") not in transitions
 
 
-async def test_medium_risk_scope_runs_the_validator(tmp_path, monkeypatch):
-    # The counterpart: a medium-tier scope (high glob present, scope not under it)
-    # DOES run the validator, so the skip is genuinely tier-conditional, not
-    # always-off. Goes RUNNING -> VALIDATING -> REVIEW with an ai-review finding.
+async def test_high_overlap_scope_runs_the_validator(tmp_path, monkeypatch):
+    # A broad task scope that can touch a declared high-risk subtree routes high, not
+    # medium-by-exact-phrasing. High still runs the validator, so the low-risk skip
+    # above is genuinely tier-conditional, not always-off.
     repo = await _repo(
         tmp_path / "repo",
         _agents("sonnet", "opus") + "risk_tiers:\n  high:\n    - 'src/auth/**'\n",
@@ -372,7 +379,7 @@ async def test_medium_risk_scope_runs_the_validator(tmp_path, monkeypatch):
     core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
     task = core.create_task("feature")
     core.configure_task(task.id, agent_cli=CLI, scope=["src/**"])
-    assert core.get_task(task.id).risk == "medium"
+    assert core.get_task(task.id).risk == "high"
 
     await core.start_task(task.id)
     await core.await_agent(task.id)

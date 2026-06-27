@@ -91,6 +91,47 @@ def _validate_prompt(task: Task) -> str:
     return prompt
 
 
+_ASK_ENVELOPES: dict[str, str] = {
+    "intake_decisions": (
+        '{"type":"intake_decisions","payload":{"understanding":"...","decisions":'
+        '[{"question":"...","severity":"blocking","options":["..."]}]}}'
+    ),
+    "needs_you": (
+        '{"type":"needs_you","payload":{"reason":"...","question":"...","context":"..."}}'
+    ),
+    "smoke_tests": ('{"type":"smoke_tests","payload":{"items":[{"text":"...","service":"..."}]}}'),
+    "drift": '{"type":"drift","payload":{"message":"...","location":"..."}}',
+    "findings": (
+        '{"type":"findings","payload":{"findings":[{"severity":"blocking",'
+        '"location":"path:line","message":"concrete failure path","confidence":8,'
+        '"status":"VERIFIED"}]}}'
+    ),
+    "comprehension_prompts": (
+        '{"type":"comprehension_prompts","payload":{"prompts":'
+        '[{"key":"postcondition","question":"..."}]}}'
+    ),
+    "done": '{"type":"done","payload":{}}',
+    "manifest": (
+        '{"type":"manifest","payload":{"base_branch":"main","checks":[],'
+        '"risk_tiers":{"low":[],"medium":[],"high":[]},"services":{},'
+        '"security":null,"builder":null,"reviewer":null}}'
+    ),
+}
+
+
+def _ask_fallback_instructions(ask_path: Path, report_types: tuple[str, ...]) -> str:
+    lines = [
+        "",
+        "If the MCP report tool is unavailable, use the .kagan/ask fallback.",
+        f"Append JSON Lines to exactly this file: {ask_path}",
+        "Each line MUST be one JSON object with keys type and payload; "
+        "payload MUST be an object, not a string.",
+        "Use these envelope shapes when relevant:",
+    ]
+    lines.extend(f"- {_ASK_ENVELOPES[t]}" for t in report_types)
+    return "\n".join(lines) + "\n"
+
+
 def _model_vocab_directive(cli: str) -> str:
     """Tell the drafting agent to propose builder/reviewer as ids the THIS cli can run
     itself — passed verbatim to its --model flag, with no translation by kagan."""
@@ -132,16 +173,18 @@ _MAX_RERUN_FINDINGS = 10
 
 def _sendback_section(task: Task) -> list[str]:
     """On a re-run after send-back, tell the agent WHY it came back: the reviewer's
-    note (the directive), the findings the human upheld (fix these), and the ones the
-    human overruled (leave them as-is, with the reviewer's reason). Without this the
-    re-run agent is blind to the review verdict and just rebuilds the same thing."""
-    notes = [f.message for f in task.findings if f.source == "sendback" and f.message]
-    upheld = [f for f in task.findings if f.verdict == "agree" and f.source != "sendback"]
-    overruled = [f for f in task.findings if f.verdict == "disagree" and f.source != "sendback"]
-    if not (notes or upheld or overruled):
+    note (the directive, from Task.sendback_note — not a finding), the findings the human
+    upheld (fix these), and the ones the human overruled (leave them as-is, with the
+    reviewer's reason). Without this the re-run agent is blind to the review verdict and
+    just rebuilds the same thing."""
+    note = task.sendback_note
+    upheld = [f for f in task.findings if f.verdict == "agree"]
+    overruled = [f for f in task.findings if f.verdict == "disagree"]
+    if not (note or upheld or overruled):
         return []
     out = ["", "The reviewer sent this back — address it:"]
-    out += [f"  - {n}" for n in notes[-3:]]  # the most recent send-back note(s)
+    if note:
+        out.append(f"  - {note}")
     if upheld:
         out.append("Fix these (the reviewer upheld them):")
         for f in upheld[:_MAX_RERUN_FINDINGS]:
@@ -154,17 +197,22 @@ def _sendback_section(task: Task) -> list[str]:
     return out
 
 
-def _run_prompt(task: Task) -> str:
+def _run_prompt(task: Task, ask_path: Path | None = None) -> str:
     lines = [f"Task: {task.title}", task.description, "Mode: run."]
     for d in task.decisions:
-        lines.append(f"Decision: {d.question} -> {d.answer or 'blessed'}")
+        lines.append(f"Decision: {d.question} -> {d.answer or '(accepted default)'}")
     if task.scope:
         lines.append(f"Scope (do not edit outside): {', '.join(task.scope)}")
     lines += _sendback_section(task)
     lines.append(
         "Report needs-you, smoke-tests, drift, and done via the report channel or .kagan/ask."
     )
-    return "\n".join(lines) + "\n"
+    prompt = "\n".join(lines) + "\n"
+    if ask_path is not None:
+        prompt += _ask_fallback_instructions(
+            ask_path, ("needs_you", "smoke_tests", "drift", "done")
+        )
+    return prompt
 
 
 def _build_cmd(cli: str, prompt_path: Path, *, cwd: Path, model: str | None = None) -> list[str]:
@@ -318,10 +366,12 @@ async def _run_readonly_sandbox(
         # Tell the agent the exact fallback file. With no MCP config in this sandbox
         # the report tools do not exist, so the .kagan/ask JSONL fallback is the only
         # working channel here (DESIGN §3.6 "the agent's only structured channel").
-        prompt_with_path = (
-            f"{prompt_text}If the report tool is unavailable, append one JSON envelope "
-            f'per line ({{"type": ..., "payload": ...}}) to: {ask_path}\n'
-        )
+        report_types = {
+            "intake": ("intake_decisions",),
+            "validate": ("findings", "comprehension_prompts"),
+            "init": ("manifest",),
+        }[phase]
+        prompt_with_path = prompt_text + _ask_fallback_instructions(ask_path, report_types)
         prompt = _write_prompt(sandbox, prompt_name, prompt_with_path)
         ask_path.touch()
         cmd = _build_cmd(task.agent_cli or "claude", prompt, cwd=sandbox, model=model)
@@ -426,15 +476,16 @@ async def launch_run(task: Task, *, model: str | None = None) -> asyncio.subproc
     worktree = task.worktree_path
     assert worktree is not None, "task must have a worktree before run"
     worktree = Path(worktree)
-    prompt = _write_prompt(worktree, "prompt.txt", _run_prompt(task))
-    (worktree / ".kagan" / "ask").touch()
+    ask_path = worktree / ".kagan" / "ask"
+    prompt = _write_prompt(worktree, "prompt.txt", _run_prompt(task, ask_path))
+    ask_path.touch()
     cmd = _build_cmd(task.agent_cli or "claude", prompt, cwd=worktree, model=model)
     env = _agent_env(
         task.agent_cli or "claude",
         {
             "KAGAN_RUN": "1",
             "KAGAN_TASK_ID": task.id,
-            "KAGAN_ASK_PATH": str(worktree / ".kagan" / "ask"),
+            "KAGAN_ASK_PATH": str(ask_path),
         },
     )
     logger.info("launching agent {} for task {}", task.agent_cli, task.id)

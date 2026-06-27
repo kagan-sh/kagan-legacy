@@ -30,6 +30,25 @@ def test_lists_active_task_with_branch_and_ports():
     assert "1 agents working" in out
 
 
+def test_running_elapsed_uses_running_transition_when_supplied():
+    now = datetime.now(UTC)
+    task = _task(
+        title="fix-rate-limit",
+        state=TaskState.RUNNING,
+        created_at=now - timedelta(minutes=4),
+    )
+    out = to_str(
+        workspaces.render_workspaces(
+            [task],
+            repo_name="myrepo",
+            now=now,
+            started_at_by_task={task.id: now - timedelta(seconds=8)},
+        )
+    )
+    assert "started 8s ago" in out
+    assert "started 4m ago" not in out
+
+
 def test_pr_open_task_is_active_but_not_counted_as_working():
     now = datetime.now(UTC)
     task = _task(title="export-csv", state=TaskState.PR_OPEN, created_at=now)

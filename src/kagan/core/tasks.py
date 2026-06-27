@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from kagan.core import git
+from kagan.core.checks import has_failed_checks
 from kagan.core.comprehension import prompts_for_risk, required_keys_for_task
 from kagan.core.config import load_repo_config
 from kagan.core.errors import ConfigurationError, NotFoundError, ValidationError
@@ -69,6 +70,16 @@ def _is_substantive(text: str | None) -> bool:
         return False
     real_words = {w for w in words if sum(c.isalpha() for c in w) >= 3}
     return len(real_words) >= 3
+
+
+def is_open_blocker(finding: Finding) -> bool:
+    """The ONE predicate for an unadjudicated blocking finding (B13): a verdict — agree
+    OR disagree — adjudicates it. ``can_approve`` and every review surface (checklist,
+    lock block, approve-lock reason, focusable rows) read this, so they can never
+    disagree about whether a task is approvable the way they did when one path read
+    ``verdict != "agree"`` (counting an overruled finding as still open) while another
+    read ``verdict is None``."""
+    return finding.severity == "blocking" and finding.verdict is None
 
 
 def _event_summary(event: dict) -> str:
@@ -145,21 +156,21 @@ class TaskService:
         return task
 
     def answer_decision(
-        self, task_id: str, decision_id: str, *, answer: str, blessed: bool = False
+        self, task_id: str, decision_id: str, *, answer: str, approved: bool = False
     ) -> Task:
         task = self._load(task_id)
         decision = next((d for d in task.decisions if d.id == decision_id), None)
         if decision is None:
             raise NotFoundError("decision", decision_id)
         decision.answer = answer
-        decision.blessed = blessed
+        decision.approved = approved
         self._commit(task, {"type": "decision_answered", "decision_id": decision_id})
         return task
 
     def can_run(self, task_id: str) -> bool:
         task = self._load(task_id)
         return not any(
-            d.severity == "blocking" and d.answer is None and not d.blessed for d in task.decisions
+            d.severity == "blocking" and d.answer is None and not d.approved for d in task.decisions
         )
 
     def add_finding(
@@ -254,10 +265,10 @@ class TaskService:
         # Harness.approve_task, kept out of here so this stays a pure
         # findings+comprehension lock the surface reads for rendering.
         task = self._load(task_id)
-        findings_clear = not any(
-            f.severity == "blocking" and f.verdict is None for f in task.findings
-        )
+        findings_clear = not any(is_open_blocker(f) for f in task.findings)
         if not findings_clear:
+            return False
+        if has_failed_checks(task.checks):
             return False
         if task.risk == "low":
             return True

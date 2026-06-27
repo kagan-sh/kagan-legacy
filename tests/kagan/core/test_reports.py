@@ -23,6 +23,28 @@ def test_malformed_line_is_raw(tmp_path: Path):
     assert read_ask(tmp_path)[0].type == "raw"
 
 
+def test_malformed_json_envelope_is_skipped(tmp_path: Path):
+    # DESIGN-INV-17: one bad `.kagan/ask` envelope must not abort harvest or leak a
+    # pydantic validation error to the user.
+    append_ask(tmp_path, {"type": "findings", "payload": "not a findings object"})
+    append_ask(tmp_path, {"type": "done", "payload": {}})
+
+    msgs = read_ask(tmp_path)
+
+    assert [m.type for m in msgs] == ["done"]
+
+
+def test_kimi_string_intake_payload_is_treated_as_understanding(tmp_path: Path):
+    # Kimi 0.20.1 has emitted a bare string payload for intake. Preserve the useful
+    # understanding instead of turning the whole intake gate into "no understanding".
+    append_ask(tmp_path, {"type": "intake_decisions", "payload": "Current project is a TUI."})
+
+    msg = read_ask(tmp_path)[0]
+
+    assert msg.type == "intake_decisions"
+    assert msg.payload == {"understanding": "Current project is a TUI.", "decisions": []}
+
+
 def test_file_outside_scope_is_drift():
     task = Task(id="t-1", title="x", scope=["src/**"])
     diff = "diff --git a/README.md b/README.md\n+line\n"

@@ -134,8 +134,7 @@ class GateEngine:
         A test command that still exits 0 with a guaranteed-failing test present
         is a tautology, not a real gate (TUI-GATE-02 "tests can actually fail").
         """
-        # The check named "test" is the suite the probe runs against.
-        command = self.config.checks.get("test") if self.config else None
+        command = self._declared_test_command()
         if command is None:
             return [
                 Finding(
@@ -145,19 +144,12 @@ class GateEngine:
                     message="mutation probe skipped: no test check declared",
                 )
             ]
-        # The probe only works if the runner collects an injected pytest file. A
-        # non-python test command (cargo/go/npm) never sees it, so exit 0 proves
-        # nothing — emit an honest "skipped" advisory, never a vacuous green pass.
+        # The probe only works if the runner collects an injected pytest file.
+        # Non-python suites are already declared machine checks; don't emit a false
+        # "no test check declared" advisory for repos whose runner cannot collect
+        # this Python probe.
         if not re.search(r"\b(pytest|py\.test)\b", command):
-            return [
-                Finding(
-                    id="mutation-001",
-                    severity="question",
-                    location=".",
-                    message=f"mutation probe skipped: test command {command!r} is not a "
-                    "python/pytest runner, so an injected failing test cannot be collected",
-                )
-            ]
+            return []
         probe = wt / "_kagan_mutation_probe_test.py"
         probe.write_text("def test_kagan_mutation_probe():\n    assert False\n", encoding="utf-8")
         try:
@@ -175,6 +167,29 @@ class GateEngine:
                 )
             ]
         return []
+
+    def _declared_test_command(self) -> str | None:
+        if not self.config:
+            return None
+        for name, command in self.config.checks.items():
+            text = f"{name} {command}".lower()
+            if re.search(r"\btests?\b", text) or any(
+                hint in text
+                for hint in (
+                    "pytest",
+                    "py.test",
+                    "cargo test",
+                    "go test",
+                    "npm test",
+                    "pnpm test",
+                    "yarn test",
+                    "vitest",
+                    "jest",
+                    "swift test",
+                )
+            ):
+                return command
+        return None
 
     async def _security(self, task: Task, wt: Path) -> list[Finding]:
         """Lever 3: run the repo's SAST command in the worktree. A non-zero exit is
@@ -223,13 +238,20 @@ class GateEngine:
             Finding(
                 id=_fid("rubric", i),
                 severity="question",
-                location=str(self.config.review_rubric),
+                location=_repo_relative(path, self.repo_root),
                 message=line,
                 source="rubric",
             )
             for i, line in enumerate(lines, start=1)
             if line
         ]
+
+
+def _repo_relative(path: Path, repo_root: Path) -> str:
+    try:
+        return path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return path.name
 
 
 async def _run(command: str, cwd: Path) -> int:

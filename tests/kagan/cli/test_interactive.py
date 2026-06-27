@@ -42,6 +42,34 @@ def test_prompt_in_frame_backspace_edits() -> None:
     assert result == "helo"
 
 
+def test_prompt_in_frame_accepts_default_on_enter() -> None:
+    with create_pipe_input() as pipe:
+        pipe.send_text("\r")
+        result = _run(
+            _interactive.prompt_in_frame(
+                _text_render,
+                default="existing answer",
+                input=pipe,
+                output=DummyOutput(),
+            )
+        )
+    assert result == "existing answer"
+
+
+def test_prompt_in_frame_typing_replaces_default() -> None:
+    with create_pipe_input() as pipe:
+        pipe.send_text("replacement answer\r")
+        result = _run(
+            _interactive.prompt_in_frame(
+                _text_render,
+                default="old answer",
+                input=pipe,
+                output=DummyOutput(),
+            )
+        )
+    assert result == "replacement answer"
+
+
 def test_prompt_in_frame_ctrl_c_cancels_to_none() -> None:
     with create_pipe_input() as pipe:
         pipe.send_text("hi\x03")  # ctrl-c cancels

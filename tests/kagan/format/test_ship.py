@@ -1,7 +1,7 @@
 """Ship renderer + receipt digest — replaces test_ship_screen.py render assertions."""
 
 from kagan.core.enums import TaskState
-from kagan.core.models import CheckResult, SmokeTest, Task
+from kagan.core.models import CheckResult, Finding, SmokeTest, Task
 from kagan.format import ship
 from kagan.format.receipt import render_receipt_digest
 from tests.kagan.format._render import to_str
@@ -39,6 +39,45 @@ def test_ship_header_shows_branch_arrow():
 def test_ship_no_branch_renders_placeholder_without_crashing():
     out = to_str(ship.render_ship(_task(), "(no branch set)", "(no branch set)", ""))
     assert "(no branch set)" in out
+
+
+def test_digest_ai_review_reflects_validator_outcome_not_any_verdict():
+    # B20: the ai-review digest counts ONLY real validator findings and admits when the
+    # validator did not run. The old line bucketed any adjudicated finding as "ai-review",
+    # so a send-back / machine finding falsely read as "an AI reviewed this".
+    disabled = _task(  # medium, no validator_outcome -> disabled
+        risk="medium",
+        findings=[
+            Finding(
+                id="f",
+                severity="question",
+                location="x",
+                message="m",
+                source="machine",
+                verdict="agree",
+            )
+        ],
+    )
+    out = to_str(render_receipt_digest(disabled))
+    assert "ai-review (none — validator disabled)" in out
+    assert "ai-review (1)" not in out
+
+    ran = _task(
+        risk="medium",
+        validator_outcome="ran",
+        findings=[
+            Finding(
+                id="f",
+                severity="blocking",
+                location="x",
+                message="m",
+                source="ai-review",
+                verdict="agree",
+            )
+        ],
+    )
+    out2 = to_str(render_receipt_digest(ran))
+    assert "ai-review (1)" in out2
 
 
 def test_receipt_digest_honesty_failing_check_shows_blocker():
@@ -80,6 +119,21 @@ def test_ship_thin_receipt_gets_a_dim_honesty_line():
         )
     )
     assert "This receipt is thin" not in solid
+
+
+def test_ship_receipt_with_failed_executed_check_is_not_thin():
+    # Executed checks are machine verification even when they fail; the digest is
+    # red, but not hollow.
+    out = to_str(
+        ship.render_ship(
+            _task(branch="b", checks=[CheckResult(name="cargo fmt", passed=False)]),
+            "push",
+            "pr",
+            "",
+        )
+    )
+    assert "✗ checks (0/1)" in out
+    assert "This receipt is thin" not in out
 
 
 def test_ship_copy_feedback_persists_in_rendered_state():

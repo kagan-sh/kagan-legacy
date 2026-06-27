@@ -31,7 +31,7 @@ from kagan.core.errors import (
 from kagan.core.gate import GateEngine
 from kagan.core.inbox import InboxItem, build_item, median_run_seconds, sort_items
 from kagan.core.ledger import Ledger
-from kagan.core.models import CheckResult, Finding, NeedsYou, ReportMessage, Task
+from kagan.core.models import CheckResult, Decision, Finding, NeedsYou, ReportMessage, Task
 from kagan.core.notifications import NotificationEvent, Notifier
 from kagan.core.paths import ensure_gitignore_line, is_run_artifact
 from kagan.core.receipt import render_pr_body, render_receipt
@@ -186,9 +186,9 @@ class Harness:
         )
 
     def answer_decision(
-        self, task_id: str, decision_id: str, *, answer: str, blessed: bool = False
+        self, task_id: str, decision_id: str, *, answer: str, approved: bool = False
     ) -> Task:
-        return self._tasks.answer_decision(task_id, decision_id, answer=answer, blessed=blessed)
+        return self._tasks.answer_decision(task_id, decision_id, answer=answer, approved=approved)
 
     def can_run(self, task_id: str) -> bool:
         return self._tasks.can_run(task_id)
@@ -416,7 +416,9 @@ class Harness:
             return None
         reviews_dir = self.repo_root / ".kagan" / "reviews"
         reviews_dir.mkdir(parents=True, exist_ok=True)
-        date = datetime.now(UTC).strftime("%Y-%m-%d")
+        # B23: the receipt filename is a human-facing date stamp in the committed
+        # decision log — use LOCAL date, not UTC (a dev east of UTC saw yesterday).
+        date = datetime.now().strftime("%Y-%m-%d")
         path = reviews_dir / f"{date}-{_slugify(task.title)}.md"
         path.write_text(render_receipt(task), encoding="utf-8")
         return path
@@ -476,10 +478,14 @@ class Harness:
         """Lever 8: append the human-confirmed learning to repo-root AGENTS.md.
 
         The ONLY AGENTS.md write path, reachable only after the surface's explicit
-        confirm. Skips when there is no repo_root (same guard as the receipt write)."""
+        confirm. Skips when there is no repo_root (same guard as the receipt write).
+        Records ``retro_appended`` so the ship view stops re-offering the same learning
+        (B22) — the next render re-reads it and drops the retro affordance."""
         if self.repo_root is None:
             return None
-        return append_learning(self.repo_root, line)
+        path = append_learning(self.repo_root, line)
+        self.update_task(task_id, retro_appended=True)
+        return path
 
     def get_push_command(self, task_id: str) -> str:
         return self._ship.push_command(self._require(task_id))
@@ -534,9 +540,16 @@ class Harness:
         task = self._require(task_id)
         reviewer = self._reviewer_model(task.agent_cli or "claude")
         # Lever 4 x lever 2: low risk is machine checks only — skip the validator
-        # (DESIGN L175). Medium/high run it when a reviewer model is configured.
-        if task.risk == "low" or reviewer is None or task.worktree_path is None:
-            return task  # validator not applicable — outcome stays None
+        # (DESIGN L175); no worktree means nothing to read. Outcome stays None (n/a).
+        if task.risk == "low" or task.worktree_path is None:
+            return task
+        if reviewer is None:
+            # Med/high but NO reviewer configured: the validator is genuinely DISABLED,
+            # not merely unavailable. Record it so the receipt/ship/digest say so honestly
+            # (B18) instead of claiming a review that never ran — and do NOT transition
+            # through VALIDATING (nothing ran).
+            self.update_task(task_id, validator_outcome="disabled")
+            return task
         # The reviewer model lives under `agents.<cli>` so it is already this CLI's own
         # id — no vendor mismatch is representable. A model the CLI can't actually run
         # surfaces below as an honest, receipt-visible "reviewed unaided" (F2), never a
@@ -585,6 +598,12 @@ class Harness:
         the stage."""
         config = self._gate_config()
         return config.agents.for_cli(cli).reviewer if config is not None else None
+
+    def reviewer_configured(self, cli: str) -> bool:
+        """True when repo.yaml configures a reviewer for this CLI, so the validator
+        (lever 2) will actually run. The new-task confirm reads this to describe the
+        EFFECTIVE ceremony rather than the risk-tier label (WS1/B10)."""
+        return self._reviewer_model(cli) is not None
 
     def _builder_model(self, cli: str) -> str | None:
         """The builder's model, from repo.yaml `agents.<cli>.builder`. None = the CLI
@@ -639,22 +658,13 @@ class Harness:
         return self.update_task(task_id, drift=False)
 
     async def send_back(self, task_id: str, comment: str) -> Task:
-        """Clear drift, record the comment as a disagree Finding, re-run the agent in the
-        SAME worktree (TUI-DRIFT-03 / TUI-GATE-07)."""
-        self.update_task(task_id, drift=False)
-        task = self._require(task_id)
-        task.findings.append(
-            Finding(
-                id=f"sendback-{len(task.findings)}",
-                severity="blocking",
-                location="",
-                message=comment,
-                verdict="disagree",
-                reply=comment,
-                source="sendback",  # distinct so _run_prompt renders it as the directive
-            )
-        )
-        self.save_task(task)
+        """Clear drift, record the comment as the re-run DIRECTIVE (not a finding), and
+        re-run the agent in the SAME worktree (TUI-DRIFT-03 / TUI-GATE-07).
+
+        The note rides in Task.sendback_note → the re-run prompt's _sendback_section,
+        alongside the findings the human upheld/overruled (DESIGN-SHARE-08). It is NOT a
+        Finding: a send-back is a directive, not something the reviewer disputed."""
+        self.update_task(task_id, drift=False, sendback_note=comment)
         return await self.start_task(task_id)  # agent-harness: reuses task.worktree_path
 
     async def notify(self, event: NotificationEvent, task_id: str) -> None:
@@ -722,9 +732,26 @@ class Harness:
         # crashed/silent intake (no reports or non-zero exit). The first is the calm
         # TUI-INTAKE-07 signal; the second must be LOUD, never recorded as clean.
         if not reports or not ok:
+            logger.warning(
+                "Intake produced no usable reports for task {} (ok={}, reports={})",
+                task_id,
+                ok,
+                len(reports),
+            )
             self._ledger.append_event(
                 task_id, {"type": "intake_no_output", "ok": ok, "reports": len(reports)}
             )
+            task = self._require(task_id)
+            if not any(d.id == "intake-no-output" for d in task.decisions):
+                task.decisions.append(
+                    Decision(
+                        id="intake-no-output",
+                        question="agent reported nothing — proceed unaided?",
+                        severity="blocking",
+                        options=["proceed unaided", "retry intake"],
+                    )
+                )
+                self.save_task(task)
         elif not task.decisions:
             # TUI-INTAKE-07: a fully-specified ticket surfaces no decisions; record
             # that intake produced no unknowns so the empty intake is auditable.
@@ -740,6 +767,14 @@ class Harness:
             raise AgentCapError(self.running_count(exclude=task_id), self._agent_cap())
         task = self._require(task_id)
         cli = task.agent_cli or "claude"
+        # Replace-by-source (B11): a run starts a fresh review cycle, so drop the prior
+        # cycle's auto-generated findings here — N re-runs then leave ONE set, not N+1
+        # stacked copies. Done at run START (not harvest) so findings the agent reports
+        # DURING the run survive to the gate. Upheld/overruled verdicts travel into the
+        # re-run prompt via _sendback_section, not as persisted findings.
+        task.findings = [
+            f for f in task.findings if f.source not in self._REGENERATED_FINDING_SOURCES
+        ]
         # Idempotent: send-back reuses the existing worktree (TUI-GATE-07).
         task = await self._tasks.prepare_worktree(task, self.repo_root)
         assert task.worktree_path is not None
@@ -834,24 +869,41 @@ class Harness:
         for report in read_ask(wt, offset=cursor):
             apply_one(report)
             cursor += 1
-        if timed_out:
-            mins = max(1, int(self._agent_timeout() // 60))
-            self.add_finding(
-                task_id,
-                severity="blocking",
-                location="",
-                message=(
-                    f"Agent exceeded {mins}m and was stopped — review the partial diff, "
-                    "then re-run to continue in the same worktree."
-                ),
-                source="machine",
-            )
-        await self._harvest(task_id)
+        # The timeout finding is added INSIDE _harvest (this run's by-source purge already
+        # happened at start_task), so a re-run clears it cleanly without stripping the
+        # finding describing the run that just timed out.
+        await self._harvest(task_id, timed_out=timed_out)
 
-    async def _harvest(self, task_id: str) -> Task:
+    # Findings the harness/gate regenerate every harvest. Replaced by source on each run
+    # (B11): re-running a task must not multiply rubric/security/ai-review/machine
+    # findings. Human-authored verdicts on the prior set are stale on a re-run anyway —
+    # the upheld/overruled ones travel into the re-run prompt via _sendback_section, not
+    # as persisted findings.
+    _REGENERATED_FINDING_SOURCES = frozenset({"machine", "security", "rubric", "ai-review"})
+
+    async def _harvest(self, task_id: str, *, timed_out: bool = False) -> Task:
         task = self._require(task_id)
         assert task.worktree_path is not None
         wt = task.worktree_path
+        # The send-back directive was consumed by this run's prompt at launch; clear it so
+        # it can't re-feed an unrelated later re-run or surface in the receipt (B17). The
+        # by-source finding purge happens at run START (start_task), not here, so findings
+        # the agent reports DURING this run (.kagan/ask ai-review) survive to the gate.
+        task.sendback_note = None
+        if timed_out:
+            mins = max(1, int(self._agent_timeout() // 60))
+            task.findings.append(
+                Finding(
+                    id="agent-timeout",
+                    severity="blocking",
+                    location="",
+                    message=(
+                        f"Agent exceeded {mins}m and was stopped — review the partial diff, "
+                        "then re-run to continue in the same worktree."
+                    ),
+                    source="machine",
+                )
+            )
         # P5: diff harvest = tracked (git diff HEAD) + untracked (ls-files --others).
         tracked = await git.run_git(["diff", "HEAD"], cwd=wt, check=False)
         untracked = await git.run_git(

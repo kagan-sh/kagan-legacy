@@ -6,6 +6,7 @@ import subprocess
 
 from kagan.core.agent import (
     _agent_env,
+    _ask_fallback_instructions,
     _run_prompt,
     _validate_prompt,
     launch_intake,
@@ -90,6 +91,27 @@ def test_validate_prompt_includes_comprehension_instruction_for_medium_risk():
 def test_validate_prompt_omits_comprehension_instruction_for_low_risk():
     prompt = _validate_prompt(Task(id="t", title="Docs tweak", risk="low"))
     assert "report_comprehension_prompts" not in prompt
+
+
+def test_ask_fallback_contract_requires_object_payloads(tmp_path):
+    ask_path = tmp_path / ".kagan" / "ask"
+    prompt = _ask_fallback_instructions(ask_path, ("intake_decisions", "done"))
+
+    assert f"Append JSON Lines to exactly this file: {ask_path}" in prompt
+    assert "payload MUST be an object, not a string" in prompt
+    assert '{"type":"intake_decisions","payload":{"understanding":"...","decisions":' in prompt
+    assert '{"type":"done","payload":{}}' in prompt
+
+
+def test_run_prompt_names_exact_ask_file_and_run_envelopes(tmp_path):
+    ask_path = tmp_path / ".kagan" / "ask"
+    prompt = _run_prompt(Task(id="t", title="Implement x"), ask_path)
+
+    assert str(ask_path) in prompt
+    assert '{"type":"needs_you","payload":' in prompt
+    assert '{"type":"smoke_tests","payload":' in prompt
+    assert '{"type":"drift","payload":' in prompt
+    assert '{"type":"done","payload":{}}' in prompt
 
 
 async def test_intake_reports_and_cannot_write_repo(tmp_path, monkeypatch):
@@ -357,21 +379,14 @@ async def test_wait_bounded_zero_disables_the_cap() -> None:
 
 def test_run_prompt_delivers_sendback_verdict_to_the_rerun_agent() -> None:
     # #4: send-back must reach the re-run agent. The prompt carries the reviewer's
-    # note, the upheld findings (fix), and the overruled ones (leave as-is, w/ reason).
+    # note (Task.sendback_note — a directive, NOT a finding), the upheld findings (fix),
+    # and the overruled ones (leave as-is, w/ reason).
     task = Task(
         id="task-sb",
         title="t",
         scope=["src/**"],
+        sendback_note="rounding is wrong for negatives",
         findings=[
-            Finding(
-                id="sb-0",
-                severity="blocking",
-                location="",
-                message="rounding is wrong for negatives",
-                verdict="disagree",
-                reply="rounding is wrong for negatives",
-                source="sendback",
-            ),
             Finding(
                 id="f-1",
                 severity="blocking",

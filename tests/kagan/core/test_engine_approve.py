@@ -1,10 +1,11 @@
 """Lever 6 — provenance receipt auto-write + multi-approver gate in approve_task."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from kagan.core import Harness
 from kagan.core.enums import TaskState
+from kagan.core.models import CheckResult
 from tests.helpers.gitrepo import make_repo
 
 
@@ -77,12 +78,26 @@ async def test_approve_autowrites_receipt_into_repo_reviews(tmp_path: Path):
     written = list(reviews.glob("*.md"))
     assert len(written) == 1
     name = written[0].name
-    date = datetime.now(UTC).strftime("%Y-%m-%d")
+    # B23: the receipt filename stamps the LOCAL date (the committed decision log is
+    # human-facing; a dev east of UTC after midnight must not see yesterday).
+    date = datetime.now().strftime("%Y-%m-%d")
     assert name == f"{date}-migrate-billing.md"
     body = written[0].read_text()
     assert "# Reviewed-before-push receipt: Migrate billing" in body
     # The committable artifact lives in the MAIN repo, NOT the external ledger.
     assert not (core.data_dir / "reviews").exists()
+
+
+async def test_failed_required_check_keeps_task_in_review_without_receipt(tmp_path: Path):
+    # A receipt with Status=Accepted must not be reachable while a declared check
+    # failed; the approve chokepoint re-checks the machine gate.
+    repo = await make_repo(tmp_path / "repo")
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    tid = await _review_task(core, risk="low")
+    core.update_task(tid, checks=[CheckResult(name="cargo clippy", passed=False, detail="rc=101")])
+    task = core.approve_task(tid, approver="alice <a@x.io>")
+    assert task.state is TaskState.REVIEW
+    assert not list((repo / ".kagan" / "reviews").glob("*.md"))
 
 
 async def test_high_risk_does_not_write_receipt_until_bar_met(tmp_path: Path):

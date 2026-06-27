@@ -59,6 +59,63 @@ def test_receipt_states_ceremony_banner_from_risk():
     assert "reviewed at: medium-risk" in md
 
 
+def test_receipt_ceremony_distinguishes_disabled_failed_and_ran_validator():
+    # B18 / DESIGN-LVR2-06: the banner must distinguish a validator that was never
+    # configured (DISABLED) from one that ran and crashed (UNAVAILABLE) from one that
+    # ran clean — the old code collapsed every non-"ran" medium task into "unavailable",
+    # misdescribing a deliberate-off config as a transient failure.
+    disabled = render_receipt(Task(id="t-1", title="Add feature", risk="medium"))  # None→disabled
+    assert "validator disabled — no reviewer configured" in disabled
+    assert "validator unavailable" not in disabled
+
+    explicit_disabled = render_receipt(
+        Task(id="t-1", title="Add feature", risk="medium", validator_outcome="disabled")
+    )
+    assert "validator disabled — no reviewer configured" in explicit_disabled
+
+    failed = render_receipt(
+        Task(id="t-1", title="Add feature", risk="high", validator_outcome="failed")
+    )
+    assert "validator unavailable — reviewed unaided" in failed
+    assert "validator disabled" not in failed
+
+    ran = render_receipt(
+        Task(id="t-1", title="Add feature", risk="medium", validator_outcome="ran")
+    )
+    assert "validator unavailable" not in ran and "validator disabled" not in ran
+
+
+def test_receipt_records_accepted_assumption_never_blessed():
+    # B15/B16: an accepted-as-is decision records the assumption that was accepted (the
+    # option taken) with accept/override provenance — never the deprecated word "blessed".
+    task = Task(
+        id="t-1",
+        title="Add feature",
+        decisions=[
+            Decision(
+                id="d1",
+                question="Precedence?",
+                severity="blocking",
+                options=["proper (mul-div before add-sub)", "left-to-right"],
+                answer="proper (mul-div before add-sub)",
+                approved=True,
+            ),
+            Decision(
+                id="d2",
+                question="Number type?",
+                severity="blocking",
+                answer="floating-point",
+                approved=False,
+            ),
+        ],
+    )
+    md = render_receipt(task)
+    assert "blessed" not in md
+    assert "proper (mul-div before add-sub)" in md  # the accepted assumption is reconstructable
+    assert "accepted" in md
+    assert "floating-point" in md and "overrode" in md
+
+
 def test_receipt_marks_failures_and_unverified_honestly():
     md = render_receipt(_full_task())
     # A failing check is never shown as passed.
@@ -66,6 +123,56 @@ def test_receipt_marks_failures_and_unverified_honestly():
     # An unverified smoke test is shown unchecked, not as done.
     assert "- [ ] Login flow" in md
     assert "- [x] Open /health" in md
+
+
+def test_receipt_sanitizes_locations_and_check_output():
+    # #19/#26: the committed receipt is shared, so it must not preserve terminal
+    # escapes, local worktree roots, or long cargo dependency chatter.
+    task = Task(
+        id="t-1",
+        title="Add feature",
+        checks=[
+            CheckResult(
+                name="cargo fmt",
+                passed=False,
+                detail=(
+                    "rc=1\n"
+                    "Checking cfg-if v1.0.4\n"
+                    "Checking ratatui v0.29.0\n"
+                    "Diff in \x1b[32m/Users/dev/yoyoyo/src/main.rs:12\x1b[m:\n"
+                    "\x1b[31m-error: expected expression\x1b[m\n"
+                ),
+            )
+        ],
+        findings=[
+            Finding(
+                id="f1",
+                severity="question",
+                location="/Users/dev/yoyoyo/.kagan/review.md",
+                message="rubric note",
+                verdict="agree",
+                source="rubric",
+            ),
+            Finding(
+                id="f2",
+                severity="blocking",
+                location=".",
+                message="repo issue",
+                verdict="agree",
+            ),
+        ],
+    )
+
+    md = render_receipt(task)
+
+    assert "\x1b[" not in md
+    assert "/Users/dev/yoyoyo" not in md
+    assert ".kagan/review.md" in md
+    assert "[repo]" in md
+    assert "src/main.rs:12" in md
+    assert "expected expression" in md
+    assert "Checking cfg-if" not in md
+    assert "Checking ratatui" not in md
 
 
 def test_receipt_skips_unresolved_decisions_and_open_findings():

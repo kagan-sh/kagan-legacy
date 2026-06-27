@@ -68,6 +68,9 @@ class _FakeCore:
     def reconcile_in_flight(self) -> list[str]:
         return []  # rule 12: called once on session launch; no-op for the fake
 
+    def read_events(self, task_id: str) -> list:
+        return []  # workspaces "started" elapsed reads transitions; none for the fake
+
     def running_count(self, exclude: str | None = None) -> int:
         return 0
 
@@ -168,8 +171,24 @@ class _FakeCore:
     def preview_risk(self, scope: list[str]) -> str:
         return "medium"
 
+    def reviewer_configured(self, cli: str) -> bool:
+        return getattr(self, "_reviewer_configured", False)
+
     def available_clis(self) -> list[str]:
         return ["codex"]
+
+    def create_task(self, title: str) -> Task:
+        self._task.title = title
+        return self._task
+
+    def configure_task(self, task_id: str, *, agent_cli=None, scope=None) -> Task:
+        self._task.agent_cli = agent_cli
+        self._task.scope = scope or []
+        return self._task
+
+    async def run_intake(self, task_id: str) -> None:
+        if hasattr(self, "intake_error"):
+            raise self.intake_error
 
     def answer_needs_you(self, task_id: str, answer: str) -> None:
         self.answered = answer
@@ -182,8 +201,10 @@ class _FakeCore:
     def can_run(self, task_id: str) -> bool:
         return getattr(self, "_can_run", False)
 
-    def answer_decision(self, task_id: str, decision_id: str, *, answer: str, blessed: bool):
-        self.answered_decisions.append((decision_id, answer, blessed))
+    def answer_decision(
+        self, task_id: str, decision_id: str, *, answer: str, approved: bool = False
+    ):
+        self.answered_decisions.append((decision_id, answer, approved))
 
 
 def _session(task: Task, tmp_path) -> tuple[Session, _FakeCore]:
@@ -370,6 +391,28 @@ def test_comprehension_walk_uses_generated_prompts_at_floor(tmp_path, monkeypatc
     assert core._task.comprehension == {"postcondition": note, "what_breaks": note}
 
 
+def test_comprehension_walk_rejects_trivial_answer_with_feedback(tmp_path, monkeypatch, capsys):
+    # B9: a trivial/templated answer is not silently swallowed — the human is told WHY
+    # and the junk is never persisted (it cannot ride into the receipt). The same prompt
+    # is re-asked until a substantive answer lands.
+    task = Task(id="task-tr", title="t", state=TaskState.REVIEW, risk="medium")
+    session, core = _session(task, tmp_path)
+    good = "Adds a recursive descent parser; deep input could overflow the stack."
+    # postcondition: a placeholder (rejected) then a real answer; what_breaks: real.
+    replies = iter(["stuff", good, good])
+
+    async def _reply(_render, *, default="", **_k):
+        return next(replies)
+
+    monkeypatch.setattr(_interactive, "prompt_in_frame", _reply)
+
+    run_async(session._walk_comprehension(task))
+
+    # The trivial "stuff" was never persisted; both prompts hold their substantive answer.
+    assert core._task.comprehension == {"postcondition": good, "what_breaks": good}
+    assert "placeholder" in capsys.readouterr().out
+
+
 def test_review_approve_does_not_offer_retro_at_approve_time(tmp_path, monkeypatch):
     # Phase 12c ship §1: the retro NO LONGER fires at approve-time (the transient
     # prompt the user blew past) — it lives on the ship screen now. Approving still
@@ -389,7 +432,56 @@ def test_review_approve_does_not_offer_retro_at_approve_time(tmp_path, monkeypat
     assert not hasattr(core, "retro_appended")
 
 
-def test_rerun_spawns_detached_never_inline(tmp_path, monkeypatch):
+def test_retro_prompt_header_matches_prefilled_submit_model(tmp_path, monkeypatch):
+    # B21: the learning field is PREFILLED, so the header must read enter=append /
+    # esc=skip — not the contradictory "(enter to skip)" that fought the "enter submit"
+    # footer with a non-empty field.
+    task = Task(id="task-l", title="t", state=TaskState.READY)
+    session, core = _session(task, tmp_path)
+    core.retro_suggestion = "openapi.json is the source of truth — never hand-edit api.md"
+    seen: dict[str, str] = {}
+
+    async def _capture(label, *, default="", **_k):
+        seen["label"] = label
+        seen["default"] = default
+        return None  # esc — skip
+
+    monkeypatch.setattr(session, "_prompt_in_frame", _capture)
+    run_async(session._offer_retro("task-l"))
+
+    assert "enter to skip" not in seen["label"]
+    assert "esc to skip" in seen["label"]
+    assert seen["default"] == core.retro_suggestion  # the suggestion prefills the field
+
+
+def test_inbox_body_reprobes_ledger_so_it_never_lags_the_header(tmp_path, monkeypatch):
+    # B14: the inbox body must derive from the SAME ledger read as its header on every
+    # frame. A task advancing running->review while the inbox is parked open must show
+    # the new state in the body, not a stale "running ♥ alive" captured at loop entry.
+    from kagan.core import Harness, git
+    from kagan.format import inbox as fmt_inbox
+    from kagan.format.shell import frame_geometry
+
+    repo = tmp_path / "repo"
+    run_async(git.init_repo(repo, initial_branch="main", create_initial_commit=True))
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("add-calculator")
+    core.transition_task(task.id, TaskState.RUNNING)
+    session = Session(core)
+
+    captured: dict[str, str] = {}
+
+    async def _navigate(render, _handlers, **_kw):
+        # a detached runner advances the task while the inbox frame is parked open
+        core.transition_task(task.id, TaskState.REVIEW)
+        captured["text"] = render(frame_geometry(120, 40)).text
+
+    monkeypatch.setattr(_interactive, "navigate", _navigate)
+
+    rows = fmt_inbox.selectable_rows(core.inbox_tasks())  # built while still RUNNING
+    run_async(session._inbox_loop(rows))
+
+    assert "alive" not in captured["text"]  # body re-read shows review, not stale running
     # The blocker regression guard: re-run must spawn _run, NOT run start_task in
     # the session loop (which orphans the agent on quit).
     task = Task(id="task-2", title="t", state=TaskState.RUNNING)
@@ -724,6 +816,28 @@ def test_workspaces_t_copies_the_cd(tmp_path, monkeypatch):
     assert copied == ["cd /tmp/wt/task-t"]
 
 
+def test_workspaces_reconciles_and_refreshes_while_open(tmp_path, monkeypatch):
+    from kagan.format.shell import frame_geometry
+
+    task = Task(id="task-ws2", title="t", state=TaskState.RUNNING)
+    session, core = _session(task, tmp_path)
+    reconciled: list[str] = []
+    core.reconcile_in_flight = lambda: reconciled.append("reconcile") or []  # type: ignore[method-assign]
+    refresh: list[float | None] = []
+
+    async def _navigate(render, _handlers, **kwargs):
+        refresh.append(kwargs.get("refresh_interval"))
+        render(frame_geometry(100, 40))
+
+    monkeypatch.setattr(_interactive, "navigate", _navigate)
+
+    run_async(session.view_workspaces())
+
+    assert reconciled == ["reconcile"]
+    # No background poll timer (DESIGN-PLAT-01 / UI-03); reconcile runs on render instead.
+    assert refresh == [None]
+
+
 # -- §1.4: new-task is a real confirm gate; cancel creates no task ------------
 
 
@@ -817,6 +931,73 @@ def test_new_task_scope_prompt_explains_scope(tmp_path, monkeypatch):
     title_calls = [body for label, body in captured if label == "Title"]
     assert scope_calls and scope_calls[0] is not None  # scope is explained
     assert title_calls and title_calls[0] is None  # title needs no body
+
+
+def test_new_task_intake_failure_is_not_reported_as_create_failure(tmp_path, monkeypatch, capsys):
+    task = Task(id="task-n6", title="t", state=TaskState.INTAKE)
+    session, core = _session(task, tmp_path)
+    core.intake_error = RuntimeError("bad report")
+
+    fields = iter(["build login", "src/**"])
+
+    async def _field(*_a, **_k):
+        return next(fields)
+
+    async def _choose(*_a, **_k):
+        return 0
+
+    async def _confirm(*_a, **_k):
+        return True
+
+    monkeypatch.setattr(session, "_prompt_in_frame", _field)
+    monkeypatch.setattr(session, "_choose_in_frame", _choose)
+    monkeypatch.setattr(session, "_confirm_in_frame", _confirm)
+
+    run_async(session.action_new_task())
+
+    out = capsys.readouterr().out
+    assert "Cannot plan task: bad report" in out
+    assert "Cannot create task" not in out
+
+
+def test_new_task_intake_runs_inside_planning_frame(tmp_path, monkeypatch):
+    from kagan.format.shell import frame_geometry
+
+    task = Task(id="task-n7", title="t", state=TaskState.INTAKE)
+    session, _core = _session(task, tmp_path)
+
+    fields = iter(["build login", "src/**"])
+
+    async def _field(*_a, **_k):
+        return next(fields)
+
+    async def _choose(*_a, **_k):
+        return 0
+
+    async def _confirm(*_a, **_k):
+        return True
+
+    seen_frames: list[str] = []
+
+    async def _wait(render, awaitable, **_kw):
+        seen_frames.append(render(frame_geometry(100, 40)).text)
+        return await awaitable
+
+    opened: list[str] = []
+
+    async def _open(task_id):
+        opened.append(task_id)
+
+    monkeypatch.setattr(session, "_prompt_in_frame", _field)
+    monkeypatch.setattr(session, "_choose_in_frame", _choose)
+    monkeypatch.setattr(session, "_confirm_in_frame", _confirm)
+    monkeypatch.setattr(_interactive, "wait_in_frame", _wait)
+    monkeypatch.setattr(session, "open_task", _open)
+
+    run_async(session.action_new_task())
+
+    assert opened == ["task-n7"]
+    assert any("build login · planning" in frame for frame in seen_frames)
 
 
 # -- §1.5: fail-loud sentences on the silent terminal paths -------------------
@@ -920,6 +1101,66 @@ def test_intake_cursor_walks_and_acts_on_the_focused_decision(tmp_path, monkeypa
 
     # exactly one decision approved, and it is the FOCUSED one (d1), not blocking[0] (d0).
     assert core.answered_decisions == [("d1", "", True)]
+
+
+def test_intake_approve_records_the_accepted_assumption(tmp_path, monkeypatch):
+    # B16: approving a decision records WHAT was accepted (the agent's assumption = the
+    # first offered option), so the receipt reconstructs the decision, not a bare verb.
+    from kagan.core.models import Decision
+
+    decisions = [
+        Decision(
+            id="d0",
+            question="precedence?",
+            severity="blocking",
+            options=["proper (mul-div before add-sub)", "left-to-right"],
+        )
+    ]
+    task = _intake_task(decisions)
+    session, core = _session(task, tmp_path)
+    verbs = iter(["approve", "back"])
+
+    async def _frame(_t, _b, _c):
+        return next(verbs)
+
+    monkeypatch.setattr(session, "_intake_frame", _frame)
+    run_async(session.view_intake("task-iw"))
+
+    assert core.answered_decisions == [("d0", "proper (mul-div before add-sub)", True)]
+
+
+def test_intake_reject_picks_from_offered_options(tmp_path, monkeypatch):
+    # B6: reject/override offers the decision's own options as a picker (no retyping a
+    # choice that was right there); free-text remains the fallback.
+    from kagan.core.models import Decision
+
+    decisions = [
+        Decision(
+            id="d0",
+            question="precedence?",
+            severity="blocking",
+            options=["proper", "left-to-right"],
+        )
+    ]
+    task = _intake_task(decisions)
+    session, core = _session(task, tmp_path)
+    verbs = iter(["reject", "back"])
+
+    async def _frame(_t, _b, _c):
+        return next(verbs)
+
+    monkeypatch.setattr(session, "_intake_frame", _frame)
+    seen: dict[str, list[str]] = {}
+
+    async def _choose(_label, options, **_kw):
+        seen["options"] = options
+        return 1  # pick "left-to-right" from the offered options
+
+    monkeypatch.setattr(session, "_choose_in_frame", _choose)
+    run_async(session.view_intake("task-iw"))
+
+    assert "proper" in seen["options"] and "left-to-right" in seen["options"]
+    assert core.answered_decisions == [("d0", "left-to-right", False)]
 
 
 def test_intake_approve_all_is_gated_by_confirm_and_refused_at_high_risk(tmp_path, monkeypatch):
@@ -1048,6 +1289,30 @@ def test_ship_l_key_appends_retro(tmp_path, monkeypatch):
     assert core.retro_appended == "the confirmed learning"
 
 
+def test_ship_copy_feedback_only_marks_success(tmp_path, monkeypatch, capsys):
+    # #28: the ship controller must not pass `copied="c"` to the renderer when the
+    # clipboard backend failed; otherwise the frame lies with "[c ✓ copied]".
+    from tests.kagan.format._render import to_str
+
+    task = Task(id="task-cp", title="t", state=TaskState.READY, branch="kagan/t")
+    session, _core = _session(task, tmp_path)
+    monkeypatch.setattr(_interactive, "copy_to_clipboard", lambda _value: False)
+
+    keys = iter(["c", "q"])
+    rendered: list[str] = []
+
+    async def _next_frame(body):
+        rendered.append(to_str(body))
+        return next(keys)
+
+    monkeypatch.setattr(session, "_ship_frame", _next_frame)
+
+    run_async(session.view_ship("task-cp"))
+
+    assert all("[c ✓ copied]" not in body for body in rendered)
+    assert "Push command (copy unavailable" in capsys.readouterr().out
+
+
 # -- Phase 12c INBOX: the coach aside is a ONE-TIME line, not in the frame -------
 
 
@@ -1170,6 +1435,11 @@ def test_view_diff_stays_in_frame_via_navigate(tmp_path, monkeypatch):
         return _FakeViewport()
 
     async def _fake_navigate(_render, _handlers, **_k):
+        from prompt_toolkit.key_binding import KeyBindings
+
+        bindings = KeyBindings()
+        for key, handler in _handlers.items():
+            bindings.add(key)(handler)
         calls.append("navigate")
         geometry = __import__("kagan.format.shell", fromlist=["frame_geometry"]).frame_geometry(
             100, 40

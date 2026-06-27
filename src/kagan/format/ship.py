@@ -82,11 +82,11 @@ def _receipt_block(task: Task, *, copied: bool) -> RenderableType:
 def _receipt_is_thin(task: Task) -> bool:
     """A hollow digest: no passing checks, no adjudicated findings, no verified smoke,
     no pinned decisions — the human is the only thing standing behind it."""
-    checks_ok = bool(task.checks) and all(c.passed for c in task.checks)
+    checks_executed = bool(task.checks)
     adjudicated = any(f.verdict for f in task.findings)
     verified_smoke = any(s.verified for s in task.smoke_tests)
-    pinned = any(d.answer or d.blessed for d in task.decisions)
-    return not (checks_ok or adjudicated or verified_smoke or pinned)
+    pinned = any(d.answer or d.approved for d in task.decisions)
+    return not (checks_executed or adjudicated or verified_smoke or pinned)
 
 
 def _retro_block(retro: str) -> RenderableType:

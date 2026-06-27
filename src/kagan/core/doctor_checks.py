@@ -229,9 +229,7 @@ def _check_repo_manifest() -> DoctorCheck:
             name="repo manifest",
             status="fail",
             message="no .kagan/repo.yaml found in this directory or its ancestors",
-            fix_hint=(
-                "Create .kagan/repo.yaml declaring services, checks, review_rubric, and pinned."
-            ),
+            fix_hint="Run `kagan init` to create .kagan/repo.yaml and a starter review rubric.",
             category="configuration",
         )
     try:

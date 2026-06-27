@@ -13,6 +13,35 @@ def _task(**kw) -> Task:
     )
 
 
+def test_readiness_header_and_rows_agree_on_one_predicate():
+    # B13: the reassuring summary line and the per-item rows must read ONE predicate for
+    # "is this blocking finding adjudicated" (a verdict — agree OR disagree — adjudicates
+    # it). The old split (header read `verdict`, the row read `verdict != "agree"`) showed
+    # "All blocking findings adjudicated." ABOVE "● Adjudicate 1 blocking finding".
+    overruled = _task(
+        findings=[
+            Finding(
+                id="f",
+                severity="blocking",
+                location="src/a.py:1",
+                message="x",
+                verdict="disagree",
+                reply="bounded upstream",
+            )
+        ],
+    )
+    out = to_str(gate.render_readiness(overruled, locked=False))
+    assert "All blocking findings adjudicated." in out
+    assert "Adjudicate" not in out  # an overruled finding is adjudicated, not still open
+
+    still_open = _task(
+        findings=[Finding(id="f", severity="blocking", location="src/a.py:1", message="x")]
+    )
+    out_open = to_str(gate.render_readiness(still_open, locked=True))
+    assert "Adjudicate 1 blocking finding(s)" in out_open
+    assert "All blocking findings adjudicated." not in out_open
+
+
 def test_checks_strip_marks_pass_and_fail():
     out = to_str(
         gate.render_checks_strip(
@@ -83,6 +112,32 @@ def test_findings_show_source_provenance_tag():
     assert "[ai-review]" in out
 
 
+def test_findings_render_repo_safe_locations():
+    # #19: legacy/agent-supplied absolute locations must not leak into the review UI.
+    out = to_str(
+        gate.render_findings(
+            [
+                Finding(
+                    id="f",
+                    severity="question",
+                    location="/Users/dev/work/app/.kagan/review.md",
+                    message="rubric note",
+                    source="rubric",
+                ),
+                Finding(
+                    id="g",
+                    severity="blocking",
+                    location=".",
+                    message="repo-wide issue",
+                ),
+            ]
+        )
+    )
+    assert "/Users/dev/work/app" not in out
+    assert ".kagan/review.md" in out
+    assert "[repo]" in out
+
+
 def test_smoke_marks_verified_and_optional():
     out = to_str(
         gate.render_smoke(
@@ -109,6 +164,27 @@ def test_readiness_counts_open_blocking_findings_when_locked():
     assert "Adjudicate 1 blocking finding" in out
     # The lock reason lives in the persistent lock block, not the checklist.
     assert "Approve is locked" not in out
+
+
+def test_readiness_failed_checks_are_blocking_not_passed():
+    # Same check data as ship/receipt: a failed required check must render as a
+    # blocker, not as a green partial "passed" row.
+    task = _task(
+        risk="low",
+        checks=[
+            CheckResult(name="cargo test", passed=True),
+            CheckResult(name="cargo fmt", passed=False),
+        ],
+    )
+    out = to_str(gate.render_readiness(task, locked=True))
+    assert "✗ Checks failing · 1 of 2 passed — 1 failing" in out
+    assert "✓ Checks passed" not in out
+
+
+def test_lock_block_names_failed_required_checks():
+    task = _task(risk="low", checks=[CheckResult(name="cargo clippy", passed=False)])
+    out = to_str(gate.render_lock_block(task, locked=True))
+    assert "Approve is locked: fix failing required check(s) first: cargo clippy" in out
 
 
 def test_review_shows_stale_banner_when_stale():

@@ -88,6 +88,7 @@ def render_frame(
             surface,
             body_height=body_height,
             height=geometry.height,
+            width=geometry.content_width,
             header=header,
             header_height=header_height,
             footer=footer,
@@ -108,6 +109,7 @@ def render_frame(
         surface,
         body_height=body_height,
         height=max(1, height - chrome_height),
+        width=geometry.content_width,
         header=header,
         header_height=header_height,
         footer=footer,
@@ -163,27 +165,34 @@ def _compose_regions(
     *,
     body_height: int,
     height: int,
+    width: int,
     header: RenderableType | None,
     header_height: int,
     footer: RenderableType | None,
     footer_height: int,
 ) -> RenderableType:
-    """Pin optional chrome to the edges and center only the flexible body."""
+    """Pin optional chrome to the edges and center (or clip) only the flexible body."""
     rails = int(header is not None) + int(footer is not None)
     body_area = max(1, height - header_height - footer_height - rails)
     blocks: list[RenderableType] = []
     if header is not None:
         blocks.extend((header, Rule(style="frame-border")))
-    blocks.append(_fit_content(body, body_height=body_height, height=body_area))
+    blocks.append(_fit_content(body, body_height=body_height, height=body_area, width=width))
     if footer is not None:
         blocks.extend((Rule(style="frame-border"), footer))
     return Padding(Group(*blocks), (0, 0), expand=True)
 
 
-def _fit_content(body: RenderableType, *, body_height: int, height: int) -> RenderableType:
-    """Vertically center short content while preserving the full available width."""
-    if body_height >= height:
-        return body
+def _fit_content(
+    body: RenderableType, *, body_height: int, height: int, width: int
+) -> RenderableType:
+    """Center short content; CLIP content taller than its area so pinned header/footer
+    are never pushed off the frame (B5 — the intake decision walk's controls vanished
+    when the decisions overflowed). Clipping is top-anchored; the caller windows the
+    body around its cursor so the focused row stays inside the kept region."""
+    if body_height > height:
+        rendered = render_to_str(body, width=width, no_color=False)
+        return Text.from_ansi("\n".join(rendered.splitlines()[:height]))
     top = (height - body_height) // 2
     bottom = height - body_height - top
     blocks: list[RenderableType] = [

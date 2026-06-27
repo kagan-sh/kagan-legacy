@@ -13,8 +13,10 @@ from rich.console import Group
 from rich.rule import Rule
 from rich.text import Text
 
+from kagan.core.ceremony import banner_suffix, gates_clause, validator_status
 from kagan.format import _symbols as sym
 from kagan.format._layout import max_display_width, pad_display
+from kagan.format._risk import risk_label
 
 if TYPE_CHECKING:
     from rich.console import RenderableType
@@ -24,16 +26,13 @@ _NO_AGENT = "✋ I'll drive"
 # One label column for the form so values + continuation lines align by display width.
 _LABEL_WIDTH = max_display_width(["Title", "Scope", "Agent"])
 
-# Risk-tier → the ceremony it routes into (DESIGN §5 new-task / lever 4).
-_RISK_SENTENCE: dict[str, str] = {
-    "high": "high risk — full review: validator, security, 2nd approver.",
-    "medium": "med risk — validator + comprehension.",
-    "low": "low risk — machine checks + fast approve.",
-}
 
-
-def _risk_sentence(risk: str) -> str:
-    return _RISK_SENTENCE.get(risk, f"{risk} risk")
+def _risk_sentence(risk: str, reviewer_configured: bool) -> str:
+    # The EFFECTIVE ceremony, not the tier label (B10): if no reviewer is configured the
+    # validator will not run, so the line says "validator disabled — no reviewer
+    # configured" rather than promising "validator + comprehension" it can't deliver.
+    status = validator_status(risk, reviewer_configured=reviewer_configured)
+    return f"{risk_label(risk)} — {gates_clause(risk, status)}{banner_suffix(status)}."
 
 
 def _indent(text: str, label_width: int) -> str:
@@ -49,6 +48,7 @@ def render_new_task_form(
     selected: str | None,
     recipe_command: list[str] | None,
     risk: str | None = None,
+    reviewer_configured: bool = False,
     reviewer_note: str | None = None,
     queue_note: str | None = None,
 ) -> RenderableType:
@@ -66,7 +66,9 @@ def render_new_task_form(
     scope_line.append("  ".join(scope) if scope else "…", style="" if scope else "secondary")
     blocks.append(scope_line)
     if risk is not None:
-        blocks.append(Text(_indent(_risk_sentence(risk), label_w), style="secondary"))
+        blocks.append(
+            Text(_indent(_risk_sentence(risk, reviewer_configured), label_w), style="secondary")
+        )
 
     agent_line = Text(pad_display("Agent", label_w) + "  ", style="secondary")
     tokens = [*clis, _NO_AGENT]

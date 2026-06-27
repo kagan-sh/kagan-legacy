@@ -119,6 +119,80 @@ def test_init_writes_claude_models_under_the_claude_section(tmp_path, monkeypatc
     assert models.reviewer == "haiku"
 
 
+def test_init_reuses_builder_as_reviewer_when_agent_omits_reviewer(tmp_path, monkeypatch):
+    # The default onboarding must not silently disable the validator. When the agent
+    # only names a builder model, same-model review is valid and keeps lever 2 enabled.
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["codex"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload(
+            [{"name": "test", "command": "pytest", "provenance": "invented"}],
+            builder="gpt-5-codex",
+        ),
+    )
+    result = _invoke_init(input="y\na\nn\n")
+    assert result.exit_code == 0
+    models = load_repo_config(tmp_path).agents.for_cli("codex")
+    assert models.builder == "gpt-5-codex"
+    assert models.reviewer == "gpt-5-codex"
+
+
+def test_init_offers_to_enable_validator_when_draft_names_no_reviewer(tmp_path, monkeypatch):
+    # B1: when the draft leaves the validator (lever 2) unset, init must make enabling
+    # it a CHOICE — accepting writes the reviewer the human names, not a commented stub.
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload([{"name": "test", "command": "pytest", "provenance": "invented"}]),
+    )
+    # y draft · a accept check · n skip verify · y enable validator · model id
+    result = _invoke_init(input="y\na\nn\ny\nclaude-haiku\n")
+    assert result.exit_code == 0
+    models = load_repo_config(tmp_path).agents.for_cli("claude")
+    assert models.reviewer == "claude-haiku"  # the validator is now enabled
+
+
+def test_init_keeps_commented_agents_when_validator_declined(tmp_path, monkeypatch):
+    # B1: declining the validator nudge is a deliberate choice — the commented skeleton
+    # stays (no silent live config), and the manifest still parses.
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["claude"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload([{"name": "test", "command": "pytest", "provenance": "invented"}]),
+    )
+    # y draft · a accept check · n skip verify · n decline validator
+    result = _invoke_init(input="y\na\nn\nn\n")
+    assert result.exit_code == 0
+    assert load_repo_config(tmp_path).agents.for_cli("claude").reviewer is None
+    text = (tmp_path / ".kagan" / "repo.yaml").read_text(encoding="utf-8")
+    assert "#     reviewer: <reviewer-model>" in text
+
+
+def test_init_scaffolds_commented_agents_when_agent_names_no_models(tmp_path, monkeypatch):
+    # If there are no real model ids, init writes a commented agents.<cli> pair instead
+    # of a fake live config or a false "models set" claim.
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: ["kimi", "codex"])
+    _stub_draft(
+        monkeypatch,
+        _manifest_payload([{"name": "test", "command": "pytest", "provenance": "invented"}]),
+    )
+    result = _invoke_init(input="y\nkimi\na\nn\n")
+    assert result.exit_code == 0
+    text = (tmp_path / ".kagan" / "repo.yaml").read_text(encoding="utf-8")
+    assert "#   kimi:" in text
+    assert "#     builder: <builder-model>" in text
+    assert "#     reviewer: <reviewer-model>" in text
+    assert "Models set under agents.kimi only" not in result.output
+
+
 def test_agent_draft_accept_all_writes_manifest(tmp_path, monkeypatch):
     _git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -138,6 +212,19 @@ def test_agent_draft_accept_all_writes_manifest(tmp_path, monkeypatch):
     cfg = load_repo_config(tmp_path)
     assert cfg.checks == {"build": "make build", "test": "pytest"}
     assert cfg.agents.for_cli("claude").reviewer == "opus"
+
+
+def test_init_records_current_branch_when_repo_has_no_default_branch(tmp_path, monkeypatch):
+    # No main/master/remote default exists in a brand-new feature-only repo. Init should
+    # intentionally pin base_branch to the checked-out branch so later worktree adds
+    # use a real ref instead of guessing `main`.
+    _git_repo(tmp_path)
+    subprocess.run(["git", "-C", str(tmp_path), "checkout", "-q", "-b", "feature/only"], check=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Harness, "available_clis", lambda self: [])
+    result = _invoke_init()
+    assert result.exit_code == 0
+    assert load_repo_config(tmp_path).base_branch == "feature/only"
 
 
 def test_walk_drop_and_edit(tmp_path, monkeypatch):

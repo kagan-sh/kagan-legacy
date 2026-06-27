@@ -23,7 +23,11 @@ class Decision(BaseModel):
     severity: str  # "blocking" | "question"
     options: list[str] = Field(default_factory=list)  # MCP-INTAKE-02 candidates
     answer: str | None = None
-    blessed: bool = False
+    # True = the human accepted the agent's assumption as-is (DESIGN §5 "Approve");
+    # False with an answer = they overrode it. Replaces kagan's old "bless". The
+    # accepted assumption itself is recorded in `answer` (the option taken), so the
+    # receipt reads WHAT was decided, never the bare verb.
+    approved: bool = False
 
 
 class Finding(BaseModel):
@@ -133,6 +137,16 @@ class Task(BaseModel):
     # ceremony banner consults this so a failed validator never reads as one that ran
     # (false provenance is worse than an honest gap — the trust-incompetence spiral).
     validator_outcome: str | None = None
+    # The human's most recent send-back directive (DESIGN-SHARE-08), NOT a finding. It
+    # feeds the re-run prompt's _sendback_section and is cleared once the re-run harvests.
+    # Modelling it as a Finding (the old approach) gave it a null title, a pre-set
+    # disagree verdict, and a phantom "open" state that gated approve and polluted the
+    # receipt's disputed-findings list with a circular reason (B12/B13/B17).
+    sendback_note: str | None = None
+    # Lever 8: True once a learning from this task was appended to AGENTS.md. The ship
+    # view re-reads this each frame so the retro offer disappears after it is taken,
+    # instead of re-offering the same (now stale) templated learning (B22).
+    retro_appended: bool = False
     # Path to the prior .kagan/reviews record this one replaces (§3.7 link-not-delete).
     supersedes: str | None = None
     # Files this task's diff rewrote (harvested, run-artifacts stripped; capped). The

@@ -464,9 +464,15 @@ self-review. `VALIDATING` is declared but never assigned.
   task in `VALIDATING`; it **MUST** record a non-blocking `ai-review` finding,
   set `Task.validator_outcome="failed"`, and advance to `REVIEW` for unaided
   human review.
-- **DESIGN-LVR2-06** The receipt ceremony banner **MUST** read
-  `validator_outcome` and **MUST** append "(validator unavailable — reviewed
-  unaided)" on failure; a failed validator **MUST NOT** read as one that ran.
+- **DESIGN-LVR2-06** The ceremony banner (and the new-task confirm and ship
+  digest) **MUST** describe the *effective* config, not the risk-tier label, via a
+  single resolver (`core/ceremony.py`): it reads `validator_outcome` and **MUST**
+  distinguish *disabled* — a med/high task with no reviewer configured, banner
+  "(validator disabled — no reviewer configured)" — from *unavailable* — a
+  validator that ran and failed/timed out, banner "(validator unavailable —
+  reviewed unaided)". A disabled or failed validator **MUST NOT** read as one that
+  ran, and the ship digest's `ai-review (N)` **MUST** count only real
+  ai-review/validator findings (never a send-back or other adjudicated finding).
 - **DESIGN-LVR2-07** **WHEN** the validator runs, its reviewer model **MUST** be
   the one configured under the task CLI's own `agents.<cli>` section, so a
   cross-vendor mismatch is unrepresentable by construction; **IF** that model is

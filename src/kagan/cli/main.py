@@ -156,7 +156,7 @@ def _launch_session() -> None:
 
         if not click.confirm("No .kagan/repo.yaml yet. Run setup now?", default=True):
             return  # declined setup — don't drop into a manifestless session
-        if run_async(run_init(repo_root)) is None:
+        if run_async(run_init(repo_root, show_preflight=False)) is None:
             return  # setup didn't complete (declined git, etc.) — don't launch
         repo_root = git.repo_root(Path.cwd())  # re-resolve: init may have created the repo
     elif fails and not click.confirm("Continue anyway?", default=False):

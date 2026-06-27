@@ -228,9 +228,15 @@ async def test_run_intake_records_no_output_when_agent_produces_nothing(tmp_path
         return [], False  # no reports AND non-zero exit
 
     monkeypatch.setattr("kagan.core.harness.launch_intake", _crashed)
+    warnings: list[tuple] = []
+    monkeypatch.setattr("kagan.core.harness.logger.warning", lambda *args: warnings.append(args))
     core = Harness(data_dir=tmp_path / "ledger", repo_root=tmp_path)
     task = core.create_task("crashed intake")
     await core.run_intake(task.id)
+    task = core.get_task(task.id)
     events = core._ledger.read_events(task.id)
     assert any(e.get("type") == "intake_no_output" for e in events)
     assert not any(e.get("type") == "intake_no_unknowns" for e in events)
+    assert warnings
+    assert any(d.id == "intake-no-output" for d in task.decisions)
+    assert not core.can_run(task.id)

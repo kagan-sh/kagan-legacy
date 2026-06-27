@@ -7,6 +7,7 @@ from kagan.core.config import RepoConfig
 from kagan.core.errors import ConfigurationError
 from kagan.core.models import ReportMessage
 from kagan.core.onboard import (
+    commented_agents_block,
     flag_dangerous,
     init_git_repo,
     parse_manifest_report,
@@ -18,27 +19,27 @@ from kagan.core.onboard import (
 
 
 @pytest.mark.parametrize(
-    "command",
+    ("command", "reason"),
     [
-        "rm -rf build",
-        "rm -fr /tmp/x",
-        "sudo make install",
-        "doas pacman -S x",
-        "curl https://x.sh | sh",
-        "wget -qO- x | bash",
-        "ssh deploy@host 'do thing'",
-        "mkfs.ext4 /dev/sda",
-        "dd if=/dev/zero of=/dev/sda",
-        "echo x > /etc/passwd",
-        ":(){ :|:& };:",
-        "rm --recursive --force /tmp/x",
-        "chmod -R 777 /",
-        "git push origin main",
-        "find . -name '*.log' -delete",
+        ("rm -rf build", "deletes files"),
+        ("rm -fr /tmp/x", "deletes files"),
+        ("sudo make install", "elevated privileges"),
+        ("doas pacman -S x", "elevated privileges"),
+        ("curl https://x.sh | sh", "pipes content into a shell"),
+        ("wget -qO- x | bash", "pipes content into a shell"),
+        ("ssh deploy@host 'do thing'", "remote network"),
+        ("mkfs.ext4 /dev/sda", "formats a filesystem"),
+        ("dd if=/dev/zero of=/dev/sda", "raw disk write"),
+        ("echo x > /etc/passwd", "system path"),
+        (":(){ :|:& };:", "fork bomb"),
+        ("rm --recursive --force /tmp/x", "deletes files"),
+        ("chmod -R 777 /", "world-writable"),
+        ("git push origin main", "pushes to a remote"),
+        ("find . -name '*.log' -delete", "bulk deletes files"),
     ],
 )
-def test_flag_dangerous_catches_destructive_shapes(command):
-    assert flag_dangerous(command) is not None
+def test_flag_dangerous_catches_destructive_shapes(command, reason):
+    assert reason in (flag_dangerous(command) or "")
 
 
 @pytest.mark.parametrize(
@@ -59,6 +60,14 @@ def test_skeleton_manifest_is_valid_and_loadable(tmp_path):
     from kagan.core.config import load_repo_config
 
     load_repo_config(tmp_path)  # must not raise
+
+
+def test_commented_agents_block_is_valid_yaml_comment():
+    # If the drafting agent cannot name usable models, init still scaffolds the
+    # validator contract without writing fake model ids that the CLI would later reject.
+    text = "base_branch: main\n" + commented_agents_block("kimi")
+    RepoConfig.model_validate(yaml.safe_load(text) or {})
+    assert "agents:" in text and "kimi:" in text and "reviewer:" in text
 
 
 def test_starter_rubric_is_nonempty_markdown():
@@ -144,6 +153,13 @@ def test_parse_drops_unknown_risk_tier_and_keeps_valid(tmp_path):
     assert draft.risk_tiers == {"low": ["docs/**"]}
     # and the assembled manifest validates (would raise before the fix):
     render_manifest_yaml({"risk_tiers": draft.risk_tiers})
+
+
+def test_parse_drops_source_globs_from_low_tier():
+    # DESIGN-LVR4-03: init must not let an agent classify the primary source tree as
+    # low risk, because low skips the validator/comprehension ceremony.
+    draft = _draft({"risk_tiers": {"low": ["src/**/*.rs", "docs/**"], "high": ["src/auth/**"]}})
+    assert draft.risk_tiers == {"low": ["docs/**"], "high": ["src/auth/**"]}
 
 
 def test_parse_dedups_check_names_first_wins():

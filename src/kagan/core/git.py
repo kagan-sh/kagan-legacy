@@ -288,6 +288,40 @@ async def worktree_remove(repo_path: str | Path, worktree_path: str | Path) -> N
     await _run_git("worktree", "prune", cwd=repo, check=False)
 
 
+async def worktree_prune(repo_path: str | Path) -> None:
+    """Prune stale git worktree metadata for the repo."""
+    await _run_git("worktree", "prune", cwd=Path(repo_path), check=False)
+
+
+async def delete_kagan_task_branches(repo_path: str | Path) -> tuple[list[str], list[str]]:
+    """Delete local branches created by kagan task worktrees.
+
+    Only ``kagan/task-*`` is in scope; user branches under any other prefix are left
+    alone. Returns (deleted, failed) so reset can disclose residue instead of
+    overclaiming a clean wipe.
+    """
+    repo = Path(repo_path)
+    stdout, _ = await _run_git(
+        "for-each-ref",
+        "--format=%(refname:short)",
+        "refs/heads/kagan/task-*",
+        cwd=repo,
+        check=False,
+    )
+    branches = [line.strip() for line in stdout.splitlines() if line.strip()]
+    deleted: list[str] = []
+    failed: list[str] = []
+    for branch in branches:
+        if not branch.startswith("kagan/task-"):
+            continue
+        _, stderr = await _run_git("branch", "-D", branch, cwd=repo, check=False)
+        if stderr:
+            failed.append(branch)
+        else:
+            deleted.append(branch)
+    return deleted, failed
+
+
 async def worktree_list(repo_path: str | Path) -> list[WorktreeEntry]:
     """List all worktrees; returns dicts with 'path' and 'branch' keys."""
     repo = Path(repo_path)
@@ -500,6 +534,7 @@ __all__ = [
     "WorktreeEntry",
     "base_has_moved",
     "commit_all",
+    "delete_kagan_task_branches",
     "diff",
     "has_pending_changes",
     "init_repo",
@@ -513,5 +548,6 @@ __all__ = [
     "validate_ref_name",
     "worktree_add",
     "worktree_list",
+    "worktree_prune",
     "worktree_remove",
 ]

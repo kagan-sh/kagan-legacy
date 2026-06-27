@@ -14,7 +14,9 @@ unadjudicated findings are omitted, and the empty-placeholder per section keeps
 
 from typing import TYPE_CHECKING
 
+from kagan.core.ceremony import banner_suffix, gates_clause, task_validator_status
 from kagan.core.comprehension import prompts_for_task
+from kagan.core.hygiene import display_location, distill_check_detail
 
 if TYPE_CHECKING:
     from kagan.core.models import CheckResult, Decision, Finding, SmokeTest, Task
@@ -30,12 +32,17 @@ _STATUS: dict[str, str] = {
 
 def _check(c: CheckResult) -> str:
     line = f"- [{'pass' if c.passed else 'fail'}] {c.name}"
-    return f"{line}: {c.detail}" if c.detail else line
+    detail = distill_check_detail(c.detail)
+    return f"{line}: {detail}" if detail else line
 
 
 def _decision(d: Decision) -> str:
-    answer = d.answer or "blessed"
-    return f"- {d.question} -> **{answer}** (severity: {d.severity})"
+    # Record WHAT was decided (the accepted assumption or the override), never the bare
+    # verb — the receipt is the cross-team trust artifact (lever 6, B16). The accept vs
+    # override provenance rides alongside.
+    answer = d.answer or "(no answer recorded)"
+    how = "accepted" if d.approved else "overrode"
+    return f"- {d.question} -> **{answer}** ({how}, severity: {d.severity})"
 
 
 def _provenance(f: Finding) -> str:
@@ -49,13 +56,16 @@ def _provenance(f: Finding) -> str:
 
 
 def _finding(f: Finding) -> str:
-    line = f"- `{f.location}`: {f.message}{_provenance(f)} -- verdict: **{f.verdict}**"
+    line = (
+        f"- `{display_location(f.location)}`: "
+        f"{f.message}{_provenance(f)} -- verdict: **{f.verdict}**"
+    )
     return f"{line} (reply: {f.reply})" if f.reply else line
 
 
 def _pushback(f: Finding) -> str:
     # A disagree always carries a reply (TUI-GATE-05), so the one-line reason is present.
-    return f"- `{f.location}`: {f.message}{_provenance(f)} -- reason: {f.reply}"
+    return f"- `{display_location(f.location)}`: {f.message}{_provenance(f)} -- reason: {f.reply}"
 
 
 def _smoke(s: SmokeTest) -> str:
@@ -68,18 +78,13 @@ def _section(title: str, lines: list[str], empty: str) -> list[str]:
 
 
 def _ceremony(task: Task) -> str:
-    # The ceremony banner states what the risk tier required (DESIGN §3.8 / L132).
-    gates = {
-        "low": "machine checks + fast approve",
-        "medium": "validator + comprehension note",
-        "high": "validator + security + comprehension + 2nd approver",
-    }.get(task.risk, "validator + comprehension note")
-    banner = f"reviewed at: {task.risk}-risk — {gates}"
-    # F2: never let the banner claim a validator ran when it failed. Honest
-    # provenance beats a false "validated" signal (the trust-incompetence spiral).
-    if task.validator_outcome == "failed":
-        banner += " (validator unavailable — reviewed unaided)"
-    return banner
+    # The banner states the EFFECTIVE ceremony, not the tier label (WS1): if no reviewer
+    # was configured the validator did not run, and the banner says so — disabled (never
+    # configured) and unavailable (ran and failed) are distinguished (B18/DESIGN-LVR2-06).
+    status = task_validator_status(task)
+    return (
+        f"reviewed at: {task.risk}-risk — {gates_clause(task.risk, status)}{banner_suffix(status)}"
+    )
 
 
 def _comprehension_lines(task: Task) -> list[str]:
@@ -93,7 +98,7 @@ def _comprehension_lines(task: Task) -> list[str]:
             lines.append(f"**{question}**")
             lines.append(answer)
     notes = [
-        f"- `{f.location}`: {f.resolution_note.strip()}"
+        f"- `{display_location(f.location)}`: {f.resolution_note.strip()}"
         for f in task.findings
         if f.resolution_note and f.resolution_note.strip()
     ]
@@ -128,7 +133,7 @@ def _disputed(task: Task) -> list[Finding]:
 
 def render_receipt(task: Task) -> str:
     """The full reviewed-before-push receipt, framed as a light ADR decision record."""
-    decisions = [_decision(d) for d in task.decisions if d.answer or d.blessed]
+    decisions = [_decision(d) for d in task.decisions if d.answer or d.approved]
     lines = [
         f"# Reviewed-before-push receipt: {task.title}",
         "",
@@ -194,7 +199,7 @@ def render_pr_body(task: Task) -> str:
         *_section("Context", _context_lines(task), "_No intake understanding recorded._"),
         *_section(
             "Decision · pinned at intake",
-            [_decision(d) for d in task.decisions if d.answer or d.blessed],
+            [_decision(d) for d in task.decisions if d.answer or d.approved],
             "_No decisions pinned._",
         ),
         *_section(

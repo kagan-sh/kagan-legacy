@@ -197,7 +197,7 @@ def test_state_words_are_lowercase_not_shouting():
 
     resolved = to_str(
         intake.render_intake(
-            _task(decisions=[Decision(id="d", question="q?", severity="blocking", blessed=True)]),
+            _task(decisions=[Decision(id="d", question="q?", severity="blocking", approved=True)]),
             can_run=True,
         )
     )

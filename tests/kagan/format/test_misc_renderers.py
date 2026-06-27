@@ -32,6 +32,38 @@ def test_new_task_no_agent_launch_line():
     assert "you drive — no agent CLI" in out
 
 
+def test_new_task_risk_line_reflects_effective_validator_config():
+    # B10: the ceremony line derives from EFFECTIVE config, not the tier label. With no
+    # reviewer configured it must say the validator is disabled, never promise it runs.
+    no_reviewer = to_str(
+        new_task.render_new_task_form(
+            title="t",
+            scope=["src/**"],
+            clis=["claude"],
+            selected="claude",
+            recipe_command=["claude"],
+            risk="medium",
+            reviewer_configured=False,
+        )
+    )
+    assert "validator disabled — no reviewer configured" in no_reviewer
+    assert "validator + comprehension" not in no_reviewer
+
+    with_reviewer = to_str(
+        new_task.render_new_task_form(
+            title="t",
+            scope=["src/**"],
+            clis=["claude"],
+            selected="claude",
+            recipe_command=["claude"],
+            risk="medium",
+            reviewer_configured=True,
+        )
+    )
+    assert "validator + comprehension" in with_reviewer
+    assert "disabled" not in with_reviewer
+
+
 def test_new_task_risk_and_reviewer_lines_absent_when_none():
     out = to_str(
         new_task.render_new_task_form(

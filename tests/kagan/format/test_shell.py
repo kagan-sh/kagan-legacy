@@ -55,6 +55,20 @@ def test_compact_view_is_borderless_and_uses_the_full_terminal():
     assert "body" in plain
 
 
+def test_pinned_footer_survives_an_overflowing_body():
+    # B5: when the body is taller than the frame, the pinned footer (the action keys)
+    # must NOT be cropped — the overflowing body is clipped instead. The intake decision
+    # walk lost its whole controls line this way when 10 decisions filled the frame.
+    geometry = frame_geometry(120, 30)
+    body = Text("\n".join(f"decision {i}" for i in range(200)))
+    footer = Text("⏎ answer · a approve · x reject · A approve-all · r run · q quit")
+    frame = render_frame(body, geometry, header=Text("intake"), footer=footer)
+    plain = _plain(frame.text)
+    assert frame.height == geometry.height
+    assert "a approve" in plain  # the footer survived; the body was clipped, not it
+    assert "intake" in plain  # the header survived too
+
+
 def test_header_and_footer_are_pinned_with_symmetric_separators():
     geometry = frame_geometry(140, 50)
     frame = render_frame(

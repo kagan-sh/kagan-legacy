@@ -45,6 +45,8 @@ _DANGER_PATTERNS: tuple[tuple[str, str], ...] = (
     (r">\s*/(?:dev|etc|usr|bin|boot|sys|proc)\b", "writes to a system path"),
 )
 
+_SOURCE_TIER_ROOTS = frozenset({"app", "cmd", "internal", "lib", "pkg", "src"})
+
 
 def flag_dangerous(command: str) -> str | None:
     """Return a short reason if the command matches a dangerous shape, else None.
@@ -125,7 +127,9 @@ def _draft_from_payload(payload: dict) -> ManifestDraft:
     if isinstance(raw_tiers, dict):
         for tier, globs in raw_tiers.items():
             if tier in _KNOWN_TIERS and isinstance(globs, list):
-                risk_tiers[tier] = [str(g) for g in globs]
+                safe_globs = [str(g) for g in globs if not _down_tiers_primary_source(tier, str(g))]
+                if safe_globs:
+                    risk_tiers[tier] = safe_globs
 
     raw_services = payload.get("services")
     services: dict[str, dict] = {}
@@ -151,6 +155,13 @@ def _draft_from_payload(payload: dict) -> ManifestDraft:
         builder=_str_or_none(payload.get("builder")),
         reviewer=_str_or_none(payload.get("reviewer")),
     )
+
+
+def _down_tiers_primary_source(tier: object, glob: str) -> bool:
+    if tier != "low":
+        return False
+    first_segment = glob.strip().lstrip("./").split("/", 1)[0].rstrip("*")
+    return first_segment in _SOURCE_TIER_ROOTS
 
 
 def render_manifest_yaml(config: dict) -> str:
@@ -199,6 +210,17 @@ def skeleton_manifest(base_branch: str = "main") -> str:
         "#   claude:\n"
         "#     builder: sonnet\n"
         "#     reviewer: opus\n"
+    )
+
+
+def commented_agents_block(cli: str) -> str:
+    return (
+        "\n"
+        "# Configure the validator for this CLI when you know the model ids it can run.\n"
+        "# agents:\n"
+        f"#   {cli}:\n"
+        "#     builder: <builder-model>\n"
+        "#     reviewer: <reviewer-model>\n"
     )
 
 
@@ -270,6 +292,7 @@ def starter_rubric() -> str:
 __all__ = [
     "ManifestDraft",
     "ProposedCheck",
+    "commented_agents_block",
     "flag_dangerous",
     "init_git_repo",
     "parse_manifest_report",

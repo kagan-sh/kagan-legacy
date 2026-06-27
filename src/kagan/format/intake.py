@@ -5,10 +5,9 @@ bool (from ``core.can_run``) so this file never calls Harness. Ports the
 IntakeScreen render: understanding block, blocking + optional decisions, a
 resolved section, the scope footer, and the run lock phrasing.
 
-NOTE (Rule 7): DESIGN renames ``Decision.blessed`` → ``approved`` with an
-explicit reject path. Core still has ``answer`` + ``blessed`` only, so this
-renderer reads ``blessed``/``answer`` (today's model). The rename is core work
-(Phase 1/3) — flagged, not blended.
+A surfaced decision is **Approved** (``Decision.approved`` — the human took the
+agent's assumption, recorded in ``answer``) or overridden (``approved`` False with
+a custom ``answer``). DESIGN §5 terminology; this replaces kagan's old "bless".
 """
 
 from typing import TYPE_CHECKING
@@ -36,7 +35,7 @@ def _is_blocking(d: Decision) -> bool:
 
 
 def _is_resolved(d: Decision) -> bool:
-    return d.answer is not None or d.blessed
+    return d.answer is not None or d.approved
 
 
 def _decision_line(d: Decision, *, focused: bool) -> Text:
@@ -55,14 +54,10 @@ def _decision_line(d: Decision, *, focused: bool) -> Text:
 def _resolved_line(d: Decision) -> Text:
     line = Text(f"{sym.DONE} ", style="done")
     line.append(d.question)
-    answer = d.answer or ""
-    annotation = "(accepted as-is)" if d.blessed and not answer else ""
-    if answer:
-        line.append(f" → {answer}")
-        if not d.blessed:
-            annotation = "(rejected — overridden)"
-    if annotation:
-        line.append(f" {annotation}", style="secondary")
+    if d.answer:
+        line.append(f" → {d.answer}")
+    annotation = "(accepted as-is)" if d.approved else "(rejected — overridden)"
+    line.append(f" {annotation}", style="secondary")
     return line
 
 

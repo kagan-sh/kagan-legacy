@@ -273,9 +273,44 @@ def _draft_to_config(
     # The agent drafted for THIS cli, so its builder/reviewer are this cli's own model
     # ids — written under `agents.<cli>` and passed verbatim (no validation; the CLI
     # rejects a bad id at spawn). Unset fields are dropped by render_manifest_yaml.
-    section = {k: v for k, v in (("builder", draft.builder), ("reviewer", draft.reviewer)) if v}
+    reviewer = draft.reviewer or draft.builder
+    section = {k: v for k, v in (("builder", draft.builder), ("reviewer", reviewer)) if v}
     if section:
         cfg["agents"] = {agent_cli: section}
+    return cfg
+
+
+def _offer_validator(cfg: dict, agent_cli: str, draft: ManifestDraft) -> dict:
+    """B1: the adversarial validator (lever 2) is kagan's headline check, but it only
+    runs when a reviewer model is configured. When the draft leaves it unset, make
+    enabling it a CHOICE — prompt for a reviewer model id — instead of silently writing
+    a commented-out stub. Declining (or bailing) is fine; it must just be deliberate.
+
+    The reviewer id is declarative (not an executable command), so writing the human's
+    explicit choice respects DESIGN-INIT-02. EOF/ctrl-c degrades to "declined" so a
+    piped/non-interactive run still completes with the commented skeleton."""
+    section = dict(cfg.get("agents", {}).get(agent_cli, {}))
+    if section.get("reviewer"):
+        return cfg  # already enabled — nothing to nudge
+    click.echo("")
+    click.echo("The adversarial validator (a second model reviewing the diff) is kagan's")
+    click.echo("headline check — it only runs when you set a reviewer model for this CLI.")
+    try:
+        if not click.confirm(f"Enable it for {agent_cli} now?", default=True):
+            return cfg
+        default_model = section.get("builder") or draft.builder or ""
+        reviewer = click.prompt(
+            f"Reviewer model id for {agent_cli} (a different model is recommended)",
+            default=default_model,
+        ).strip()
+    except click.Abort, EOFError:
+        return cfg
+    if not reviewer:
+        return cfg
+    if not section.get("builder") and draft.builder:
+        section["builder"] = draft.builder
+    section["reviewer"] = reviewer
+    cfg.setdefault("agents", {})[agent_cli] = section
     return cfg
 
 
@@ -342,12 +377,13 @@ def _ensure_git_repo(repo_root: Path | None) -> Path | None:
     return cwd
 
 
-async def run_init(repo_root: Path | None) -> Path | None:
+async def run_init(repo_root: Path | None, *, show_preflight: bool = True) -> Path | None:
     """Drive the onboarding flow. Returns the written manifest path, or None if the
     user aborted or a hard prerequisite is missing."""
     from kagan.core import Harness, default_data_dir
     from kagan.core.doctor_checks import run_doctor_checks
     from kagan.core.onboard import (
+        commented_agents_block,
         parse_manifest_report,
         render_manifest_yaml,
         skeleton_manifest,
@@ -358,7 +394,8 @@ async def run_init(repo_root: Path | None) -> Path | None:
 
     # 1. preflight — tool setup stays the developer's job; only surface it.
     checks = run_doctor_checks()
-    print_themed(render_preflight(checks))
+    if show_preflight:
+        print_themed(render_preflight(checks))
     if any(c.status == "fail" and c.name in _HARD_PREREQS for c in checks):
         click.echo("Fix the prerequisites above, then re-run `kagan init`.")
         return None
@@ -429,13 +466,20 @@ async def run_init(repo_root: Path | None) -> Path | None:
         # branch is ground truth, so override the draft's value with it.
         draft.base_branch = base_branch
         cfg = _draft_to_config(draft, approved, project_name=repo_root.name, agent_cli=draft_cli)
-        manifest_path = _write_files(repo_root, render_manifest_yaml(cfg))
+        # B1: don't let the validator ship silently OFF — guide the user to configure a
+        # reviewer when the draft left one unset (declining keeps the commented skeleton).
+        cfg = _offer_validator(cfg, draft_cli, draft)
+        wrote_agents = bool(cfg.get("agents"))
+        manifest_text = render_manifest_yaml(cfg)
+        if not wrote_agents:
+            manifest_text += commented_agents_block(draft_cli)
+        manifest_path = _write_files(repo_root, manifest_text)
     finally:
         core.close()
 
     click.echo(f"Wrote {manifest_path} and a starter rubric.")
     click.echo("Run `kagan doctor` to confirm. Edit either file by hand — kagan flags AGENT edits.")
-    if len(clis) > 1:
+    if len(clis) > 1 and wrote_agents:
         click.echo(
             f"  Models set under agents.{draft_cli} only — add an agents.<cli> block per "
             "other CLI you run, or those tasks use the CLI default."

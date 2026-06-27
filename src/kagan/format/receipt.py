@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING
 from rich.console import Group
 from rich.text import Text
 
+from kagan.core.ceremony import DISABLED, FAILED, RAN, task_validator_status
 from kagan.format import _symbols as sym
+from kagan.format.checks import receipt_check_row
 
 if TYPE_CHECKING:
     from rich.console import RenderableType
@@ -19,27 +21,37 @@ if TYPE_CHECKING:
     from kagan.core.api import Task
 
 
+def _ai_review_row(task: Task) -> Text | None:
+    """The ai-review digest line, derived from the EFFECTIVE validator outcome (B20).
+
+    Counts ONLY real ai-review/validator findings — never a send-back or any other
+    adjudicated finding (the old line bucketed every verdict as ai-review). When the
+    validator did not run, it says so honestly instead of implying "an AI reviewed this"."""
+    status = task_validator_status(task)
+    if status == RAN:
+        found = [f for f in task.findings if f.source == "ai-review"]
+        label = f"ai-review ({len(found)})" if found else "ai-review (clean)"
+        return Text(f"{sym.DONE} {label}")
+    if status == DISABLED:
+        return Text(f"{sym.OPTIONAL} ai-review (none — validator disabled)", style="secondary")
+    if status == FAILED:
+        return Text(f"{sym.OPTIONAL} ai-review (none — validator unavailable)", style="secondary")
+    return None  # n/a (low risk) or pending — no ai-review line
+
+
 def render_receipt_digest(task: Task) -> RenderableType:
     """One-line-per-fact digest: checks (n/n), decisions, ai-review, smoke, not-covered."""
     rows: list[RenderableType] = []
 
-    # Passing rows carry their meaning with the ✓ glyph — not a green wash (DESIGN §5).
-    checks_total = len(task.checks)
-    checks_passed = sum(1 for c in task.checks if c.passed)
-    if checks_total and checks_passed == checks_total:
-        rows.append(Text(f"{sym.DONE} checks ({checks_passed}/{checks_total})"))
-    elif checks_total:
-        rows.append(Text(f"{sym.BLOCKER} checks ({checks_passed}/{checks_total})", style="blocker"))
-    else:
-        rows.append(Text(f"{sym.OPTIONAL} checks (none recorded)", style="secondary"))
+    rows.append(receipt_check_row(task.checks))
 
-    pinned = [d for d in task.decisions if d.answer or d.blessed]
+    pinned = [d for d in task.decisions if d.answer or d.approved]
     if pinned:
         rows.append(Text(f"{sym.DONE} decisions ({len(pinned)})"))
 
-    adjudicated = [f for f in task.findings if f.verdict]
-    if adjudicated:
-        rows.append(Text(f"{sym.DONE} ai-review ({len(adjudicated)})"))
+    ai_row = _ai_review_row(task)
+    if ai_row is not None:
+        rows.append(ai_row)
 
     if task.smoke_tests:
         verified = sum(1 for s in task.smoke_tests if s.verified)

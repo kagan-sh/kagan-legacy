@@ -30,11 +30,42 @@ def classify(scope: list[str], tiers: dict[str, list[str]]) -> str:
         return DEFAULT_TIER
     high = tiers.get("high") or []
     low = tiers.get("low") or []
-    if any(_matches(p, high) for p in paths):
+    if any(_overlaps_any(p, high) for p in paths):
         return "high"
-    if low and all(_matches(p, low) for p in paths):
+    if low and all(_contained_by_any(p, low) for p in paths):
         return "low"
     return DEFAULT_TIER
+
+
+def _contained_by_any(scope_glob: str, tier_globs: list[str]) -> bool:
+    return _matches(scope_glob, tier_globs)
+
+
+def _overlaps_any(scope_glob: str, tier_globs: list[str]) -> bool:
+    return any(_patterns_overlap(scope_glob, tier_glob) for tier_glob in tier_globs)
+
+
+def _patterns_overlap(left: str, right: str) -> bool:
+    if _matches(left, [right]) or _matches(right, [left]):
+        return True
+    left_prefix = _literal_prefix(left)
+    right_prefix = _literal_prefix(right)
+    if not left_prefix or not right_prefix:
+        return False
+    return left_prefix.startswith(right_prefix) or right_prefix.startswith(left_prefix)
+
+
+def _literal_prefix(pattern: str) -> str:
+    prefix = pattern.strip().lstrip("./")
+    had_glob = False
+    for char in ("*", "?", "["):
+        index = prefix.find(char)
+        if index != -1:
+            had_glob = True
+            prefix = prefix[:index]
+    if had_glob and "/" in prefix:
+        prefix = prefix.rsplit("/", 1)[0]
+    return prefix.rstrip("/")
 
 
 def downgrade_low_confidence(findings: list[Finding], risk: str) -> None:

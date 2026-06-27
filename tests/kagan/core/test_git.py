@@ -79,6 +79,21 @@ async def test_ruin_guard_does_not_block_kagan_own_mutations(tmp_path: Path) -> 
     assert head
 
 
+async def test_delete_kagan_task_branches_only_deletes_owned_prefix(tmp_path: Path) -> None:
+    repo = tmp_path / "proj"
+    await git.init_repo(repo, create_initial_commit=True)
+    await git._run_git("branch", "kagan/task-abc12345", cwd=repo)
+    await git._run_git("branch", "kagan/other", cwd=repo)
+
+    deleted, failed = await git.delete_kagan_task_branches(repo)
+
+    assert deleted == ["kagan/task-abc12345"]
+    assert failed == []
+    branches, _ = await git._run_git("branch", "--format=%(refname:short)", cwd=repo)
+    assert "kagan/task-abc12345" not in branches
+    assert "kagan/other" in branches
+
+
 def test_user_identity_reads_name_and_email(tmp_path: Path) -> None:
     # Lever 6: the approver string is "Name <email>" from the repo's git config.
     # config is NOT in run_git's allowlist, so this uses the sync subprocess helper.

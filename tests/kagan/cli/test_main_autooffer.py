@@ -9,8 +9,9 @@ from kagan.core.doctor_checks import DoctorCheck
 def _wire(monkeypatch, tmp_path, checks, *, confirm: bool):
     calls: dict = {}
 
-    async def fake_init(repo_root, **_kw):
+    async def fake_init(repo_root, **kw):
         calls["init"] = repo_root
+        calls["init_kwargs"] = kw
         return tmp_path / ".kagan" / "repo.yaml"  # truthy = setup completed
 
     async def fake_session(*, repo_root):
@@ -36,6 +37,7 @@ def test_offers_init_when_only_manifest_missing(tmp_path, monkeypatch):
     calls = _wire(monkeypatch, tmp_path, checks, confirm=True)
     main_mod._launch_session()
     assert calls.get("init") == tmp_path
+    assert calls.get("init_kwargs") == {"show_preflight": False}
     assert calls.get("session") == tmp_path  # session still launches after setup
     # The raw-click preflight + init walk printed on the primary screen; the seam
     # must wipe it once before the full-screen session renders into the litter.

@@ -29,3 +29,22 @@ async def test_core_approve_commands_receipt_and_mark_pushed(tmp_path: Path):
     task = await core.mark_task_pushed(task.id)
     assert task.state == TaskState.PR_OPEN
     core.close()
+
+
+def test_confirm_retro_stops_the_ship_view_re_offering_the_learning(tmp_path: Path):
+    # B22: after a learning is appended, the ship view (which re-reads the ledger each
+    # frame) must stop offering it — confirm_retro records retro_appended and
+    # propose_retro then returns None, so the stale templated text is never re-shown.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    core = Harness(data_dir=tmp_path / "ledger", repo_root=repo)
+    task = core.create_task("Add feature")
+    core.add_decision(task.id, question="precedence?", severity="blocking")
+    core.answer_decision(task.id, core.get_task(task.id).decisions[0].id, answer="proper")
+
+    assert core.propose_retro(task.id) is not None  # a learning is on offer
+    core.confirm_retro(task.id, "operator precedence is proper, not left-to-right")
+
+    assert core.get_task(task.id).retro_appended is True
+    assert core.propose_retro(task.id) is None  # no longer re-offered
+    core.close()

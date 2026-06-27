@@ -196,11 +196,43 @@ async def test_rubric_lines_become_question_findings(worktree):
 
 
 @pytest.mark.asyncio
+async def test_rubric_finding_location_is_repo_relative(worktree):
+    # #19: rubric findings appear in the UI/receipt, so their stored location must
+    # not leak the operator's absolute repo path.
+    repo, wt = worktree
+    (repo / ".kagan").mkdir()
+    rubric_path = repo / ".kagan" / "review.md"
+    rubric_path.write_text("# Rubric\n- Check parser errors\n", encoding="utf-8")
+    config = RepoConfig(review_rubric=rubric_path)
+    task = Task(id="t-1", title="T", worktree_path=wt, base_branch="main", scope=[""])
+
+    findings = await GateEngine(repo_root=repo, config=config).run(task)
+
+    rubric = [f for f in findings if f.source == "rubric"]
+    assert rubric
+    assert {f.location for f in rubric} == {".kagan/review.md"}
+    assert str(repo) not in rubric[0].location
+
+
+@pytest.mark.asyncio
 async def test_mutation_probe_passes_when_test_command_can_fail(worktree):
     # TUI-GATE-02: a real test command returns non-zero on the injected failing
     # test, so no mutation finding is raised.
     repo, wt = worktree
     config = RepoConfig(checks={"test": "python -m pytest -q"})
+    task = Task(id="t-1", title="T", worktree_path=wt, base_branch="main", scope=[""])
+
+    findings = await GateEngine(repo_root=repo, config=config).run(task)
+
+    assert not [f for f in findings if "mutation" in f.message.lower()]
+
+
+@pytest.mark.asyncio
+async def test_mutation_probe_recognizes_pytest_command_under_generic_check_name(worktree):
+    # Users do not have to name the check exactly "test"; a declared pytest command
+    # under another check id is still the suite the mutation probe can exercise.
+    repo, wt = worktree
+    config = RepoConfig(checks={"unit": "python -m pytest -q"})
     task = Task(id="t-1", title="T", worktree_path=wt, base_branch="main", scope=[""])
 
     findings = await GateEngine(repo_root=repo, config=config).run(task)
@@ -225,22 +257,17 @@ async def test_mutation_probe_flags_tautological_test_command(worktree):
 
 
 @pytest.mark.asyncio
-async def test_mutation_probe_skipped_on_non_python_test_command(worktree):
-    # F4: the probe injects a pytest file, so a non-python runner (cargo/go/npm) would
-    # never collect it and exit 0 would be a vacuous green check. Such a command must
-    # yield exactly one advisory "skipped" finding and ZERO blocking — never a silent
-    # false pass that claims the suite has teeth.
+async def test_mutation_probe_does_not_false_advisory_on_non_python_test_command(worktree):
+    # A declared non-Python suite such as cargo test is still a test check. The
+    # Python mutation probe cannot exercise it, so it must not emit the misleading
+    # "no test check declared" advisory observed in Rust repos.
     repo, wt = worktree
-    config = RepoConfig(checks={"test": "cargo test"})
+    config = RepoConfig(checks={"unit": "cargo test"})
     task = Task(id="t-1", title="T", worktree_path=wt, base_branch="main", scope=[""])
 
     findings = await GateEngine(repo_root=repo, config=config).run(task)
 
-    probe = [f for f in findings if "mutation" in f.message.lower()]
-    assert len(probe) == 1
-    assert probe[0].severity == "question"
-    assert "skipped" in probe[0].message.lower()
-    assert not [f for f in findings if "mutation" in f.message.lower() and f.severity == "blocking"]
+    assert not [f for f in findings if "mutation" in f.message.lower()]
 
 
 @pytest.mark.asyncio

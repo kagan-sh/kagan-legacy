@@ -53,9 +53,10 @@ async def test_allow_scope_clears_drift_flag(core):
 
 
 @pytest.mark.asyncio
-async def test_send_back_clears_drift_appends_finding_and_reruns(core, monkeypatch):
-    # TUI-DRIFT-03 / TUI-GATE-07: send-back clears drift, records a disagree Finding
-    # carrying the human's comment, and re-runs the agent on the same task.
+async def test_send_back_clears_drift_records_directive_and_reruns(core, monkeypatch):
+    # TUI-DRIFT-03 / TUI-GATE-07: send-back clears drift, records the human's comment as
+    # the re-run DIRECTIVE (Task.sendback_note — NOT a finding, WS2/B12), and re-runs the
+    # agent on the same task.
     task = core.create_task("Send-back test")
     core.update_task(task.id, drift=True)
 
@@ -70,8 +71,8 @@ async def test_send_back_clears_drift_appends_finding_and_reruns(core, monkeypat
     assert updated is not None
     reloaded = core._require(task.id)
     assert reloaded.drift is False
-    assert reloaded.findings[-1].verdict == "disagree"
-    assert reloaded.findings[-1].reply == "out of scope: stay in src/"
+    assert reloaded.sendback_note == "out of scope: stay in src/"
+    assert not reloaded.findings  # the send-back is a directive, not a finding
     assert rerun_called["id"] == task.id
 
 

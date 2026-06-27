@@ -13,10 +13,13 @@ from rich.rule import Rule
 from rich.text import Text
 
 from kagan.core.api import humanize_task_state
+from kagan.core.checks import has_failed_checks
 from kagan.core.comprehension import prompts_for_risk, prompts_for_task
-from kagan.core.tasks import _is_substantive
+from kagan.core.hygiene import display_location
+from kagan.core.tasks import _is_substantive, is_open_blocker
 from kagan.format import _symbols as sym
 from kagan.format._risk import risk_label, risk_style
+from kagan.format.checks import readiness_check_parts
 
 if TYPE_CHECKING:
     from rich.console import RenderableType
@@ -45,10 +48,12 @@ def render_decisions(decisions: list[Decision]) -> RenderableType:
         return Group(heading, Text("No pinned decisions.", style="secondary"))
     lines: list[RenderableType] = [heading]
     for d in decisions:
-        # "accepted as-is" is the surface word for the internal blessed flag (DESIGN §5).
-        status = (
-            "accepted as-is" if d.blessed else (f"answer: {d.answer}" if d.answer else "unresolved")
-        )
+        # "accepted as-is" is the surface word for an approved-as-is decision (DESIGN §5);
+        # the accepted assumption rides alongside so the value is visible, not just the verb.
+        if d.approved:
+            status = f"accepted as-is ({d.answer})" if d.answer else "accepted as-is"
+        else:
+            status = f"answer: {d.answer}" if d.answer else "unresolved"
         lines.append(Text(f"{d.question}  →  {status}"))
     return Group(*lines)
 
@@ -60,7 +65,7 @@ def _finding_line(f: Finding, *, focused: bool) -> Text:
     line = Text(cursor_prefix, style="bold" if focused else "")
     # Severity / location / provenance (lever 2) ride dim so the message — the thing
     # being read — carries the default weight; the focused row stays bold throughout.
-    tag = f"{f.severity}  ·  {f.location}  ·  [{f.source}]"
+    tag = f"{f.severity}  ·  {display_location(f.location)}  ·  [{f.source}]"
     line.append(tag, style="bold" if focused else "secondary")
     line.append(f"\n{indent}{f.message}", style="bold" if focused else "")
     verdict = f.verdict or "open"
@@ -178,7 +183,7 @@ def render_approvers(task: Task, required: int) -> RenderableType | None:
 def _focusable_readiness_rows(task: Task) -> list[str]:
     """Ordered kinds of the readiness rows that the cursor may land on."""
     rows: list[str] = []
-    if [f for f in task.findings if f.severity == "blocking" and f.verdict != "agree"]:
+    if any(is_open_blocker(f) for f in task.findings):
         rows.append("findings")
     if _unanswered_keys(task):
         rows.append("comprehension")
@@ -231,9 +236,8 @@ def render_readiness(
     """DESIGN section 5 checklist framing over the existing checks/findings/smoke
     data. ``cursor`` marks the focused focusable row (findings / comprehension /
     smoke)."""
-    open_blocking = [f for f in task.findings if f.severity == "blocking" and f.verdict != "agree"]
-    checks_passed = sum(1 for c in task.checks if c.passed)
-    checks_total = len(task.checks)
+    open_blocking = [f for f in task.findings if is_open_blocker(f)]
+    check_glyph, check_style, check_label = readiness_check_parts(task.checks)
     smoke_todo = [s for s in task.smoke_tests if not s.verified]
     unanswered = _unanswered_keys(task)
     comprehension_done = not unanswered
@@ -242,7 +246,7 @@ def render_readiness(
     cursor = max(0, min(cursor, len(focusable) - 1)) if focusable else 0
     focus_kind = focusable[cursor] if focusable else None
 
-    todo_count = len(open_blocking) + len(unanswered)
+    todo_count = len(open_blocking) + len(unanswered) + int(has_failed_checks(task.checks))
     title = (
         Text(f"Almost ready — {todo_count} thing(s) before you approve.")
         if locked
@@ -279,9 +283,9 @@ def render_readiness(
         )
     rows.append(
         _readiness_row(
-            sym.DONE,
-            "done",
-            f"Checks passed · {checks_passed} of {checks_total}",
+            check_glyph,
+            check_style,
+            check_label,
             focused=False,
         )
     )
@@ -325,8 +329,17 @@ def render_lock_block(
             )
         )
     if locked:
-        if any(f.severity == "blocking" and f.verdict is None for f in task.findings):
+        if any(is_open_blocker(f) for f in task.findings):
             lines.append(Text("Approve is locked: adjudicate the open blocking finding(s) first."))
+        failed_checks = [c.name for c in task.checks if not c.passed]
+        if failed_checks:
+            lines.append(
+                Text(
+                    "Approve is locked: fix failing required check(s) first: "
+                    + ", ".join(failed_checks),
+                    style="blocker",
+                )
+            )
         unanswered = _unanswered_keys(task)
         if unanswered:
             lines.append(

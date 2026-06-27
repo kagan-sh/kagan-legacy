@@ -222,7 +222,34 @@ async def test_durability_flags_files_re_edited_on_base_within_window(tmp_path: 
         repo_root=tmp_path,
         git_runner=fake_git,
         events_by_task=events,
-        now=base,
+        now=base + timedelta(days=20),  # both tasks are old enough to assess
     )
     assert observed == 2
     assert untouched == 1  # only `durable` had no later commit
+
+
+@pytest.mark.asyncio
+async def test_durability_excludes_tasks_younger_than_the_window(tmp_path: Path):
+    # F26: a two-week-durability metric cannot be computed on a fresh task. A task that
+    # reached ready minutes ago is NOT observed (observed==0 → the surface says "too new"),
+    # never a nonsense "0 of 1 untouched after two weeks".
+    base = datetime(2026, 6, 20, tzinfo=UTC)
+    fresh = Task(
+        id="fresh",
+        title="fresh",
+        base_commit="abc",
+        findings=[Finding(id="f", severity="blocking", location="new.py", message="m")],
+    )
+    events = {"fresh": _ready_events(created=base, ready=base)}
+
+    async def fake_git(args: list[str], *, cwd: Path, check: bool) -> str:
+        return ""
+
+    untouched, observed = await durability(
+        [fresh],
+        repo_root=tmp_path,
+        git_runner=fake_git,
+        events_by_task=events,
+        now=base + timedelta(minutes=24),  # 24 minutes old — far short of two weeks
+    )
+    assert (untouched, observed) == (0, 0)

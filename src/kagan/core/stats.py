@@ -204,11 +204,20 @@ async def durability(
     (0, 0) when nothing is observable (the surface renders that as "too new").
     """
     now = now or datetime.now(UTC)
-    cutoff = (now - timedelta(days=window_days)).date().isoformat()
+    window_start = now - timedelta(days=window_days)
+    cutoff = window_start.date().isoformat()
     observed = 0
     untouched = 0
     for task in tasks:
-        if _reached_ready_at(events_by_task.get(task.id, [])) is None or task.base_commit is None:
+        ready_at = _reached_ready_at(events_by_task.get(task.id, []))
+        if ready_at is None or task.base_commit is None:
+            continue
+        # F26: a two-week-durability metric cannot be computed on a fresh task. Only count
+        # a task once it has had the full window to survive — otherwise "0 of 1 untouched
+        # after two weeks" is a nonsense data point on a task that shipped minutes ago. Too
+        # young → not observed (the surface renders observed==0 as "too new").
+        ready_at = ready_at if ready_at.tzinfo else ready_at.replace(tzinfo=UTC)
+        if ready_at > window_start:
             continue
         files = _changed_files(task)
         if not files:

@@ -316,6 +316,8 @@ subset is tracked.
   `.kagan_worktrees/` to the repo-root `.gitignore`.
 - **DESIGN-PLAT-20** `cli/reset.py` **MUST** treat `.kagan/repo.yaml` as the
   user's own config (not in the kill-list).
+- **DESIGN-PLAT-21** `kagan doctor` **MUST** exit non-zero when any check is a hard
+  fail, so `kagan doctor && …` is a safe gate in scripts and CI (F2).
 
 **FUTURE (not built):** an external store at
 `platformdirs.user_data_dir("kagan")/repos/<repo-key>/`, with `<repo-key>`
@@ -566,9 +568,14 @@ low-risk skips it.
 ### Lever 7 — Outcome scorecard
 
 - **DESIGN-LVR7-01** `kagan stats` **MUST** compute durability, CFR, and cycle
-  time from ledger + read-only `git log`; no database.
+  time from ledger + read-only `git log`; no database. Durability **MUST NOT** be
+  computed on a task younger than its window (default 14 days): a task that reached
+  `ready` inside the window is excluded from the denominator (reads "too new"),
+  never a nonsense "0 of 1 untouched after two weeks" on a fresh task (F26).
 - **DESIGN-LVR7-02** The scorecard **MUST** be a private self-calibration mirror,
-  never a team productivity metric.
+  never a team productivity metric. Metric copy **MUST** stay honest: "review
+  caught" counts validator blockers the human upheld, fixed OR shipped as a known
+  issue — never claimed as "before they shipped" once F20 lets agreed blockers ship.
 - **DESIGN-LVR7-03** **WHEN** the user marks pushed, the harness **MUST** capture
   `remote_pr_url` at `mark_pushed` so the CI tripwire is not inert.
 
@@ -578,6 +585,11 @@ low-risk skips it.
   append learnings to `AGENTS.md`.
 - **DESIGN-LVR8-02** Kagan **MUST NOT** edit `AGENTS.md` without explicit human
   confirm.
+- **DESIGN-LVR8-03** `propose_retro()` **MUST** distil a real learning — a
+  CONSTRAINT the agent got wrong (a decision the human OVERRODE) or a GOTCHA (a
+  drift concern) — or return None. It **MUST NOT** dump accepted-as-is decisions as
+  a "decided: …" restatement; when there is no real learning the surface makes no
+  retro offer (F25).
 
 ### Lever 9 — Structural debt budget
 

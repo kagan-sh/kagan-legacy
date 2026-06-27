@@ -56,20 +56,26 @@ def _normalize_payload(report_type: str, payload: object) -> dict | None:
 
 
 def summarize_learnings(task: Task) -> str | None:
-    """Lever 8: a candidate one-line learning for AGENTS.md, distilled from the
-    task's resolved decisions and drift causes.
+    """Lever 8: a candidate one-line learning for AGENTS.md, distilled to the real
+    insights from this task — or None when there is nothing worth recording.
 
-    Pure read of the Task model (no ledger/file IO) so it tests like detect_drift.
-    Returns None when there is nothing worth recording — the surface then makes no
-    retro offer (DESIGN lever 8: opt-in, never silent) — or once a learning from this
-    task has already been appended, so the ship view stops re-offering it (B22)."""
+    A learning is a CONSTRAINT the agent got wrong (a decision the human OVERRODE — its
+    default assumption was incorrect, so the corrected choice is worth teaching) or a
+    GOTCHA (a drift concern observed while building). Decisions the human accepted as-is
+    carry no learning — the agent guessed right — and are NOT dumped back as a decision
+    restatement (F25). When neither signal is present, return None so the surface makes
+    no retro offer (DESIGN lever 8: opt-in, never silent).
+
+    Pure read of the Task model (no ledger/file IO) so it tests like detect_drift. Also
+    returns None once a learning has been appended, so the ship view stops re-offering it
+    (B22)."""
     if task.retro_appended:
         return None
     parts: list[str] = []
-    answered = [d for d in task.decisions if d.answer]
-    if answered:
-        decided = "; ".join(f"{d.question.rstrip('?')} -> {d.answer}" for d in answered)
-        parts.append(f"decided: {decided}")
+    overrides = [d for d in task.decisions if d.answer and not d.approved]
+    if overrides:
+        corrected = "; ".join(f"{d.question.rstrip('?')} -> {d.answer}" for d in overrides)
+        parts.append(f"constraint: {corrected}")
     drift = [c.message for c in task.drift_concerns if c.message]
     if drift:
         parts.append(f"watch: {'; '.join(drift)}")

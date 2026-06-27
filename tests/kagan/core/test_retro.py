@@ -59,11 +59,17 @@ def test_append_refuses_empty_line(tmp_path):
         append_learning(tmp_path, "   ")
 
 
-def test_summarize_learnings_distills_decisions_and_drift():
+def test_summarize_learnings_distills_overrides_and_drift():
+    # F25: a learning is a CONSTRAINT the agent got wrong (an OVERRIDDEN decision) or a
+    # GOTCHA (drift) — distilled, not a dump of every decision.
     task = Task(
         id="t",
         title="t",
-        decisions=[Decision(id="d", question="precedence?", severity="blocking", answer="proper")],
+        decisions=[
+            Decision(
+                id="d", question="precedence?", severity="blocking", answer="proper", approved=False
+            )
+        ],
         drift_concerns=[DriftConcern(id="c", message="f64 overflow -> inf")],
         findings=[
             Finding(id="f1", severity="blocking", location="eval.rs", message="x"),
@@ -72,9 +78,31 @@ def test_summarize_learnings_distills_decisions_and_drift():
     )
     line = summarize_learnings(task)
     assert line is not None
-    assert "precedence -> proper" in line
+    assert "constraint: precedence -> proper" in line
     assert "f64 overflow -> inf" in line
     assert "eval.rs" not in line  # raw finding locations are not learnings
+
+
+def test_summarize_learnings_drops_accepted_decisions_no_decision_dump():
+    # F25: decisions the human accepted as-is (the agent guessed right) carry NO learning
+    # and must NOT be dumped back as a "decided: …" restatement — that buried real signal.
+    task = Task(
+        id="t",
+        title="t",
+        decisions=[
+            Decision(
+                id="d1", question="numeric type?", severity="blocking", answer="f64", approved=True
+            ),
+            Decision(
+                id="d2",
+                question="input model?",
+                severity="blocking",
+                answer="immediate",
+                approved=True,
+            ),
+        ],
+    )
+    assert summarize_learnings(task) is None
 
 
 def test_summarize_learnings_ignores_location_only_patterns():

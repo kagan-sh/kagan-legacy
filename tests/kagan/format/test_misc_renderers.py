@@ -93,7 +93,7 @@ def test_scorecard_renders_calm_sentences_and_na_for_empty_signals():
     assert "1 shipped" in out
     assert "N/A" in out  # no PR CI yet -> N/A, not a fabricated 0%
     assert "1 of 1 answered first try" in out
-    assert "2 real bugs before they shipped" in out
+    assert "2 real bugs surfaced and upheld" in out
     assert "med 3h" in out
     assert "best-effort" in out  # durability is framed as best-effort, never hard
     assert "no scope rewritten enough" in out  # lever 9: empty debt trend renders "—"

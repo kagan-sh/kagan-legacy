@@ -1,7 +1,9 @@
 from pathlib import Path
 
 import yaml
+from click.testing import CliRunner
 
+from kagan.cli.doctor import doctor
 from kagan.core.doctor_checks import _check_manifest_models, run_doctor_checks
 
 
@@ -27,6 +29,14 @@ def test_doctor_fails_when_manifest_missing(tmp_path: Path, monkeypatch):
     assert ".kagan/repo.yaml" in check.message
     assert "kagan init" in check.fix_hint
     assert "services" not in check.fix_hint
+
+
+def test_doctor_command_exits_nonzero_on_hard_fail(tmp_path: Path, monkeypatch):
+    # F2: `kg doctor` MUST exit non-zero on a hard fail so `kg doctor && kg ...` is safe.
+    # A missing manifest is a hard fail (must be fixed), so the command exits non-zero.
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(doctor, [])
+    assert result.exit_code != 0
 
 
 def test_doctor_fails_when_manifest_invalid(tmp_path: Path, monkeypatch):

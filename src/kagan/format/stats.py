@@ -66,7 +66,9 @@ def _review_caught_value(card: Scorecard) -> str:
     if n == 0:
         return "none yet — no validator bugs upheld"
     bugs = "bug" if n == 1 else "bugs"
-    return f"{n} real {bugs} before they shipped"
+    # Not "before they shipped" — an agreed blocker may ship as a known issue (F20/F26).
+    # This counts real bugs the validator surfaced and the human upheld, fixed or not.
+    return f"{n} real {bugs} surfaced and upheld"
 
 
 def _debt_value(card: Scorecard) -> str:

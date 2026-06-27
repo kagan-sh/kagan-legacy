@@ -1,7 +1,7 @@
 """Finding lifecycle across re-runs (WS2 — DESIGN-SHARE-08, B11/B12/B17).
 
-Auto-generated findings (rubric/security/ai-review/machine) are REPLACED by source
-on every run, so a send-back re-run never multiplies them. A send-back is a re-run
+Auto-generated findings (security/ai-review/machine) are REPLACED by source on
+every run, so a send-back re-run never multiplies them. A send-back is a re-run
 DIRECTIVE carried on Task.sendback_note — never a Finding — so it never gates approve
 as a phantom blocker and never pollutes the receipt's disputed-findings list.
 """
@@ -15,8 +15,8 @@ from kagan.core.enums import TaskState
 CLI = "claude"
 
 # A builder that just edits one in-scope file. No validate phase (no reviewer config),
-# so the only findings come from the gate: the rubric bullets + the "security skipped"
-# advisory — exactly the auto-generated set the dogfood saw double on re-run (B11).
+# so the only finding comes from the gate: the "security skipped" advisory — an
+# auto-generated finding the dogfood saw double on re-run (B11).
 BUILDER = """#!/bin/sh
 mkdir -p src
 echo "edit $(date +%s%N)" >> src/new.py
@@ -36,11 +36,6 @@ async def _repo(path: Path) -> Path:
     (path / "README.md").write_text("base\n", encoding="utf-8")
     (path / ".kagan").mkdir(exist_ok=True)
     (path / ".kagan" / "repo.yaml").write_text("checks:\n  lint: 'true'\n", encoding="utf-8")
-    # A rubric with three bullets → three question findings per gate run.
-    (path / ".kagan" / "review.md").write_text(
-        "# Rubric\n- Errors are handled\n- No secrets added\n- Tests cover new behaviour\n",
-        encoding="utf-8",
-    )
     await git.commit_all(path, "base")
     return path
 
@@ -51,9 +46,9 @@ async def _drive(core: Harness, task_id: str) -> None:
 
 
 async def test_auto_findings_replaced_by_source_on_rerun_not_accumulated(tmp_path, monkeypatch):
-    # B11: after a send-back re-run, rubric/security findings are REPLACED, not stacked.
-    # The dogfood saw 6 rubric questions become 12 and 1 security advisory become 2 after
-    # a single send-back; this asserts the counts are stable across the re-run.
+    # B11: after a send-back re-run, auto-generated findings are REPLACED by source, not
+    # stacked. The dogfood saw the security advisory become 2 after a single send-back;
+    # this asserts the count is stable across the re-run.
     repo = await _repo(tmp_path / "repo")
     bin_dir = tmp_path / "bin"
     _install(bin_dir, CLI, BUILDER)
@@ -65,18 +60,14 @@ async def test_auto_findings_replaced_by_source_on_rerun_not_accumulated(tmp_pat
 
     await _drive(core, task.id)
     first = core.get_task(task.id)
-    rubric_first = [f for f in first.findings if f.source == "rubric"]
-    security_first = [f for f in first.findings if f.source == "security"]
-    assert len(rubric_first) == 3  # the three rubric bullets
-    assert len(security_first) == 1  # the "security scan skipped" advisory
+    assert len([f for f in first.findings if f.source == "security"]) == 1  # the skipped advisory
 
     await core.send_back(task.id, "please run fmt and fix clippy")
     await core.await_agent(task.id)
 
     second = core.get_task(task.id)
     assert second.state is TaskState.REVIEW
-    # Stable counts — replaced by source, NOT doubled.
-    assert len([f for f in second.findings if f.source == "rubric"]) == 3
+    # Stable count — replaced by source, NOT doubled.
     assert len([f for f in second.findings if f.source == "security"]) == 1
 
 
@@ -105,8 +96,8 @@ async def test_send_back_is_a_directive_not_a_finding(tmp_path, monkeypatch):
     assert not any(f.message == note for f in settled.findings)
     # The directive was consumed by the re-run prompt and cleared.
     assert settled.sendback_note is None
-    # No blocking finding is open purely because of the send-back: the only findings are
-    # the rubric/security questions (non-blocking), so approve is not phantom-gated.
+    # No blocking finding is open purely because of the send-back: the only finding is
+    # the security advisory (non-blocking), so approve is not phantom-gated.
     assert not any(f.severity == "blocking" and f.verdict is None for f in settled.findings)
     # The receipt's disputed-findings section is empty — the send-back never masquerades
     # as a finding the human disagreed with.

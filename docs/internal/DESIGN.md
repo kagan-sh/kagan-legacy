@@ -465,7 +465,11 @@ self-review. `VALIDATING` is declared but never assigned.
   `builder` **MAY** be the same model; same vendor at different size **MAY** be
   used.
 - **DESIGN-LVR2-04** The validator **MUST** emit blocking/question `Finding`s;
-  the human **MUST** still adjudicate all.
+  the human **MUST** still adjudicate all. The repo rubric (`.kagan/review.md`) is
+  the LENS the validator reviews through — fed into the validator prompt
+  (`_validate_prompt`), with an explicit instruction not to echo it back — and is
+  **NEVER** turned into one finding per rubric line by the gate (F15). The rubric
+  describes what to look for; only concrete diff defects it surfaces become findings.
 - **DESIGN-LVR2-05** **IF** `launch_validate` crashes, exits unclean, or hits the
   F1 wall-clock cap (`ok=False`), **THEN** the harness **MUST NOT** strand the
   task in `VALIDATING`; it **MUST** record a non-blocking `ai-review` finding,

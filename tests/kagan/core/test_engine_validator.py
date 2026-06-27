@@ -131,7 +131,7 @@ async def test_validator_uses_reviewer_model_not_builder_model(tmp_path, monkeyp
 
     captured: dict[str, str] = {}
 
-    async def _spy_validate(task, *, model, timeout=None):
+    async def _spy_validate(task, *, model, rubric=None, timeout=None):
         captured["model"] = model
         return [], True
 
@@ -190,7 +190,7 @@ async def test_validator_runs_when_reviewer_equals_builder(tmp_path, monkeypatch
 
     captured: dict[str, str] = {}
 
-    async def _spy_validate(task, *, model, timeout=None):
+    async def _spy_validate(task, *, model, rubric=None, timeout=None):
         captured["model"] = model
         return [], True
 
@@ -223,7 +223,7 @@ async def test_validator_failure_degrades_to_unaided_review(tmp_path, monkeypatc
     _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
-    async def _boom(task, *, model, timeout=None):
+    async def _boom(task, *, model, rubric=None, timeout=None):
         raise RuntimeError("validator process exploded")
 
     monkeypatch.setattr("kagan.core.harness.launch_validate", _boom)
@@ -253,7 +253,7 @@ async def test_validator_timeout_degrades_to_unaided_review(tmp_path, monkeypatc
     _install(bin_dir, CLI, PHASED_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
-    async def _timed_out(task, *, model, timeout=None):
+    async def _timed_out(task, *, model, rubric=None, timeout=None):
         return [], False  # exited unclean / hit the wall-clock cap, did not raise
 
     monkeypatch.setattr("kagan.core.harness.launch_validate", _timed_out)
@@ -283,7 +283,7 @@ async def test_model_under_agents_section_reaches_the_validator_verbatim(tmp_pat
 
     captured: dict[str, str] = {}
 
-    async def _spy_validate(task, *, model, timeout=None):
+    async def _spy_validate(task, *, model, rubric=None, timeout=None):
         captured["model"] = model
         return [], True
 
@@ -533,7 +533,7 @@ async def test_validator_failure_falls_back_to_static_prompts_with_honest_proven
     _install(bin_dir, CLI, GEN_PROMPTS_AGENT)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
-    async def _boom(task, *, model, timeout=None):
+    async def _boom(task, *, model, rubric=None, timeout=None):
         raise RuntimeError("validator process exploded")
 
     monkeypatch.setattr("kagan.core.harness.launch_validate", _boom)

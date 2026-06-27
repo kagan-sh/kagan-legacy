@@ -179,8 +179,10 @@ async def test_large_diff_is_a_question_not_blocking(worktree):
 
 
 @pytest.mark.asyncio
-async def test_rubric_lines_become_question_findings(worktree):
-    # TUI-GATE-03: the repo rubric is surfaced as question findings, not hardcoded.
+async def test_rubric_is_not_echoed_as_findings(worktree):
+    # F15: the gate must NOT emit a finding per rubric line — the rubric is the lens the
+    # validator reviews through (fed into the validator prompt), not open questions to
+    # adjudicate. A run with a rubric present yields findings about the diff only.
     repo, wt = worktree
     (repo / ".kagan").mkdir()
     (repo / ".kagan" / "review.md").write_text(
@@ -191,27 +193,8 @@ async def test_rubric_lines_become_question_findings(worktree):
 
     findings = await GateEngine(repo_root=repo, config=config).run(task)
 
-    rubric = [f for f in findings if f.severity == "question" and "print" in f.message.lower()]
-    assert len(rubric) == 1
-
-
-@pytest.mark.asyncio
-async def test_rubric_finding_location_is_repo_relative(worktree):
-    # #19: rubric findings appear in the UI/receipt, so their stored location must
-    # not leak the operator's absolute repo path.
-    repo, wt = worktree
-    (repo / ".kagan").mkdir()
-    rubric_path = repo / ".kagan" / "review.md"
-    rubric_path.write_text("# Rubric\n- Check parser errors\n", encoding="utf-8")
-    config = RepoConfig(review_rubric=rubric_path)
-    task = Task(id="t-1", title="T", worktree_path=wt, base_branch="main", scope=[""])
-
-    findings = await GateEngine(repo_root=repo, config=config).run(task)
-
-    rubric = [f for f in findings if f.source == "rubric"]
-    assert rubric
-    assert {f.location for f in rubric} == {".kagan/review.md"}
-    assert str(repo) not in rubric[0].location
+    assert not [f for f in findings if f.source == "rubric"]
+    assert not [f for f in findings if "print statements" in f.message.lower()]
 
 
 @pytest.mark.asyncio

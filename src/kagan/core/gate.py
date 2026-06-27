@@ -1,9 +1,11 @@
 """Review gate engine: the universal checks the local mirror does not run.
 
 Build/types/tests are the mirror's job (RepoConfig.checks, run by the local
-mirror). This adds the diff heuristics (in-scope, minimal, secrets, shared env),
-a mutation probe that proves the test command can actually fail, and the repo
-rubric — all returned as canonical Findings (TUI-GATE-02/03).
+mirror). This adds the diff heuristics (in-scope, minimal, secrets, shared env)
+and a mutation probe that proves the test command can actually fail — all
+returned as canonical Findings (TUI-GATE-02). The review rubric is NOT echoed
+here as findings (F15): it is the lens the adversarial validator reviews through
+(fed into the validator prompt, lever 2), not a list of open questions.
 """
 
 import asyncio
@@ -48,7 +50,6 @@ class GateEngine:
         findings += self._minimal(files)
         findings += await self._mutation_probe(wt)
         findings += await self._security(task, wt)
-        findings += self._rubric()
         return findings
 
     async def _changed_files(self, wt: Path, base_branch: str) -> list[str]:
@@ -220,38 +221,6 @@ class GateEngine:
                 source="security",
             )
         ]
-
-    def _rubric(self) -> list[Finding]:
-        if self.config is None:
-            return []
-        path = self.config.review_rubric
-        if not path.is_absolute():
-            path = self.repo_root / path
-        if not path.is_file():
-            return []
-        lines = [
-            ln.strip().lstrip("-* ").strip()
-            for ln in path.read_text(encoding="utf-8").splitlines()
-            if ln.strip().startswith(("-", "*"))
-        ]
-        return [
-            Finding(
-                id=_fid("rubric", i),
-                severity="question",
-                location=_repo_relative(path, self.repo_root),
-                message=line,
-                source="rubric",
-            )
-            for i, line in enumerate(lines, start=1)
-            if line
-        ]
-
-
-def _repo_relative(path: Path, repo_root: Path) -> str:
-    try:
-        return path.relative_to(repo_root).as_posix()
-    except ValueError:
-        return path.name
 
 
 async def _run(command: str, cwd: Path) -> int:

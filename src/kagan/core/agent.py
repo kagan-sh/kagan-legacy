@@ -64,7 +64,7 @@ def _intake_prompt(task: Task) -> str:
     )
 
 
-def _validate_prompt(task: Task) -> str:
+def _validate_prompt(task: Task, rubric: str | None = None) -> str:
     from kagan.core.comprehension import prompts_for_risk, required_keys
 
     prompt = (
@@ -78,6 +78,14 @@ def _validate_prompt(task: Task) -> str:
         "breaks, do not report it. Set confidence 0-10 and status "
         "VERIFIED/UNVERIFIED/TENTATIVE per finding.\n"
     )
+    if rubric and rubric.strip():
+        # F15: the rubric is the LENS the validator reviews through — not a checklist to
+        # echo back as findings. Only report concrete diff defects it helps surface.
+        prompt += (
+            "Review the diff THROUGH this repo rubric. Do NOT echo the rubric lines back "
+            "as findings; use them only to find concrete defects in the diff:\n"
+            f"{rubric.strip()}\n"
+        )
     n = len(prompts_for_risk(task.risk))
     if n > 0:
         keys = ", ".join(required_keys(task.risk))
@@ -425,7 +433,7 @@ async def launch_intake(
 
 
 async def launch_validate(
-    task: Task, *, model: str, timeout: float = _DEFAULT_AGENT_TIMEOUT
+    task: Task, *, model: str, rubric: str | None = None, timeout: float = _DEFAULT_AGENT_TIMEOUT
 ) -> tuple[list, bool]:
     """Lever 2: one adversarial validator, read-only over the builder's worktree,
     on a DIFFERENT model from the builder. Reads the diff, reports blocking/question
@@ -442,7 +450,7 @@ async def launch_validate(
         Path(worktree),
         phase="validate",
         prompt_name="validate-prompt.txt",
-        prompt_text=_validate_prompt(task),
+        prompt_text=_validate_prompt(task, rubric),
         env_flag="KAGAN_VALIDATE",
         model=model,
         timeout=timeout,

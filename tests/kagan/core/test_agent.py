@@ -93,6 +93,21 @@ def test_validate_prompt_omits_comprehension_instruction_for_low_risk():
     assert "report_comprehension_prompts" not in prompt
 
 
+def test_validate_prompt_uses_rubric_as_lens_not_findings():
+    # F15: a rubric is woven into the validator prompt as the review LENS, with an explicit
+    # instruction NOT to echo it back as findings — never emitted as findings by the gate.
+    rubric = "- No print statements\n- Tests added for new code"
+    prompt = _validate_prompt(Task(id="t", title="Billing", risk="medium"), rubric)
+    assert "No print statements" in prompt
+    assert "THROUGH this repo rubric" in prompt
+    assert "Do NOT echo the rubric lines back" in prompt
+
+
+def test_validate_prompt_omits_rubric_block_when_absent():
+    prompt = _validate_prompt(Task(id="t", title="Billing", risk="medium"))
+    assert "rubric" not in prompt.lower()
+
+
 def test_ask_fallback_contract_requires_object_payloads(tmp_path):
     ask_path = tmp_path / ".kagan" / "ask"
     prompt = _ask_fallback_instructions(ask_path, ("intake_decisions", "done"))

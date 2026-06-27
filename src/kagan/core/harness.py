@@ -570,7 +570,12 @@ class Harness:
         # carry it to REVIEW for unaided human review (the research baseline). Apply
         # whatever partial reports it did emit either way. Degrade, never block.
         try:
-            reports, ok = await launch_validate(task, model=reviewer, timeout=self._agent_timeout())
+            reports, ok = await launch_validate(
+                task,
+                model=reviewer,
+                rubric=self._review_rubric_text(),
+                timeout=self._agent_timeout(),
+            )
             for r in reports:
                 self._apply_report(task_id, r)
             if ok:
@@ -583,6 +588,18 @@ class Harness:
             )
             self._degrade_validator(task_id)
         return self._require(task_id)
+
+    def _review_rubric_text(self) -> str | None:
+        """The repo rubric as the validator's review lens (F15), best-effort. Absent
+        manifest or missing/empty rubric file → None, so the validator runs unguided
+        rather than failing. The rubric is NEVER turned into findings (that was the bug)."""
+        with suppress(ConfigurationError):
+            config = self.config
+            if config is not None:
+                with suppress(OSError):
+                    text = config.review_rubric.read_text(encoding="utf-8").strip()
+                    return text or None
+        return None
 
     def _degrade_validator(self, task_id: str) -> None:
         """F2: mark the validator stage failed and surface it honestly. A failed
@@ -883,11 +900,11 @@ class Harness:
         await self._harvest(task_id, timed_out=timed_out)
 
     # Findings the harness/gate regenerate every harvest. Replaced by source on each run
-    # (B11): re-running a task must not multiply rubric/security/ai-review/machine
-    # findings. Human-authored verdicts on the prior set are stale on a re-run anyway —
-    # the upheld/overruled ones travel into the re-run prompt via _sendback_section, not
-    # as persisted findings.
-    _REGENERATED_FINDING_SOURCES = frozenset({"machine", "security", "rubric", "ai-review"})
+    # (B11): re-running a task must not multiply security/ai-review/machine findings.
+    # Human-authored verdicts on the prior set are stale on a re-run anyway — the
+    # upheld/overruled ones travel into the re-run prompt via _sendback_section, not as
+    # persisted findings.
+    _REGENERATED_FINDING_SOURCES = frozenset({"machine", "security", "ai-review"})
 
     async def _harvest(self, task_id: str, *, timed_out: bool = False) -> Task:
         task = self._require(task_id)
@@ -937,7 +954,7 @@ class Harness:
         # (RUNNING -> VALIDATING, merge ai-review findings). It leaves the
         # VALIDATING -> REVIEW transition to run_gate below (no double-hop).
         await self.run_validation(task_id)
-        # Run the gate engine (mirror checks + rubric) and land in REVIEW — the
+        # Run the gate engine (diff heuristics + mutation probe) and land in REVIEW — the
         # gate does the transition, so do NOT transition here (no double-hop).
         return await self.run_gate(task_id)
 

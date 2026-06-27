@@ -41,7 +41,7 @@ class Finding(BaseModel):
     # ponytail: field + renderer ship now; the gate engine's findings are file-level,
     # so anchoring a real diff hunk per finding is left as later best-effort work.
     hunk: str | None = None
-    # Who raised it: "machine" | "ai-review" | "rubric" | "security" (lever 2 provenance).
+    # Who raised it: "machine" | "ai-review" | "security" (lever 2 provenance).
     source: str = "machine"
     # kipp finding schema (lever 2): the validator's self-rated confidence 0-10.
     confidence: int | None = None

@@ -37,6 +37,8 @@ Kagan is a Kanban TUI for AI coding agents with a structural human review gate. 
 
 The agent runs in an isolated git worktree. When it finishes, the task card moves to REVIEW. You read the diff, check the acceptance criteria, and press approve. Then merge fires. That transition — REVIEW to DONE — cannot be automated away. It is not a setting.
 
+> This repository and experiemental python version of kagan harness are **DEPRECATED** see https://github.com/kagan-sh/kagan for latest iteration of the tool - now leveraging OpenCode ecosystem and available as a native OpenCode plugin.
+
 ## Install
 
 ```bash
